@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_COMPANY, APP_NAME, APP_TAGLINE } from "@/config/app";
+import { APP_COMPANY, APP_TAGLINE } from "@/config/app";
 import { Wordmark } from "@/components/shell/wordmark";
 import { Button } from "@/components/ui/button";
 

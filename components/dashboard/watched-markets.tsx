@@ -25,8 +25,10 @@ const REG_CHIP: Record<
   unverified: { tone: "outline", label: "Unverified" },
 };
 
+// Every row is its own grid, so all tracks must resolve identically across
+// rows: fixed width for the chip column, minmax+fr for the rest.
 const ROW_GRID =
-  "grid grid-cols-[minmax(8rem,1.4fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)_auto] items-center gap-x-4";
+  "grid grid-cols-[minmax(8rem,1.4fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)_8.25rem] items-center gap-x-4";
 
 /**
  * The markets the operator is watching: ADR, occupancy, RevPAR and the
