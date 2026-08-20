@@ -45,6 +45,16 @@
   --ring: var(--gold-bright);
 
   --radius: 0.25rem;
+
+  /* Charts: gold primary, recessive grey comparison, muted-red negative. */
+  --chart-primary: var(--gold);
+  --chart-comparison: #8b8b93;
+  --chart-neg: var(--red-muted);
+
+  /* Monochrome map: land near the canvas, water slightly darker. */
+  --map-water: #e7e7eb;
+  --map-land: #fafafb;
+  --map-stroke: #d8d8dd;
 }
 
 .dark {
@@ -80,6 +90,14 @@
   --destructive-foreground: var(--text);
   --input: var(--border);
   --ring: var(--gold-bright);
+
+  --chart-primary: var(--gold);
+  --chart-comparison: #9a9aa1;
+  --chart-neg: #a05560;
+
+  --map-water: #09090a;
+  --map-land: #111113;
+  --map-stroke: #232327;
 }
 
 /* ------------------------------------------------------------------ */
