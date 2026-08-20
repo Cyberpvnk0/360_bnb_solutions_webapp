@@ -42,7 +42,7 @@ function Figure({
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
       <div className="mt-0.5 truncate text-sm font-medium text-foreground tabular">
@@ -112,7 +112,7 @@ export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
           </StatusChip>
         </div>
 
-        <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 pl-[30px] sm:grid-cols-5">
+        <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 pl-[30px] sm:grid-cols-[1fr_1.1fr_1fr_0.9fr_1.7fr]">
           <Figure label="ADR">{fmtMoney(m.adr)}</Figure>
           <Figure label="Occupancy">{fmtPct(m.occupancy)}</Figure>
           <Figure label="RevPAR">{fmtMoney(revpar(m.adr, m.occupancy))}</Figure>
