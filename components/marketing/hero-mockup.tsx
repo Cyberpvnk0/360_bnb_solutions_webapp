@@ -60,7 +60,7 @@ export function HeroMockup({ className }: { className?: string }) {
             <div className="mt-1 text-base font-semibold leading-tight tracking-tight text-foreground tabular">
               9.9 mo
             </div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">on $12,500 in</div>
+            <div className="mt-0.5 text-[10px] text-muted-foreground">on $12,500 setup</div>
           </div>
         </div>
       </div>

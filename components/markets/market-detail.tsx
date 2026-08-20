@@ -62,6 +62,16 @@ import { cn } from "@/lib/utils";
 /* Pieces                                                              */
 /* ------------------------------------------------------------------ */
 
+/** Recharts' Tooltip content prop is typed wider than the kit's tooltip
+ *  renderer; adapt without loosening the kit types. */
+function asTooltipContent(
+  render: (props: TooltipContentProps<number, string>) => React.ReactNode
+) {
+  return function TooltipContent(props: unknown) {
+    return render(props as TooltipContentProps<number, string>);
+  };
+}
+
 function ChartCard({
   title,
   sub,
@@ -319,9 +329,11 @@ export function MarketDetail({ market: m }: { market: Market }) {
               />
               <Tooltip
                 cursor={{ stroke: "var(--border)" }}
-                content={makeTooltip(
-                  (v) => fmtMoney(v),
-                  (label) => fmtMonth(String(label))
+                content={asTooltipContent(
+                  makeTooltip(
+                    (v) => fmtMoney(v),
+                    (label) => fmtMonth(String(label))
+                  )
                 )}
               />
               <Area
@@ -356,8 +368,8 @@ export function MarketDetail({ market: m }: { market: Market }) {
                   width={52}
                 />
                 <Tooltip
-                  cursor={{ fill: "var(--surface-2)", opacity: 0.5 }}
-                  content={AdrByBedroomTooltip}
+                  cursor={{ fill: "var(--surface-2)", fillOpacity: 0.5 }}
+                  content={asTooltipContent(AdrByBedroomTooltip)}
                 />
                 <Bar
                   dataKey="adr"
@@ -406,9 +418,11 @@ export function MarketDetail({ market: m }: { market: Market }) {
                 />
                 <Tooltip
                   cursor={{ stroke: "var(--border)" }}
-                  content={makeTooltip(
-                    (v) => fmtPct(v, 1),
-                    (label) => fmtMonth(String(label))
+                  content={asTooltipContent(
+                    makeTooltip(
+                      (v) => fmtPct(v, 1),
+                      (label) => fmtMonth(String(label))
+                    )
                   )}
                 />
                 <Line
