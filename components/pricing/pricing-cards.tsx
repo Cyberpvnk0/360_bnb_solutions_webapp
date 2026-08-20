@@ -80,7 +80,7 @@ function TierPrice({ tier, billing }: { tier: Tier; billing: BillingCycle }) {
         />
         <span className="text-sm text-muted-foreground">/mo</span>
       </div>
-      <div className="mt-1 h-4 text-xs text-muted-foreground">
+      <div className="mt-1 min-h-4 text-xs text-muted-foreground">
         {billing === "annual" ? (
           <>
             billed annually at {fmtMoneyCents(tier.priceAnnual)} — save{" "}

@@ -124,9 +124,10 @@ export const TIERS: Record<TierId, Tier> = {
 
 export const TIER_ORDER: TierId[] = ["free", "starter", "pro", "scale"];
 
-/** Effective monthly price when billed annually (two months free). */
+/** Effective monthly price when billed annually (two months free).
+ *  Rounded to the cent: $99.97/yr → $8.33, $299.97 → $25.00, $799.97 → $66.66. */
 export function annualEffectiveMonthly(tier: Tier): number {
-  return Math.floor((tier.priceAnnual / 12) * 100) / 100;
+  return Math.round((tier.priceAnnual / 12) * 100) / 100;
 }
 
 /** Dollars saved per year on the annual plan vs. paying monthly. */
