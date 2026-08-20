@@ -1,0 +1,237 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ */
+/* Palette — the only hues in the product.                             */
+/* Dark is the canonical theme; light is a deliberate inversion.       */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Light theme */
+  --ink: #f2f2f4;
+  --surface: #ffffff;
+  --surface-2: #e9e9ec;
+  --border: #dcdce1;
+  --text: #101012;
+  --text-muted: #63636c;
+  --red: #c41e2e;
+  --red-deep: #8f1521;
+  --red-muted: #9e3e49;
+  --gold: #906a15;
+  --gold-bright: #a87b1f;
+  /* Chip/fill variants that keep the warm metal read on white */
+  --gold-fill: #e3b341;
+
+  /* Semantic mapping (shadcn token names) */
+  --background: var(--ink);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--red);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--text);
+  --destructive: var(--red-muted);
+  --destructive-foreground: #ffffff;
+  --input: var(--border);
+  --ring: var(--gold-bright);
+
+  --radius: 0.25rem;
+}
+
+.dark {
+  /* Dark theme — the product's home. */
+  --ink: #0b0b0c;
+  --surface: #141416;
+  --surface-2: #1c1c1f;
+  --border: #26262a;
+  --text: #f7f7f8;
+  --text-muted: #9a9aa1;
+  --red: #d22030;
+  --red-deep: #8f1521;
+  --red-muted: #7a3038;
+  --gold: #e3b341;
+  --gold-bright: #f5d77a;
+  --gold-fill: #e3b341;
+
+  --background: var(--ink);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--text);
+  --primary: var(--red);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+  --accent: #232327;
+  --accent-foreground: var(--text);
+  --destructive: var(--red-muted);
+  --destructive-foreground: var(--text);
+  --input: var(--border);
+  --ring: var(--gold-bright);
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme registration                                                  */
+/* ------------------------------------------------------------------ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Brand tokens usable as Tailwind colors (bg-gold, text-brand, …) */
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-brand: var(--red);
+  --color-brand-deep: var(--red-deep);
+  --color-neg: var(--red-muted);
+  --color-gold: var(--gold);
+  --color-gold-bright: var(--gold-bright);
+  --color-gold-fill: var(--gold-fill);
+
+  /* Typography: tight grotesk for chrome, high-contrast serif display. */
+  --font-sans: "Inter Tight Variable", "Inter Tight", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman",
+    serif;
+
+  /* Sharp corners — hairline-and-flat system. */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+
+  --animate-gold-ring: gold-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes gold-ring {
+    0% {
+      opacity: 0.9;
+      r: 9;
+    }
+    70% {
+      opacity: 0;
+      r: 17;
+    }
+    100% {
+      opacity: 0;
+      r: 17;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "ss01", "cv05";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--gold-fill) 30%, transparent);
+  }
+
+  /* Quiet, thin scrollbars that match the hairline system. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 0;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Gold, clearly visible keyboard focus. */
+  :focus-visible {
+    outline: 2px solid var(--gold-bright);
+    outline-offset: 1px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Product utilities                                                   */
+/* ------------------------------------------------------------------ */
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+/* Financial figures: tabular numerals with generous tracking. */
+@utility tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.01em;
+}
+
+/* Small, uppercase, wide-tracked, muted metric labels. */
+@utility metric-label {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* The one permitted radial — barely-there gold wash for the dashboard hero. */
+@utility hero-radial {
+  background-image: radial-gradient(
+    ellipse 80% 55% at 50% -12%,
+    color-mix(in srgb, var(--gold-fill) 7%, transparent),
+    transparent
+  );
+}
+
+/* Thin gold left rule marking active state. */
+@utility active-rule {
+  box-shadow: inset 2px 0 0 0 var(--gold);
+}

@@ -1,0 +1,245 @@
+/**
+ * Domain types shared by the mock data and the UI.
+ * When real APIs land, these stay — only the generators in /lib/mock and
+ * the fetchers in /lib/data get replaced.
+ */
+
+import type { TierId } from "@/config/app";
+import type { DealInputs } from "@/lib/calc/arbitrage";
+
+/* ------------------------------------------------------------------ */
+/* Markets                                                             */
+/* ------------------------------------------------------------------ */
+
+export type RegulationStatus =
+  | "permitted"
+  | "permit-required"
+  | "banned"
+  | "unverified";
+
+export interface Regulation {
+  status: RegulationStatus;
+  /** One-sentence plain-language summary of the local rule. */
+  note: string;
+  /** Where the note came from and when it was last checked. */
+  sourceNote: string;
+}
+
+/** One month of market performance for the 2-bedroom benchmark unit. */
+export interface MarketMonth {
+  /** YYYY-MM-01 */
+  month: string;
+  adr: number;
+  /** Fraction, 0–1. */
+  occupancy: number;
+}
+
+export interface BedroomAdr {
+  bedrooms: number;
+  adr: number;
+  listings: number;
+}
+
+export interface Market {
+  slug: string;
+  name: string;
+  state: string;
+  stateCode: string;
+  lat: number;
+  lon: number;
+  /** Trailing-12-month ADR for the 2BR benchmark. */
+  adr: number;
+  /** Trailing-12-month occupancy, fraction. */
+  occupancy: number;
+  activeListings: number;
+  /** Median asking rent for a long-term 2BR lease. */
+  medianRent2br: number;
+  /** Average breakeven occupancy for a 2BR at typical costs (fraction).
+   *  Computed by the generator via lib/calc — never hand-set. */
+  avgBreakeven2br: number;
+  regulation: Regulation;
+  /** Trailing 12 months, oldest first. */
+  monthly: MarketMonth[];
+  adrByBedroom: BedroomAdr[];
+  /** Month-over-month change, as fractions of the prior month. */
+  deltas: {
+    adr: number;
+    occupancy: number; // percentage-point change as fraction (e.g. +0.02)
+    listings: number;
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Analyses (address pulls)                                            */
+/* ------------------------------------------------------------------ */
+
+export type PropertyType = "apartment" | "house" | "condo" | "townhome";
+
+export interface StrComp {
+  id: string;
+  name: string;
+  bedrooms: number;
+  bathrooms: number;
+  adr: number;
+  /** Fraction, 0–1. */
+  occupancy: number;
+  distanceMiles: number;
+}
+
+export interface LtrComp {
+  id: string;
+  address: string;
+  bedrooms: number;
+  bathrooms: number;
+  rent: number;
+  sqft: number;
+  distanceMiles: number;
+  /** e.g. "Active listing" or "Leased 34 days ago". */
+  status: string;
+}
+
+export interface Analysis {
+  id: string;
+  address: string;
+  city: string;
+  stateCode: string;
+  marketSlug: string;
+  bedrooms: number;
+  bathrooms: number;
+  propertyType: PropertyType;
+  createdAt: string;
+  /** The evidence behind the revenue projection. ADR and occupancy
+   *  assumptions are derived from this set via lib/calc/comps. */
+  strComps: StrComp[];
+  /** The evidence behind the lease estimate. */
+  ltrComps: LtrComp[];
+  /** Seeded calculator defaults; rent comes from the LTR comp median. */
+  defaults: DealInputs;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pipeline                                                            */
+/* ------------------------------------------------------------------ */
+
+export type PipelineStage =
+  | "prospecting"
+  | "loi-sent"
+  | "landlord-approved"
+  | "leased"
+  | "live";
+
+export const PIPELINE_STAGES: { id: PipelineStage; label: string }[] = [
+  { id: "prospecting", label: "Prospecting" },
+  { id: "loi-sent", label: "LOI Sent" },
+  { id: "landlord-approved", label: "Landlord Approved" },
+  { id: "leased", label: "Leased" },
+  { id: "live", label: "Live" },
+];
+
+export interface Deal {
+  id: string;
+  analysisId: string;
+  address: string;
+  city: string;
+  stateCode: string;
+  marketSlug: string;
+  bedrooms: number;
+  stage: PipelineStage;
+  /** Fraction. Computed from the linked analysis via lib/calc. */
+  breakevenOccupancy: number;
+  /** Dollars/month. Computed from the linked analysis via lib/calc. */
+  netCashFlow: number;
+  landlordIds: string[];
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Landlords (private per user)                                        */
+/* ------------------------------------------------------------------ */
+
+export type StrPolicy = "yes" | "no" | "negotiable";
+
+export interface Landlord {
+  id: string;
+  name: string;
+  company?: string;
+  phone: string;
+  email: string;
+  unitsControlled: number;
+  allowsStr: StrPolicy;
+  lastContacted?: string;
+  notes: string;
+  dealIds: string[];
+  createdAt: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Session, billing, activity                                          */
+/* ------------------------------------------------------------------ */
+
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  tier: TierId;
+  pullsUsed: number;
+  /** ISO date the current billing period resets. */
+  periodEnd: string;
+  joinedAt: string;
+  watchedMarketSlugs: string[];
+  billingCycle: "monthly" | "annual";
+}
+
+export interface Invoice {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  status: "paid" | "open";
+}
+
+export type ActivityType =
+  | "pull"
+  | "deal-saved"
+  | "deal-stage"
+  | "landlord-added"
+  | "market-watched"
+  | "export";
+
+export interface ActivityEvent {
+  id: string;
+  type: ActivityType;
+  message: string;
+  /** ISO datetime. */
+  at: string;
+  href?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin                                                               */
+/* ------------------------------------------------------------------ */
+
+export interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  tier: TierId;
+  pullsUsed: number;
+  joinedAt: string;
+}
+
+export interface AdminMetrics {
+  mrr: number;
+  activeSubscriptions: number;
+  freeAccounts: number;
+  tierCounts: { tier: TierId; count: number }[];
+  /** Trailing 12 months of address-pull volume. */
+  pullVolume: { month: string; pulls: number }[];
+  /** Modeled variable data cost per paying user per month. */
+  dataCostPerUser: number;
+  /** Fraction of MRR shared with the coaching program. */
+  revShareRate: number;
+  users: AdminUserRow[];
+}
