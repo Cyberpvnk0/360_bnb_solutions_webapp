@@ -8,7 +8,7 @@
 
 import { breakevenOccupancy } from "@/lib/calc/arbitrage";
 import { clamp, Rng, roundTo, trailingMonths } from "./seed";
-import type { BedroomAdr, Market, MarketMonth, Regulation, RegulationStatus } from "./types";
+import type { BedroomAdr, Market, MarketMonth, MarketTerrain, Regulation, RegulationStatus } from "./types";
 
 /** Seasonality shapes — monthly multipliers, Jan..Dec, mean ≈ 1. */
 const SEASON: Record<string, number[]> = {
@@ -168,6 +168,13 @@ function buildBedroomAdr(seed: MarketSeed, rng: Rng): BedroomAdr[] {
   }));
 }
 
+const TERRAIN_BY_SEASON: Record<SeasonType, MarketTerrain> = {
+  beach: "coastal",
+  mountain: "mountain",
+  desert: "desert",
+  metro: "metro",
+};
+
 function buildMarket(seed: MarketSeed, rng: Rng): Market {
   const monthly = buildMonthly(seed, rng);
   const last = monthly[monthly.length - 1];
@@ -184,6 +191,7 @@ function buildMarket(seed: MarketSeed, rng: Rng): Market {
     name: seed.name,
     state: seed.state,
     stateCode: seed.code,
+    terrain: TERRAIN_BY_SEASON[seed.season],
     lat: seed.lat,
     lon: seed.lon,
     adr: seed.adr,

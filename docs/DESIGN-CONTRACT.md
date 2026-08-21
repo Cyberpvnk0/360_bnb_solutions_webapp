@@ -12,7 +12,10 @@ No emoji. Never letter grades or 0–100 scores — the hero metric is always
 ## Palette
 
 Defined as CSS variables in `app/globals.css`. **No other hues anywhere.**
-Never green, never blue, never teal.
+Never green, never blue, never teal. **Light is the default theme** — an
+airy, AirDNA-clean read: soft panel elevation (`--elev`, light mode only),
+quiet hairlines, white cards on a near-white canvas. Dark stays flat and
+hairline-structured.
 
 | Token / Tailwind class | Meaning |
 | --- | --- |
@@ -48,13 +51,17 @@ Color semantics — resolve the red conflict deliberately:
 
 ## Craft rules
 
-- 1px hairline borders (`border-border`); **never drop shadows**.
+- 1px hairline borders (`border-border`). Panels carry the soft `--elev`
+  ambient lift in light mode only — never ad-hoc `shadow-*` classes.
 - 8px grid. Generous whitespace around key numbers; tight density in tables.
 - Transitions 150ms (`duration-150`). Numbers animate with `AnimatedNumber`
   (200ms count-up).
 - Active state = thin gold underline or left rule (`active-rule` utility,
   gold-bordered tabs are built into `TabsTrigger`).
-- `rounded-sm` corners everywhere; `rounded-full` ONLY for `StatusChip`.
+- `rounded-sm` corners everywhere (the radius scale is a soft 8–14px —
+  bubblier than a terminal, calmer than AirDNA); `rounded-full` ONLY for
+  `StatusChip` and genuinely circular elements (gauges, rings, pins,
+  the margin badge).
 - No gradients except: `hero-radial` (dashboard hero only) and the 8% gold
   fill under the primary area chart (`CHART.areaFill` / `areaFillOpacity`).
 - Every screen has a real empty state (`EmptyState`) and a skeleton loading

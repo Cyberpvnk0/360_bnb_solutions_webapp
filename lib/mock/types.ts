@@ -40,11 +40,16 @@ export interface BedroomAdr {
   listings: number;
 }
 
+/** Rough setting of the market — drives the card banner art and the
+ *  type label under the market name. */
+export type MarketTerrain = "metro" | "coastal" | "mountain" | "desert";
+
 export interface Market {
   slug: string;
   name: string;
   state: string;
   stateCode: string;
+  terrain: MarketTerrain;
   lat: number;
   lon: number;
   /** Trailing-12-month ADR for the 2BR benchmark. */

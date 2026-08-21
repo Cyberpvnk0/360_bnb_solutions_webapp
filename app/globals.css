@@ -9,11 +9,12 @@
 /* ------------------------------------------------------------------ */
 
 :root {
-  /* Light theme */
-  --ink: #f2f2f4;
+  /* Light theme — the default. Airy canvas, quiet hairlines, and a
+     whisper of elevation under panels (see --elev below). */
+  --ink: #f7f7f9;
   --surface: #ffffff;
-  --surface-2: #e9e9ec;
-  --border: #dcdce1;
+  --surface-2: #f1f1f4;
+  --border: #e5e5ea;
   --text: #101012;
   --text-muted: #63636c;
   --red: #c41e2e;
@@ -52,9 +53,12 @@
   --chart-neg: var(--red-muted);
 
   /* Monochrome map: land near the canvas, water slightly darker. */
-  --map-water: #e7e7eb;
-  --map-land: #fafafb;
-  --map-stroke: #d8d8dd;
+  --map-water: #ececf0;
+  --map-land: #fbfbfc;
+  --map-stroke: #dfdfe4;
+
+  /* Soft ambient lift under panels — light mode only. */
+  --elev: 0 1px 2px rgb(16 16 18 / 0.04), 0 6px 20px rgb(16 16 18 / 0.05);
 }
 
 .dark {
@@ -98,6 +102,9 @@
   --map-water: #09090a;
   --map-land: #111113;
   --map-stroke: #232327;
+
+  /* Dark stays flat — hairlines carry the structure. */
+  --elev: 0 0 #0000;
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,12 +149,12 @@
   --font-display: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman",
     serif;
 
-  /* Sharp corners — hairline-and-flat system. */
-  --radius-xs: 1px;
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
-  --radius-xl: 6px;
+  /* Soft-but-disciplined corners. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
 
   --animate-gold-ring: gold-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
@@ -213,6 +220,11 @@
   :focus-visible {
     outline: 2px solid var(--gold-bright);
     outline-offset: 1px;
+  }
+
+  /* Panels float gently in light mode; --elev is a no-op in dark. */
+  :is(.bg-card, .bg-popover) {
+    box-shadow: var(--elev);
   }
 }
 
