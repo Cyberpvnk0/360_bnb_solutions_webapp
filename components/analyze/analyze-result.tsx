@@ -337,7 +337,11 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
             </OutputTile>
             <OutputTile
               label="Total startup capital"
-              sub="Deposit + furnishing + first month's rent"
+              sub={
+                inputs.firstMonthFree
+                  ? "Deposit + furnishing — first month waived"
+                  : "Deposit + furnishing + first month's rent"
+              }
             >
               <AnimatedNumber value={p.startupCapital} format={fmtMoney} />
             </OutputTile>

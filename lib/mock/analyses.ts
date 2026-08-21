@@ -121,6 +121,7 @@ function buildDefaults(ltrComps: LtrComp[], bedrooms: number, rng: Rng): DealInp
     insuranceMonthly: 0,
     platformFeePct: 0.03,
     mgmtFeePct: 0,
+    firstMonthFree: false,
   };
 }
 

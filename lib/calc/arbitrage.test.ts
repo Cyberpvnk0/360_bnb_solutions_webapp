@@ -35,6 +35,7 @@ const base: DealInputs = {
   insuranceMonthly: 85,
   platformFeePct: 0.03,
   mgmtFeePct: 0,
+  firstMonthFree: false,
 };
 
 const market: MarketAssumptions = { adr: 185, marketOccupancy: 0.62 };
@@ -173,6 +174,24 @@ describe("margin of safety", () => {
 describe("capital and returns", () => {
   it("startup capital = deposit + furnishing + first month rent", () => {
     expect(startupCapital(base)).toBe(1900 + 12000 + 1900);
+  });
+
+  it("first month free removes the rent from startup capital only", () => {
+    const free = { ...base, firstMonthFree: true };
+    expect(startupCapital(free)).toBe(1900 + 12000);
+    // Steady-state economics are untouched...
+    expect(breakevenOccupancy(free, market)).toBeCloseTo(
+      breakevenOccupancy(base, market),
+      12
+    );
+    expect(netCashFlow(free, market, 0.62)).toBeCloseTo(
+      netCashFlow(base, market, 0.62),
+      12
+    );
+    // ...so the same annual profit over less cash in lifts cash-on-cash.
+    expect(cashOnCashReturn(free, market, 0.62)).toBeGreaterThan(
+      cashOnCashReturn(base, market, 0.62)
+    );
   });
 
   it("cash-on-cash = annual profit / startup capital", () => {

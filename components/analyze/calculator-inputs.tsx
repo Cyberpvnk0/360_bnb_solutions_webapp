@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, RotateCcw } from "lucide-react";
 import type { DealInputs } from "@/lib/calc/arbitrage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,13 @@ import { Label } from "@/components/ui/label";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { cn } from "@/lib/utils";
 
+/** Keys of DealInputs that hold dollar/percent numbers (not flags). */
+type NumericInputKey = {
+  [K in keyof DealInputs]: DealInputs[K] extends number ? K : never;
+}[keyof DealInputs];
+
 interface FieldSpec {
-  key: keyof DealInputs;
+  key: NumericInputKey;
   label: string;
   prefix?: string;
   suffix?: string;
@@ -97,7 +102,7 @@ export function CalculatorInputs({
     (k) => inputs[k] !== defaults[k]
   ).length;
 
-  const setField = (key: keyof DealInputs, raw: string, percent?: boolean) => {
+  const setField = (key: NumericInputKey, raw: string, percent?: boolean) => {
     const parsed = raw === "" ? 0 : Number.parseFloat(raw);
     if (Number.isNaN(parsed)) return;
     const value = percent ? parsed / 100 : parsed;
@@ -177,7 +182,42 @@ export function CalculatorInputs({
       </div>
 
       <div className="space-y-3.5 p-5">
-        {BASIC_FIELDS.map(renderField)}
+        {BASIC_FIELDS.slice(0, 1).map(renderField)}
+
+        {/* Landlord concession: waives month one, cutting startup cash. */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={inputs.firstMonthFree}
+          onClick={() =>
+            onChange({ ...inputs, firstMonthFree: !inputs.firstMonthFree })
+          }
+          className="flex w-full items-center justify-between gap-3 rounded-sm border border-border px-3 py-2.5 text-left transition-colors duration-150 hover:bg-secondary/50"
+        >
+          <span className="min-w-0">
+            <span className="block text-xs text-foreground">
+              First month rent free
+            </span>
+            <span className="block text-[11px] leading-snug text-muted-foreground">
+              Negotiated concession — cuts your startup cash
+            </span>
+          </span>
+          <span
+            aria-hidden
+            className={cn(
+              "flex size-4.5 shrink-0 items-center justify-center rounded-xs border transition-colors duration-150",
+              inputs.firstMonthFree
+                ? "border-gold bg-gold-fill/15 text-gold"
+                : "border-border bg-background"
+            )}
+          >
+            {inputs.firstMonthFree ? (
+              <Check className="size-3" strokeWidth={3} />
+            ) : null}
+          </span>
+        </button>
+
+        {BASIC_FIELDS.slice(1).map(renderField)}
       </div>
 
       {/* Advanced disclosure */}

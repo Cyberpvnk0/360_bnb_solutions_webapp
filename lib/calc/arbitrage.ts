@@ -48,6 +48,9 @@ export interface DealInputs {
   /** Optional co-host / property manager fee as a fraction of gross
    *  booking revenue. 0 if self-managed. */
   mgmtFeePct: number;
+  /** Landlord concession: the first month's rent is waived. Cuts startup
+   *  capital only — steady-state monthly costs and breakeven don't move. */
+  firstMonthFree: boolean;
 }
 
 /** What the market data (comps) says about the unit's earning power. */
@@ -222,10 +225,15 @@ export function marginOfSafety(i: DealInputs, m: MarketAssumptions): number {
 
 /**
  * Cash out of pocket before the first guest checks in:
- * security deposit + furnishing budget + first month's rent.
+ * security deposit + furnishing budget + first month's rent —
+ * unless the landlord waived the first month (firstMonthFree).
  */
 export function startupCapital(i: DealInputs): number {
-  return i.securityDeposit + i.furnishingBudget + i.monthlyRent;
+  return (
+    i.securityDeposit +
+    i.furnishingBudget +
+    (i.firstMonthFree ? 0 : i.monthlyRent)
+  );
 }
 
 /** Annual profit at the given occupancy (12 × monthly net). */

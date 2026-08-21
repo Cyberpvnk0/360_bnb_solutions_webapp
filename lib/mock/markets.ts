@@ -106,6 +106,7 @@ export function benchmark2brInputs(rent2br: number) {
     insuranceMonthly: 0,
     platformFeePct: 0.03,
     mgmtFeePct: 0,
+    firstMonthFree: false,
   };
 }
 
