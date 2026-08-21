@@ -40,7 +40,7 @@ export function DashboardSkeleton() {
             <Skeleton className="mt-3 h-8 w-full" />
             <div className="mt-px space-y-px">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
+                <Skeleton key={i} className="h-[72px] w-full" />
               ))}
             </div>
           </div>

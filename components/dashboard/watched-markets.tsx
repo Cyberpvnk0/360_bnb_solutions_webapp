@@ -100,11 +100,11 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                       </div>
                       <div>
                         <Skeleton className="h-5 w-12" />
-                        <Skeleton className="mt-1 h-3 w-10" />
+                        <Skeleton className="mt-2 h-4 w-10" />
                       </div>
                       <div>
                         <Skeleton className="h-5 w-10" />
-                        <Skeleton className="mt-1 h-3 w-12" />
+                        <Skeleton className="mt-2 h-4 w-12" />
                       </div>
                       <div>
                         <Skeleton className="h-5 w-12" />
