@@ -95,7 +95,7 @@ export function UpgradeModal() {
             {/* The real result, softened but recognizably there. */}
             <div
               aria-hidden
-              className="pointer-events-none flex select-none items-center justify-center gap-10 px-8 py-6 blur-[7px]"
+              className="pointer-events-none flex select-none items-center justify-center gap-12 px-8 py-8 blur-[7px]"
             >
               <BreakevenGauge
                 breakeven={preview.breakeven}
@@ -129,7 +129,7 @@ export function UpgradeModal() {
           </div>
         ) : null}
 
-        <div className="p-6">
+        <div className="p-7">
           <DialogHeader className="text-left">
             <DialogTitle className="font-display text-2xl font-medium tracking-tight">
               {heading}
@@ -139,7 +139,7 @@ export function UpgradeModal() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-5 flex items-center justify-between gap-4">
+          <div className="mt-6 flex items-center justify-between gap-4">
             <BillingToggle billing={billing} onChange={setBilling} />
           </div>
 
@@ -149,10 +149,10 @@ export function UpgradeModal() {
             compact
             currentTierId={user?.tier}
             onSelect={handleSelect}
-            className="mt-5"
+            className="mt-6"
           />
 
-          <p className="mt-4 text-center text-[11px] text-muted-foreground">
+          <p className="mt-6 text-center text-[11px] text-muted-foreground">
             Prices in USD. Change or cancel any time. Market browsing and the
             calculator stay unlimited on every plan, including Free.
           </p>

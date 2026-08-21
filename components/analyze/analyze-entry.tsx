@@ -125,7 +125,7 @@ export function AnalyzeEntry({
 
   if (pulling && selected) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-3xl px-4 py-8 md:px-10">
         <MetricLabel>Running pull</MetricLabel>
         <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight md:text-3xl">
           {selected.address}, {selected.city}
@@ -146,7 +146,7 @@ export function AnalyzeEntry({
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-3xl px-4 py-8 md:px-10">
       <PageHeader
         title="Analyze an address"
         description="One pull turns an address into a breakeven read backed by the comps around it."
@@ -155,7 +155,7 @@ export function AnalyzeEntry({
       {/* Pull cost notice */}
       <div
         className={cn(
-          "mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border px-4 py-3",
+          "mt-8 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border px-5 py-4",
           !ready || canPull
             ? "border-gold-fill/40 bg-gold-fill/5"
             : "border-neg/40 bg-neg/5"
@@ -191,7 +191,7 @@ export function AnalyzeEntry({
       </div>
 
       {/* Address */}
-      <div className="relative mt-6">
+      <div className="relative mt-8">
         <MetricLabel className="pb-2">Property address</MetricLabel>
         <div className="relative">
           <MapPin
@@ -244,7 +244,7 @@ export function AnalyzeEntry({
       </div>
 
       {/* Unit details */}
-      <div className="mt-6 grid gap-6 sm:grid-cols-[1fr_1fr_1.2fr]">
+      <div className="mt-8 grid gap-6 sm:grid-cols-[1fr_1fr_1.2fr]">
         <div>
           <MetricLabel className="pb-2">Bedrooms</MetricLabel>
           <div
@@ -319,7 +319,7 @@ export function AnalyzeEntry({
 
       <Button
         size="lg"
-        className="mt-8 w-full gap-2 sm:w-auto"
+        className="mt-10 w-full gap-2 sm:w-auto"
         disabled={!selected || !ready}
         onClick={submit}
       >
@@ -333,8 +333,8 @@ export function AnalyzeEntry({
       ) : null}
 
       {/* Recent pulls */}
-      <section aria-label="Recent pulls" className="mt-12 pb-10">
-        <div className="border-b border-border pb-2">
+      <section aria-label="Recent pulls" className="mt-16 pb-12">
+        <div className="border-b border-border pb-3">
           <h2 className="text-sm font-semibold text-foreground">Recent pulls</h2>
         </div>
         {recent === null ? (

@@ -59,11 +59,11 @@ function OutputTile({
   className?: string;
 }) {
   return (
-    <div className={cn("px-5 py-4", className)}>
+    <div className={cn("px-6 py-6", className)}>
       <MetricLabel>{label}</MetricLabel>
       <div
         className={cn(
-          "mt-1.5 flex items-center gap-1 text-xl font-semibold leading-tight tracking-tight tabular",
+          "mt-2 flex items-center gap-1 text-[1.375rem] font-semibold leading-tight tracking-tight tabular",
           tone === "gold" && "text-gold",
           tone === "neg" && "text-neg",
           !tone && "text-foreground"
@@ -128,7 +128,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -180,12 +180,12 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
       {/* Hero: the breakeven gauge */}
       <section
         aria-label="Breakeven occupancy"
-        className="mt-6 flex flex-col items-center border-y border-border py-8"
+        className="mt-8 flex flex-col items-center border-y border-border py-14"
       >
         <BreakevenGauge
           breakeven={p.breakevenOccupancy}
           marketOccupancy={p.marketOccupancy}
-          size={280}
+          size={300}
           strokeWidth={6}
         >
           <MetricLabel>Breakeven occupancy</MetricLabel>
@@ -205,7 +205,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
           </p>
         </BreakevenGauge>
 
-        <div className="mt-4">
+        <div className="mt-6">
           {neverBreaksEven ? (
             <StatusChip tone="neg">Never breaks even at these costs</StatusChip>
           ) : comfortable ? (
@@ -222,7 +222,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
             </StatusChip>
           )}
         </div>
-        <p className="mt-2 max-w-md text-center text-xs text-muted-foreground">
+        <p className="mt-3 max-w-md text-center text-xs text-muted-foreground">
           {neverBreaksEven
             ? "At these fees, a booked night costs more than it earns. Cut costs or walk away."
             : comfortable
@@ -234,7 +234,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
       </section>
 
       {/* Calculator: inputs left, outputs right */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="mt-8 grid gap-8 lg:grid-cols-[380px_minmax(0,1fr)]">
         <CalculatorInputs
           inputs={inputs}
           defaults={analysis.defaults}
@@ -242,7 +242,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
         />
 
         <div className="flex flex-col rounded-sm border border-border bg-card">
-          <div className="border-b border-border px-4 py-3">
+          <div className="border-b border-border px-6 py-4">
             <h2 className="text-sm font-semibold text-foreground">Projection</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               At the market&apos;s actual {fmtPct(p.marketOccupancy)} occupancy,
@@ -322,7 +322,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
       </div>
 
       {/* Evidence */}
-      <div className="mt-10 space-y-10 pb-10">
+      <div className="mt-14 space-y-14 pb-14">
         <StrCompsTable comps={analysis.strComps} />
         <LtrCompsTable comps={analysis.ltrComps} />
       </div>

@@ -116,7 +116,7 @@ export function CalculatorInputs({
 
   return (
     <div className={cn("rounded-sm border border-border bg-card", className)}>
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">Deal inputs</h2>
         <Button
           variant="ghost"
@@ -130,13 +130,13 @@ export function CalculatorInputs({
         </Button>
       </div>
 
-      <div className="space-y-5 p-4">
+      <div className="space-y-7 p-5">
         {GROUPS.map((group) => (
           <fieldset key={group.title}>
             <legend>
               <MetricLabel className="pb-2">{group.title}</MetricLabel>
             </legend>
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               {group.fields.map((field) => {
                 const raw = inputs[field.key];
                 // Strip float noise (0.03 × 100 → 3.0000000000000004) without

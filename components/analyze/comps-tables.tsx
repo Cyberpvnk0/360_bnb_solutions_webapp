@@ -64,7 +64,7 @@ export function StrCompsTable({ comps }: { comps: StrComp[] }) {
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
   return (
     <section aria-label="Short-term rental comps">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border pb-2">
+      <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
             Revenue evidence — {comps.length} nearby short-term rentals
@@ -81,7 +81,7 @@ export function StrCompsTable({ comps }: { comps: StrComp[] }) {
         rowKey={(c) => c.id}
         initialSort={{ key: "distance", dir: "asc" }}
       />
-      <p className="border-t border-border py-2 text-xs text-muted-foreground">
+      <p className="border-t border-border py-3 text-xs text-muted-foreground">
         Comp average:{" "}
         <span className="font-medium text-foreground tabular">{fmtMoney(adr)}</span>{" "}
         ADR at{" "}
@@ -143,7 +143,7 @@ export function LtrCompsTable({ comps }: { comps: LtrComp[] }) {
   const median = estimateRentFromComps(comps);
   return (
     <section aria-label="Long-term rental comps">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border pb-2">
+      <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
             Lease evidence — {comps.length} long-term rentals nearby
@@ -160,7 +160,7 @@ export function LtrCompsTable({ comps }: { comps: LtrComp[] }) {
         rowKey={(c) => c.id}
         initialSort={{ key: "distance", dir: "asc" }}
       />
-      <p className="border-t border-border py-2 text-xs text-muted-foreground">
+      <p className="border-t border-border py-3 text-xs text-muted-foreground">
         Median asking rent:{" "}
         <span className="font-medium text-foreground tabular">{fmtMoney(median)}</span>{" "}
         — the calculator&apos;s starting lease. Negotiate down from there.

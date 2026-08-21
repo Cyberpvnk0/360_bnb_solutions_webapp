@@ -25,7 +25,7 @@ function NavLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-150",
+        "flex items-center gap-3 px-5 py-2.5 text-sm transition-colors duration-150",
         active
           ? "active-rule bg-secondary/60 font-medium text-foreground"
           : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
@@ -47,27 +47,27 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <nav aria-label="Primary" className="mt-2 flex flex-col">
+      <nav aria-label="Primary" className="mt-4 flex flex-col">
         {NAV_MAIN.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
         ))}
       </nav>
 
-      <div className="mt-6">
-        <p className="metric-label px-4 pb-1.5">Account</p>
+      <div className="mt-8">
+        <p className="metric-label px-5 pb-2">Account</p>
         {NAV_SYSTEM.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
         ))}
       </div>
 
-      <div className="mt-6">
-        <p className="metric-label px-4 pb-1.5">Internal</p>
+      <div className="mt-8">
+        <p className="metric-label px-5 pb-2">Internal</p>
         {NAV_INTERNAL.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
         ))}
       </div>
 
-      <div className="mt-auto border-t border-border p-4">
+      <div className="mt-auto border-t border-border p-5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">Current plan</span>
           <StatusChip tone={tier.id === "free" ? "neutral" : "gold"}>

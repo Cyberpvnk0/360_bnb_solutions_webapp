@@ -15,17 +15,17 @@ interface StatCardProps {
 /** One figure in a stat header row. Compose inside <StatHeader>. */
 export function StatCard({ label, value, sub, serif, className }: StatCardProps) {
   return (
-    <div className={cn("min-w-0 px-5 py-4 first:pl-0 last:pr-0", className)}>
+    <div className={cn("min-w-0 px-8 py-6 first:pl-0 last:pr-0", className)}>
       <MetricLabel>{label}</MetricLabel>
       <div
         className={cn(
-          "mt-1.5 truncate text-2xl leading-tight tracking-tight text-foreground tabular",
+          "mt-2 truncate text-[1.75rem] leading-tight tracking-tight text-foreground tabular",
           serif ? "font-display font-medium" : "font-semibold"
         )}
       >
         {value}
       </div>
-      {sub ? <div className="mt-1">{sub}</div> : null}
+      {sub ? <div className="mt-1.5">{sub}</div> : null}
     </div>
   );
 }
