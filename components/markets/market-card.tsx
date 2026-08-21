@@ -3,12 +3,13 @@
 /**
  * One market card in the explorer grid: terrain banner up top with the
  * margin-of-safety badge (points of cushion — never a score), the
- * trailing-12 figures, and a watch toggle. The card body selects (syncs
- * the map pin); the name link and footer navigate to the detail page.
+ * trailing-12 figures, and a watch toggle. Clicking anywhere on the card
+ * opens the market's detail page; hovering syncs the map pin.
  */
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, Check, Eye, TriangleAlert } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtMoneyShort, fmtNum, fmtPct } from "@/lib/format";
@@ -39,35 +40,28 @@ function Figure({
 interface MarketCardProps {
   market: Market;
   selected: boolean;
-  onSelect: (slug: string) => void;
   onHoverChange: (slug: string | null) => void;
 }
 
 export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
-  function MarketCard({ market: m, selected, onSelect, onHoverChange }, ref) {
+  function MarketCard({ market: m, selected, onHoverChange }, ref) {
+    const router = useRouter();
     const { watchedMarketSlugs, toggleWatchMarket, ready } = useSession();
     const watching = watchedMarketSlugs.includes(m.slug);
     const marginPts = Math.round((m.occupancy - m.avgBreakeven2br) * 100);
     const strong = marginPts >= 8;
 
     return (
+      // Whole card opens the market. The inner name <Link> is the semantic
+      // link for keyboards and screen readers; this handler just widens the
+      // click target to the full card.
       <div
         ref={ref}
-        role="button"
-        tabIndex={0}
-        aria-pressed={selected}
-        aria-label={`Select ${m.name}, ${m.stateCode} on the map`}
-        onClick={() => onSelect(m.slug)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(m.slug);
-          }
-        }}
+        onClick={() => router.push(`/markets/${m.slug}`)}
         onMouseEnter={() => onHoverChange(m.slug)}
         onMouseLeave={() => onHoverChange(null)}
         className={cn(
-          "group cursor-pointer overflow-hidden rounded-sm border bg-card transition-colors duration-150",
+          "group cursor-pointer overflow-hidden rounded-lg border bg-card transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:elev-raised",
           selected ? "border-gold/60" : "border-border hover:border-gold/40"
         )}
       >

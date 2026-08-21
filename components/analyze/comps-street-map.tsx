@@ -121,7 +121,6 @@ export function CompsStreetMap({
 }: CompsStreetMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
-  const markerElsRef = React.useRef(new Map<string, HTMLButtonElement>());
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [tilesBlocked, setTilesBlocked] = React.useState(false);
 
@@ -131,10 +130,12 @@ export function CompsStreetMap({
   );
   const active = activeId ? placed.find((c) => c.id === activeId) : null;
 
-  // Keep the latest handlers reachable from marker listeners without
+  // Keep the latest handler reachable from marker listeners without
   // rebuilding the map.
   const onHoverRef = React.useRef(onHover);
-  onHoverRef.current = onHover;
+  React.useEffect(() => {
+    onHoverRef.current = onHover;
+  }, [onHover]);
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -174,12 +175,12 @@ export function CompsStreetMap({
       .setLngLat([subject.lon, subject.lat])
       .addTo(map);
 
-    // Comp pins — nightly-rate price pills.
-    const els = markerElsRef.current;
-    els.clear();
+    // Comp pins — nightly-rate price pills. Tagged with data-comp-id so the
+    // highlight effect can find them without sharing mutable refs.
     for (const comp of placed) {
       const el = document.createElement("button");
       el.type = "button";
+      el.dataset.compId = comp.id;
       el.setAttribute(
         "aria-label",
         `${comp.name} — ${fmtMoney(comp.adr)} a night, ${fmtMiles(comp.distanceMiles)} away`
@@ -194,7 +195,6 @@ export function CompsStreetMap({
         ev.stopPropagation();
         setActiveId((prev) => (prev === comp.id ? null : comp.id));
       });
-      els.set(comp.id, el);
       new maplibregl.Marker({ element: el })
         .setLngLat([comp.lon, comp.lat])
         .addTo(map);
@@ -222,7 +222,6 @@ export function CompsStreetMap({
 
     return () => {
       observer.disconnect();
-      els.clear();
       map.remove();
       mapRef.current = null;
     };
@@ -230,8 +229,12 @@ export function CompsStreetMap({
 
   // Table hover → pin highlight (map hover feeds back through onHover).
   React.useEffect(() => {
-    for (const [id, el] of markerElsRef.current) {
-      const hot = id === hoveredId || id === activeId;
+    const container = containerRef.current;
+    if (!container) return;
+    const pills =
+      container.querySelectorAll<HTMLButtonElement>("[data-comp-id]");
+    for (const el of pills) {
+      const hot = el.dataset.compId === hoveredId || el.dataset.compId === activeId;
       el.classList.toggle("border-gold/60", hot);
       el.classList.toggle("text-gold", hot);
       const wrapper = el.parentElement;

@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * The /markets explorer: Markets | Submarkets scope toggle and filter
- * chips pinned on top, ranked results on the left (market cards or dense
- * submarket rows), interactive US map on the right. Selection syncs both
- * ways. Results paginate 60 at a time; the map shows the loaded page's
- * pins. Below lg a segmented toggle shows one pane at a time.
+ * The /markets explorer: Markets | Submarkets scope toggle, filter chips,
+ * and the all-filters sheet pinned on top, ranked results on the left
+ * (market cards or dense submarket rows), interactive US map on the right.
+ * Selection syncs both ways. Results paginate 60 at a time; the map shows
+ * the loaded page's pins. Below lg a segmented toggle shows one pane at a
+ * time.
  */
 
 import * as React from "react";
@@ -18,7 +19,7 @@ import {
 import { annualRevenueFromAdr, revpar } from "@/lib/calc/arbitrage";
 import { getAllSubmarkets, getCoverageTotals } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
-import type { Market, Submarket } from "@/lib/mock/types";
+import type { Market, MarketTerrain, Submarket } from "@/lib/mock/types";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -33,7 +34,9 @@ import {
   DEFAULT_FILTERS,
   ExplorerFilterChips,
   isDefaultFilters,
+  matchesFilters,
   type ExplorerFilters,
+  type Sortable,
 } from "./filters";
 import { MarketCard } from "./market-card";
 import { SubmarketRow } from "./submarket-row";
@@ -44,7 +47,14 @@ const PAGE_SIZE = 60;
 
 type Scope = "markets" | "submarkets";
 
-type SortKey = "margin" | "revenue" | "adr" | "occupancy" | "revpar" | "listings";
+type SortKey =
+  | "margin"
+  | "revenue"
+  | "adr"
+  | "occupancy"
+  | "revpar"
+  | "rent"
+  | "listings";
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "margin", label: "Margin of safety" },
@@ -52,16 +62,9 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "adr", label: "Nightly rate" },
   { value: "occupancy", label: "Occupancy" },
   { value: "revpar", label: "RevPAR" },
+  { value: "rent", label: "Median rent" },
   { value: "listings", label: "Listings" },
 ];
-
-/** The figures both markets and submarkets expose. */
-interface Sortable {
-  adr: number;
-  occupancy: number;
-  activeListings: number;
-  avgBreakeven2br: number;
-}
 
 const SORTERS: Record<SortKey, (r: Sortable) => number> = {
   margin: (r) => r.occupancy - r.avgBreakeven2br,
@@ -69,51 +72,17 @@ const SORTERS: Record<SortKey, (r: Sortable) => number> = {
   adr: (r) => r.adr,
   occupancy: (r) => r.occupancy,
   revpar: (r) => revpar(r.adr, r.occupancy),
+  rent: (r) => r.medianRent2br,
   listings: (r) => r.activeListings,
 };
 
-function matchesFilters(
-  r: Sortable & { stateCode: string },
-  haystack: string,
-  filters: ExplorerFilters
-): boolean {
-  const q = filters.query.toLowerCase();
-  if (q && !haystack.includes(q)) return false;
-  if (filters.states.length > 0 && !filters.states.includes(r.stateCode)) {
-    return false;
-  }
-  // Slider bounds at their default extremes mean "no bound" — submarkets
-  // range a little wider than the slider tracks, and the default view must
-  // show every one of them.
-  if (filters.occMin > DEFAULT_FILTERS.occMin && r.occupancy < filters.occMin) {
-    return false;
-  }
-  if (filters.occMax < DEFAULT_FILTERS.occMax && r.occupancy > filters.occMax) {
-    return false;
-  }
-  if (filters.adrMin > DEFAULT_FILTERS.adrMin && r.adr < filters.adrMin) {
-    return false;
-  }
-  if (filters.adrMax < DEFAULT_FILTERS.adrMax && r.adr > filters.adrMax) {
-    return false;
-  }
-  if (r.activeListings < filters.listingsMin) return false;
-  if (
-    filters.listingsMax < DEFAULT_FILTERS.listingsMax &&
-    r.activeListings > filters.listingsMax
-  ) {
-    return false;
-  }
-  // "Any" (the default) keeps negative-cushion rows visible — muted red is
-  // a signal the user must see, not a row to hide.
-  if (
-    filters.marginMin > DEFAULT_FILTERS.marginMin &&
-    (r.occupancy - r.avgBreakeven2br) * 100 < filters.marginMin
-  ) {
-    return false;
-  }
-  return true;
-}
+const marketHaystack = (m: Market) =>
+  `${m.name} ${m.state} ${m.stateCode}`.toLowerCase();
+const submarketHaystack = (s: Submarket) =>
+  `${s.name} ${s.marketName} ${s.stateCode}`.toLowerCase();
+
+/** Markets carry their own terrain. */
+const marketTerrain = (m: Market): MarketTerrain => m.terrain;
 
 interface MarketsExplorerProps {
   markets: Market[];
@@ -163,6 +132,16 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
     setFilters((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  // Submarkets don't carry a terrain — they borrow the parent market's.
+  const terrainBySlug = React.useMemo(
+    () => new Map<string, MarketTerrain>(markets.map((m) => [m.slug, m.terrain])),
+    [markets]
+  );
+  const submarketTerrain = React.useCallback(
+    (s: Submarket): MarketTerrain => terrainBySlug.get(s.marketSlug) ?? "metro",
+    [terrainBySlug]
+  );
+
   // Any change of lens starts the list from the top.
   const resetPaging = () => {
     setVisibleCount(PAGE_SIZE);
@@ -172,13 +151,7 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
   const filteredMarkets = React.useMemo(() => {
     const by = SORTERS[sort];
     return markets
-      .filter((m) =>
-        matchesFilters(
-          m,
-          `${m.name} ${m.state} ${m.stateCode}`.toLowerCase(),
-          filters
-        )
-      )
+      .filter((m) => matchesFilters(m, marketHaystack(m), filters, marketTerrain))
       .sort((a, b) => by(b) - by(a));
   }, [markets, filters, sort]);
 
@@ -187,14 +160,26 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
     const by = SORTERS[sort];
     return submarkets
       .filter((s) =>
-        matchesFilters(
-          s,
-          `${s.name} ${s.marketName} ${s.stateCode}`.toLowerCase(),
-          filters
-        )
+        matchesFilters(s, submarketHaystack(s), filters, submarketTerrain)
       )
       .sort((a, b) => by(b) - by(a));
-  }, [submarkets, filters, sort]);
+  }, [submarkets, filters, sort, submarketTerrain]);
+
+  /** Live count for the all-filters sheet — a draft, not yet applied. */
+  const countFor = React.useCallback(
+    (draft: ExplorerFilters) => {
+      if (scope === "submarkets") {
+        if (!submarkets) return 0;
+        return submarkets.filter((s) =>
+          matchesFilters(s, submarketHaystack(s), draft, submarketTerrain)
+        ).length;
+      }
+      return markets.filter((m) =>
+        matchesFilters(m, marketHaystack(m), draft, marketTerrain)
+      ).length;
+    },
+    [scope, submarkets, markets, submarketTerrain]
+  );
 
   const isSubScope = scope === "submarkets";
   const filteredCount = isSubScope
@@ -237,10 +222,6 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
     });
   }, []);
 
-  const selectFromCard = React.useCallback((slug: string) => {
-    setSelectedSlug((prev) => (prev === slug ? null : slug));
-  }, []);
-
   const setRef = (key: string) => (el: HTMLDivElement | null) => {
     if (el) cardRefs.current.set(key, el);
     else cardRefs.current.delete(key);
@@ -252,12 +233,12 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden contain-paint">
-      {/* Scope + filter chips — pinned above both panes. */}
-      <div className="flex shrink-0 items-center gap-2.5 overflow-x-auto border-b border-border px-5 py-3.5">
+      {/* Scope + filter chips — white chrome band pinned above both panes. */}
+      <div className="flex shrink-0 items-center gap-2.5 overflow-x-auto border-b border-border bg-surface px-5 py-3.5">
         <div
           role="tablist"
           aria-label="Browse markets or submarkets"
-          className="flex shrink-0 overflow-hidden rounded-sm border border-border"
+          className="flex shrink-0 overflow-hidden rounded-full border border-border"
         >
           {(
             [
@@ -289,6 +270,7 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
         <ExplorerFilterChips
           filters={filters}
           states={states}
+          countFor={countFor}
           onChange={(patch) => {
             applyFilters(patch);
             resetPaging();
@@ -399,7 +381,6 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
                       ref={setRef(s.id)}
                       submarket={s}
                       selected={s.id === selectedSlug}
-                      onSelect={selectFromCard}
                       onHoverChange={setHoverCardSlug}
                     />
                   ))}
@@ -412,7 +393,6 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
                       ref={setRef(m.slug)}
                       market={m}
                       selected={m.slug === selectedSlug}
-                      onSelect={selectFromCard}
                       onHoverChange={setHoverCardSlug}
                     />
                   ))}

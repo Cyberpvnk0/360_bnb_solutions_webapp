@@ -1,13 +1,29 @@
 "use client";
 
 /**
- * Filter chips for the market explorer. Each chip opens a panel with a
- * draft of its own values and a Reset / Apply row — nothing changes the
- * list until Apply. An active chip carries a gold dot and its summary.
+ * Filter chips + the all-filters sheet for the market explorer. Each chip
+ * opens a panel with a draft of its own values and a Reset / Apply row —
+ * nothing changes the list until Apply. The "All filters" chip opens a
+ * sheet holding every control over one shared draft, with a live result
+ * count on the apply button. An active chip carries a gold dot and its
+ * summary.
+ *
+ * `matchesFilters` lives here too — pure and unit-tested. The invariant:
+ * a slider bound parked at its DEFAULT extreme means "no bound", so the
+ * default view shows every market and submarket we track, including rows
+ * whose figures sit outside the slider tracks.
  */
 
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  Mountain,
+  SlidersHorizontal,
+  Sun,
+  Waves,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,9 +32,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
-import { fmtMoney, fmtNum, fmtPct } from "@/lib/format";
+import { MetricLabel } from "@/components/primitives/metric-label";
+import { annualRevenueFromAdr, revpar } from "@/lib/calc/arbitrage";
+import { fmtMoney, fmtMoneyShort, fmtNum, fmtPct } from "@/lib/format";
+import type { MarketTerrain } from "@/lib/mock/types";
 import { cn } from "@/lib/utils";
+import { TERRAIN_LABEL } from "./market-banner";
 
 /* ------------------------------------------------------------------ */
 /* Filter state                                                        */
@@ -29,6 +57,8 @@ export interface ExplorerFilters {
   query: string;
   /** Empty = all states. */
   states: string[];
+  /** Empty = every market type. */
+  terrains: MarketTerrain[];
   /** Occupancy range, fractions. */
   occMin: number;
   occMax: number;
@@ -38,19 +68,42 @@ export interface ExplorerFilters {
   /** Active listing count range. */
   listingsMin: number;
   listingsMax: number;
+  /** Minimum revenue potential — $/listing/yr via annualRevenueFromAdr. 0 = any. */
+  revenueMin: number;
+  /** Minimum RevPAR, dollars per available night. 0 = any. */
+  revparMin: number;
+  /** Median 2 bd rent range, $/mo. */
+  rentMin: number;
+  rentMax: number;
+  /** Highest acceptable 2 bd breakeven occupancy (fraction). 1 = any. */
+  breakevenMax: number;
   /** Minimum margin of safety in points (occupancy − breakeven). */
   marginMin: number;
 }
 
+/** Slider track bounds. A bound parked at a track extreme means "no bound". */
+const LISTINGS_TRACK = { min: 0, max: 10_000, step: 250 };
+const REVENUE_TRACK = { min: 0, max: 70_000, step: 5_000 };
+const REVPAR_TRACK = { min: 0, max: 200, step: 5 };
+const RENT_TRACK = { min: 600, max: 3200, step: 25 };
+/** Percent points on the track; the top end means "any breakeven". */
+const BREAKEVEN_TRACK = { min: 20, max: 80, step: 1 };
+
 export const DEFAULT_FILTERS: ExplorerFilters = {
   query: "",
   states: [],
+  terrains: [],
   occMin: 0.4,
   occMax: 0.8,
   adrMin: 90,
   adrMax: 320,
-  listingsMin: 0,
-  listingsMax: 10000,
+  listingsMin: LISTINGS_TRACK.min,
+  listingsMax: LISTINGS_TRACK.max,
+  revenueMin: REVENUE_TRACK.min,
+  revparMin: REVPAR_TRACK.min,
+  rentMin: RENT_TRACK.min,
+  rentMax: RENT_TRACK.max,
+  breakevenMax: 1,
   marginMin: 0,
 };
 
@@ -58,14 +111,137 @@ export function isDefaultFilters(f: ExplorerFilters): boolean {
   return (
     f.query === "" &&
     f.states.length === 0 &&
+    f.terrains.length === 0 &&
     f.occMin === DEFAULT_FILTERS.occMin &&
     f.occMax === DEFAULT_FILTERS.occMax &&
     f.adrMin === DEFAULT_FILTERS.adrMin &&
     f.adrMax === DEFAULT_FILTERS.adrMax &&
     f.listingsMin === DEFAULT_FILTERS.listingsMin &&
     f.listingsMax === DEFAULT_FILTERS.listingsMax &&
+    f.revenueMin === DEFAULT_FILTERS.revenueMin &&
+    f.revparMin === DEFAULT_FILTERS.revparMin &&
+    f.rentMin === DEFAULT_FILTERS.rentMin &&
+    f.rentMax === DEFAULT_FILTERS.rentMax &&
+    f.breakevenMax === DEFAULT_FILTERS.breakevenMax &&
     f.marginMin === DEFAULT_FILTERS.marginMin
   );
+}
+
+/** How many filter groups sit off their defaults — the badge on "All filters". */
+function countActiveFilters(f: ExplorerFilters): number {
+  let n = 0;
+  if (f.query !== "") n++;
+  if (f.states.length > 0) n++;
+  if (f.terrains.length > 0) n++;
+  if (
+    f.listingsMin > DEFAULT_FILTERS.listingsMin ||
+    f.listingsMax < DEFAULT_FILTERS.listingsMax
+  ) {
+    n++;
+  }
+  if (f.adrMin > DEFAULT_FILTERS.adrMin || f.adrMax < DEFAULT_FILTERS.adrMax) n++;
+  if (f.occMin > DEFAULT_FILTERS.occMin || f.occMax < DEFAULT_FILTERS.occMax) n++;
+  if (f.revenueMin > DEFAULT_FILTERS.revenueMin) n++;
+  if (f.revparMin > DEFAULT_FILTERS.revparMin) n++;
+  if (f.rentMin > DEFAULT_FILTERS.rentMin || f.rentMax < DEFAULT_FILTERS.rentMax) n++;
+  if (f.breakevenMax < DEFAULT_FILTERS.breakevenMax) n++;
+  if (f.marginMin > DEFAULT_FILTERS.marginMin) n++;
+  return n;
+}
+
+/* ------------------------------------------------------------------ */
+/* Matching — pure, shared by both explorer scopes and the live count  */
+/* ------------------------------------------------------------------ */
+
+/** The figures both markets and submarkets expose. */
+export interface Sortable {
+  adr: number;
+  occupancy: number;
+  activeListings: number;
+  avgBreakeven2br: number;
+  medianRent2br: number;
+  stateCode: string;
+}
+
+/**
+ * Does one row survive the current filters? `terrainOf` resolves the row's
+ * market type — markets carry their own, submarkets borrow the parent's.
+ * It is only consulted when a terrain filter is actually set.
+ */
+export function matchesFilters<R extends Sortable>(
+  r: R,
+  haystack: string,
+  filters: ExplorerFilters,
+  terrainOf: (r: R) => MarketTerrain
+): boolean {
+  const q = filters.query.toLowerCase();
+  if (q && !haystack.includes(q)) return false;
+  if (filters.states.length > 0 && !filters.states.includes(r.stateCode)) {
+    return false;
+  }
+  if (filters.terrains.length > 0 && !filters.terrains.includes(terrainOf(r))) {
+    return false;
+  }
+  // Slider bounds at their default extremes mean "no bound" — submarkets
+  // range a little wider than the slider tracks, and the default view must
+  // show every one of them.
+  if (filters.occMin > DEFAULT_FILTERS.occMin && r.occupancy < filters.occMin) {
+    return false;
+  }
+  if (filters.occMax < DEFAULT_FILTERS.occMax && r.occupancy > filters.occMax) {
+    return false;
+  }
+  if (filters.adrMin > DEFAULT_FILTERS.adrMin && r.adr < filters.adrMin) {
+    return false;
+  }
+  if (filters.adrMax < DEFAULT_FILTERS.adrMax && r.adr > filters.adrMax) {
+    return false;
+  }
+  if (
+    filters.listingsMin > DEFAULT_FILTERS.listingsMin &&
+    r.activeListings < filters.listingsMin
+  ) {
+    return false;
+  }
+  if (
+    filters.listingsMax < DEFAULT_FILTERS.listingsMax &&
+    r.activeListings > filters.listingsMax
+  ) {
+    return false;
+  }
+  if (
+    filters.revenueMin > DEFAULT_FILTERS.revenueMin &&
+    annualRevenueFromAdr(r.adr, r.occupancy) < filters.revenueMin
+  ) {
+    return false;
+  }
+  if (
+    filters.revparMin > DEFAULT_FILTERS.revparMin &&
+    revpar(r.adr, r.occupancy) < filters.revparMin
+  ) {
+    return false;
+  }
+  if (filters.rentMin > DEFAULT_FILTERS.rentMin && r.medianRent2br < filters.rentMin) {
+    return false;
+  }
+  if (filters.rentMax < DEFAULT_FILTERS.rentMax && r.medianRent2br > filters.rentMax) {
+    return false;
+  }
+  if (
+    filters.breakevenMax < DEFAULT_FILTERS.breakevenMax &&
+    r.avgBreakeven2br > filters.breakevenMax
+  ) {
+    return false;
+  }
+  // "Any" (the default) keeps negative-cushion rows visible — muted red is
+  // a signal the user must see, not a row to hide.
+  if (
+    filters.marginMin > DEFAULT_FILTERS.marginMin &&
+    (r.occupancy - r.avgBreakeven2br) * 100 < filters.marginMin
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -93,7 +269,7 @@ function FilterChip({
         <button
           type="button"
           className={cn(
-            "flex h-8 shrink-0 items-center gap-1.5 rounded-sm border px-3 text-xs font-medium transition-colors duration-150",
+            "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
             active
               ? "border-gold/50 bg-gold-fill/5 text-foreground"
               : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
@@ -168,7 +344,174 @@ function RangeReadout({
 }
 
 /* ------------------------------------------------------------------ */
-/* Panels                                                              */
+/* Shared controls — one control, two surfaces (chip panel + sheet)    */
+/* ------------------------------------------------------------------ */
+
+function StateGrid({
+  states,
+  selected,
+  onToggle,
+  className,
+}: {
+  states: string[];
+  selected: string[];
+  onToggle: (code: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid grid-cols-4 gap-1.5", className)}>
+      {states.map((code) => {
+        const on = selected.includes(code);
+        return (
+          <button
+            key={code}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(code)}
+            className={cn(
+              "h-7 rounded-sm border text-xs transition-colors duration-150 tabular",
+              on
+                ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            )}
+          >
+            {code}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const TERRAIN_OPTIONS: { id: MarketTerrain; icon: LucideIcon }[] = [
+  { id: "metro", icon: Building2 },
+  { id: "coastal", icon: Waves },
+  { id: "mountain", icon: Mountain },
+  { id: "desert", icon: Sun },
+];
+
+function TerrainTiles({
+  selected,
+  onToggle,
+}: {
+  selected: MarketTerrain[];
+  onToggle: (t: MarketTerrain) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1.5">
+      {TERRAIN_OPTIONS.map(({ id, icon: Icon }) => {
+        const on = selected.includes(id);
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(id)}
+            className={cn(
+              "flex items-center gap-2 rounded-sm border px-3 py-2.5 text-sm transition-colors duration-150",
+              on
+                ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                : "border-border text-foreground hover:bg-secondary/60"
+            )}
+          >
+            <Icon
+              aria-hidden
+              className={cn("size-3.5", on ? "text-gold" : "text-muted-foreground")}
+            />
+            {TERRAIN_LABEL[id]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const REVENUE_PRESETS = [
+  { value: 0, label: "Any" },
+  { value: 25_000, label: "$25K+" },
+  { value: 40_000, label: "$40K+" },
+  { value: 55_000, label: "$55K+" },
+];
+
+function RevenueControl({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-4 gap-1.5">
+        {REVENUE_PRESETS.map((p) => {
+          const on = value === p.value;
+          return (
+            <button
+              key={p.value}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(p.value)}
+              className={cn(
+                "h-8 rounded-sm border text-xs transition-colors duration-150 tabular",
+                on
+                  ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                  : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+              )}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+      <div>
+        <Slider
+          value={[value]}
+          onValueChange={(v) => onChange(v[0])}
+          min={REVENUE_TRACK.min}
+          max={REVENUE_TRACK.max}
+          step={REVENUE_TRACK.step}
+          aria-label="Minimum revenue potential per year"
+        />
+        <RangeReadout
+          low={value <= REVENUE_TRACK.min ? "Any" : `${fmtMoneyShort(value)}+ / yr`}
+          high={fmtMoneyShort(REVENUE_TRACK.max)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MarginTiles({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {MARGIN_OPTIONS.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors duration-150",
+            value === o.value
+              ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+              : "border-border text-foreground hover:bg-secondary/60"
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Chip panels                                                         */
 /* ------------------------------------------------------------------ */
 
 function MarketPanel({
@@ -211,42 +554,31 @@ function MarketPanel({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">States</p>
-          <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-            {states.map((code) => {
-              const on = selected.includes(code);
-              return (
-                <button
-                  key={code}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleState(code)}
-                  className={cn(
-                    "h-7 rounded-sm border text-xs transition-colors duration-150 tabular",
-                    on
-                      ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
-                      : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  )}
-                >
-                  {code}
-                </button>
-              );
-            })}
-          </div>
+          <StateGrid
+            states={states}
+            selected={selected}
+            onToggle={toggleState}
+            className="mt-1.5"
+          />
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Active listings</p>
           <Slider
             value={listings}
             onValueChange={(v) => setListings([v[0], v[1]] as [number, number])}
-            min={0}
-            max={10000}
-            step={250}
+            min={LISTINGS_TRACK.min}
+            max={LISTINGS_TRACK.max}
+            step={LISTINGS_TRACK.step}
             className="mt-3"
             aria-label="Active listing count range"
           />
           <RangeReadout
             low={fmtNum(listings[0])}
-            high={listings[1] >= 10000 ? "10,000+" : fmtNum(listings[1])}
+            high={
+              listings[1] >= LISTINGS_TRACK.max
+                ? `${fmtNum(LISTINGS_TRACK.max)}+`
+                : fmtNum(listings[1])
+            }
           />
         </div>
       </PanelBody>
@@ -263,6 +595,41 @@ function MarketPanel({
             listingsMin: listings[0],
             listingsMax: listings[1],
           });
+          onClose();
+        }}
+      />
+    </>
+  );
+}
+
+function TerrainPanel({
+  applied,
+  onApply,
+  onClose,
+}: {
+  applied: ExplorerFilters;
+  onApply: (patch: Partial<ExplorerFilters>) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = React.useState<MarketTerrain[]>(applied.terrains);
+
+  const toggle = (t: MarketTerrain) =>
+    setSelected((prev) =>
+      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+    );
+
+  return (
+    <>
+      <PanelBody>
+        <p className="text-xs text-muted-foreground">
+          The setting guests book. Pick any mix — none picked means all.
+        </p>
+        <TerrainTiles selected={selected} onToggle={toggle} />
+      </PanelBody>
+      <PanelFooter
+        onReset={() => setSelected([])}
+        onApply={() => {
+          onApply({ terrains: selected });
           onClose();
         }}
       />
@@ -404,6 +771,37 @@ function OccupancyPanel({
   );
 }
 
+function RevenuePanel({
+  applied,
+  onApply,
+  onClose,
+}: {
+  applied: ExplorerFilters;
+  onApply: (patch: Partial<ExplorerFilters>) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = React.useState(applied.revenueMin);
+
+  return (
+    <>
+      <PanelBody>
+        <p className="text-xs text-muted-foreground">
+          What one listing clears in a year at the market&rsquo;s nightly rate
+          and occupancy, trailing 12 months.
+        </p>
+        <RevenueControl value={value} onChange={setValue} />
+      </PanelBody>
+      <PanelFooter
+        onReset={() => setValue(DEFAULT_FILTERS.revenueMin)}
+        onApply={() => {
+          onApply({ revenueMin: value });
+          onClose();
+        }}
+      />
+    </>
+  );
+}
+
 const MARGIN_OPTIONS = [
   { value: 0, label: "Any cushion" },
   { value: 10, label: "10+ pts over breakeven" },
@@ -427,24 +825,7 @@ function CushionPanel({
         <p className="text-xs text-muted-foreground">
           How far the market runs above the typical 2 bd breakeven.
         </p>
-        <div className="space-y-1.5">
-          {MARGIN_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={value === o.value}
-              onClick={() => setValue(o.value)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors duration-150",
-                value === o.value
-                  ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
-                  : "border-border text-foreground hover:bg-secondary/60"
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+        <MarginTiles value={value} onChange={setValue} />
       </PanelBody>
       <PanelFooter
         onReset={() => setValue(0)}
@@ -458,6 +839,363 @@ function CushionPanel({
 }
 
 /* ------------------------------------------------------------------ */
+/* All-filters sheet — every control, one draft, live result count     */
+/* ------------------------------------------------------------------ */
+
+function SheetSection({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <MetricLabel>{label}</MetricLabel>
+      {children}
+    </section>
+  );
+}
+
+function FieldLabel({
+  label,
+  sub,
+}: {
+  label: string;
+  sub?: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-foreground">{label}</p>
+      {sub ? (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function AllFiltersBody({
+  applied,
+  states,
+  countFor,
+  onApply,
+  onClose,
+}: {
+  applied: ExplorerFilters;
+  states: string[];
+  countFor: (draft: ExplorerFilters) => number;
+  onApply: (next: ExplorerFilters) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = React.useState<ExplorerFilters>(applied);
+  const patch = (p: Partial<ExplorerFilters>) =>
+    setDraft((d) => ({ ...d, ...p }));
+
+  const count = countFor(draft);
+
+  const breakevenSlider =
+    draft.breakevenMax >= DEFAULT_FILTERS.breakevenMax
+      ? BREAKEVEN_TRACK.max
+      : Math.min(
+          BREAKEVEN_TRACK.max,
+          Math.max(BREAKEVEN_TRACK.min, Math.round(draft.breakevenMax * 100))
+        );
+
+  return (
+    <>
+      <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 py-5">
+        <SheetSection label="Market">
+          <div>
+            <Label htmlFor="af-query" className="text-xs font-medium text-foreground">
+              Search
+            </Label>
+            <Input
+              id="af-query"
+              value={draft.query}
+              onChange={(e) => patch({ query: e.target.value })}
+              placeholder="Name or state…"
+              className="mt-1.5 h-8"
+            />
+          </div>
+          <div>
+            <FieldLabel label="States" />
+            <StateGrid
+              states={states}
+              selected={draft.states}
+              onToggle={(code) =>
+                patch({
+                  states: draft.states.includes(code)
+                    ? draft.states.filter((c) => c !== code)
+                    : [...draft.states, code],
+                })
+              }
+              className="mt-1.5 grid-cols-5"
+            />
+          </div>
+          <div>
+            <FieldLabel label="Active listings" />
+            <Slider
+              value={[draft.listingsMin, draft.listingsMax]}
+              onValueChange={(v) =>
+                patch({ listingsMin: v[0], listingsMax: v[1] })
+              }
+              min={LISTINGS_TRACK.min}
+              max={LISTINGS_TRACK.max}
+              step={LISTINGS_TRACK.step}
+              className="mt-3"
+              aria-label="Active listing count range"
+            />
+            <RangeReadout
+              low={fmtNum(draft.listingsMin)}
+              high={
+                draft.listingsMax >= LISTINGS_TRACK.max
+                  ? `${fmtNum(LISTINGS_TRACK.max)}+`
+                  : fmtNum(draft.listingsMax)
+              }
+            />
+          </div>
+        </SheetSection>
+
+        <SheetSection label="Performance">
+          <div>
+            <FieldLabel label="Nightly rate" />
+            <Slider
+              value={[draft.adrMin, draft.adrMax]}
+              onValueChange={(v) => patch({ adrMin: v[0], adrMax: v[1] })}
+              min={DEFAULT_FILTERS.adrMin}
+              max={DEFAULT_FILTERS.adrMax}
+              step={5}
+              className="mt-3"
+              aria-label="Nightly rate range"
+            />
+            <RangeReadout
+              low={fmtMoney(draft.adrMin)}
+              high={
+                draft.adrMax >= DEFAULT_FILTERS.adrMax
+                  ? `${fmtMoney(DEFAULT_FILTERS.adrMax)}+`
+                  : fmtMoney(draft.adrMax)
+              }
+            />
+          </div>
+          <div>
+            <FieldLabel label="Occupancy" sub="Share of nights booked, trailing 12 months" />
+            <Slider
+              value={[
+                Math.round(draft.occMin * 100),
+                Math.round(draft.occMax * 100),
+              ]}
+              onValueChange={(v) =>
+                patch({ occMin: v[0] / 100, occMax: v[1] / 100 })
+              }
+              min={40}
+              max={80}
+              step={1}
+              className="mt-3"
+              aria-label="Occupancy range"
+            />
+            <RangeReadout
+              low={fmtPct(draft.occMin)}
+              high={fmtPct(draft.occMax)}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Revenue potential"
+              sub="Per listing per year, at market rate and occupancy"
+            />
+            <div className="mt-3">
+              <RevenueControl
+                value={draft.revenueMin}
+                onChange={(v) => patch({ revenueMin: v })}
+              />
+            </div>
+          </div>
+          <div>
+            <FieldLabel label="RevPAR" sub="$ per available night" />
+            <Slider
+              value={[draft.revparMin]}
+              onValueChange={(v) => patch({ revparMin: v[0] })}
+              min={REVPAR_TRACK.min}
+              max={REVPAR_TRACK.max}
+              step={REVPAR_TRACK.step}
+              className="mt-3"
+              aria-label="Minimum RevPAR"
+            />
+            <RangeReadout
+              low={
+                draft.revparMin <= REVPAR_TRACK.min
+                  ? "Any"
+                  : `${fmtMoney(draft.revparMin)}+`
+              }
+              high={fmtMoney(REVPAR_TRACK.max)}
+            />
+          </div>
+        </SheetSection>
+
+        <SheetSection label="The lease">
+          <div>
+            <FieldLabel label="Median 2 bd rent" sub="Asking rent for a long-term lease" />
+            <Slider
+              value={[draft.rentMin, draft.rentMax]}
+              onValueChange={(v) => patch({ rentMin: v[0], rentMax: v[1] })}
+              min={RENT_TRACK.min}
+              max={RENT_TRACK.max}
+              step={RENT_TRACK.step}
+              className="mt-3"
+              aria-label="Median 2 bedroom rent range"
+            />
+            <RangeReadout
+              low={fmtMoney(draft.rentMin)}
+              high={
+                draft.rentMax >= RENT_TRACK.max
+                  ? `${fmtMoney(RENT_TRACK.max)}+`
+                  : fmtMoney(draft.rentMax)
+              }
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Breakeven (max)"
+              sub="Keep markets whose typical 2 bd breakeven sits at or under this"
+            />
+            <Slider
+              value={[breakevenSlider]}
+              onValueChange={(v) =>
+                patch({
+                  breakevenMax:
+                    v[0] >= BREAKEVEN_TRACK.max
+                      ? DEFAULT_FILTERS.breakevenMax
+                      : v[0] / 100,
+                })
+              }
+              min={BREAKEVEN_TRACK.min}
+              max={BREAKEVEN_TRACK.max}
+              step={BREAKEVEN_TRACK.step}
+              className="mt-3"
+              aria-label="Maximum breakeven occupancy"
+            />
+            <RangeReadout
+              low={
+                draft.breakevenMax >= DEFAULT_FILTERS.breakevenMax
+                  ? "Any"
+                  : `≤ ${Math.round(draft.breakevenMax * 100)}%`
+              }
+              high={`${BREAKEVEN_TRACK.max}%`}
+            />
+          </div>
+        </SheetSection>
+
+        <SheetSection label="Signal">
+          <div>
+            <FieldLabel
+              label="Cushion"
+              sub="How far the market runs above the typical 2 bd breakeven"
+            />
+            <div className="mt-2">
+              <MarginTiles
+                value={draft.marginMin}
+                onChange={(v) => patch({ marginMin: v })}
+              />
+            </div>
+          </div>
+        </SheetSection>
+
+        <SheetSection label="Market type">
+          <TerrainTiles
+            selected={draft.terrains}
+            onToggle={(t) =>
+              patch({
+                terrains: draft.terrains.includes(t)
+                  ? draft.terrains.filter((x) => x !== t)
+                  : [...draft.terrains, t],
+              })
+            }
+          />
+        </SheetSection>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2 border-t border-border px-5 py-4">
+        <Button
+          variant="ghost"
+          onClick={() => setDraft({ ...DEFAULT_FILTERS })}
+          className="text-muted-foreground"
+        >
+          Reset all
+        </Button>
+        <Button
+          className="flex-1"
+          onClick={() => {
+            onApply(draft);
+            onClose();
+          }}
+        >
+          Show {fmtNum(count)} {count === 1 ? "result" : "results"}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function AllFiltersChip({
+  filters,
+  states,
+  activeCount,
+  countFor,
+  onApply,
+}: {
+  filters: ExplorerFilters;
+  states: string[];
+  activeCount: number;
+  countFor: (draft: ExplorerFilters) => number;
+  onApply: (next: ExplorerFilters) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const active = activeCount > 0;
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
+            active
+              ? "border-gold/50 bg-gold-fill/5 text-foreground"
+              : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+          )}
+        >
+          <SlidersHorizontal aria-hidden className="size-3.5" />
+          All filters
+          {active ? (
+            <span className="flex size-4 items-center justify-center rounded-full bg-gold-fill/15 text-[10px] font-semibold text-gold tabular">
+              {activeCount}
+            </span>
+          ) : null}
+        </button>
+      </SheetTrigger>
+      <SheetContent
+        side="right"
+        className="w-full gap-0 border-border bg-card p-0 sm:w-[400px] sm:max-w-[400px]"
+      >
+        <SheetHeader className="shrink-0 border-b border-border px-5 py-4">
+          <SheetTitle className="text-base">All filters</SheetTitle>
+          <SheetDescription className="text-xs">
+            Every lens on the explorer. Nothing changes until you show results.
+          </SheetDescription>
+        </SheetHeader>
+        <AllFiltersBody
+          applied={filters}
+          states={states}
+          countFor={countFor}
+          onApply={onApply}
+          onClose={() => setOpen(false)}
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* The chip row                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -465,10 +1203,12 @@ export function ExplorerFilterChips({
   filters,
   states,
   onChange,
+  countFor,
 }: {
   filters: ExplorerFilters;
   states: string[];
   onChange: (patch: Partial<ExplorerFilters>) => void;
+  countFor: (draft: ExplorerFilters) => number;
 }) {
   const [openPanel, setOpenPanel] = React.useState<string | null>(null);
 
@@ -477,12 +1217,14 @@ export function ExplorerFilterChips({
     filters.states.length > 0 ||
     filters.listingsMin > DEFAULT_FILTERS.listingsMin ||
     filters.listingsMax < DEFAULT_FILTERS.listingsMax;
+  const terrainActive = filters.terrains.length > 0;
   const rateActive =
     filters.adrMin > DEFAULT_FILTERS.adrMin ||
     filters.adrMax < DEFAULT_FILTERS.adrMax;
   const occActive =
     filters.occMin > DEFAULT_FILTERS.occMin ||
     filters.occMax < DEFAULT_FILTERS.occMax;
+  const revenueActive = filters.revenueMin > DEFAULT_FILTERS.revenueMin;
   const cushionActive = filters.marginMin > 0;
 
   const chip = (id: string) => ({
@@ -511,6 +1253,15 @@ export function ExplorerFilterChips({
       </FilterChip>
 
       <FilterChip
+        label="Market type"
+        active={terrainActive}
+        summary={filters.terrains.map((t) => TERRAIN_LABEL[t]).join(", ")}
+        {...chip("terrain")}
+      >
+        <TerrainPanel applied={filters} onApply={onChange} onClose={close} />
+      </FilterChip>
+
+      <FilterChip
         label="Nightly rate"
         active={rateActive}
         summary={`${fmtMoney(filters.adrMin)}–${fmtMoney(filters.adrMax)}`}
@@ -529,6 +1280,15 @@ export function ExplorerFilterChips({
       </FilterChip>
 
       <FilterChip
+        label="Revenue"
+        active={revenueActive}
+        summary={`${fmtMoneyShort(filters.revenueMin)}+ / yr`}
+        {...chip("revenue")}
+      >
+        <RevenuePanel applied={filters} onApply={onChange} onClose={close} />
+      </FilterChip>
+
+      <FilterChip
         label="Cushion"
         active={cushionActive}
         summary={`${filters.marginMin}+ pts`}
@@ -536,6 +1296,14 @@ export function ExplorerFilterChips({
       >
         <CushionPanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
+
+      <AllFiltersChip
+        filters={filters}
+        states={states}
+        activeCount={countActiveFilters(filters)}
+        countFor={countFor}
+        onApply={(next) => onChange(next)}
+      />
     </>
   );
 }

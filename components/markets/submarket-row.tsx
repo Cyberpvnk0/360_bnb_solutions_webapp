@@ -3,10 +3,13 @@
 /**
  * One submarket in the nationwide list: dense row — name and parent
  * market left, the trailing-12 figures and the cushion right. Hover
- * syncs the map pin.
+ * syncs the map pin; clicking opens the parent market's detail page,
+ * where every submarket in that market is tabled.
  */
 
 import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtMoneyShort, fmtNum, fmtPct } from "@/lib/format";
@@ -29,39 +32,35 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
 interface SubmarketRowProps {
   submarket: Submarket;
   selected: boolean;
-  onSelect: (id: string) => void;
   onHoverChange: (id: string | null) => void;
 }
 
 export const SubmarketRow = React.forwardRef<HTMLDivElement, SubmarketRowProps>(
-  function SubmarketRow({ submarket: s, selected, onSelect, onHoverChange }, ref) {
+  function SubmarketRow({ submarket: s, selected, onHoverChange }, ref) {
+    const router = useRouter();
     const marginPts = Math.round((s.occupancy - s.avgBreakeven2br) * 100);
     const strong = marginPts >= 8;
     return (
+      // Whole row opens the parent market; the name <Link> carries the
+      // semantic navigation for keyboards and screen readers.
       <div
         ref={ref}
-        role="button"
-        tabIndex={0}
-        aria-pressed={selected}
-        aria-label={`Select ${s.name} in ${s.marketName} on the map`}
-        onClick={() => onSelect(s.id)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(s.id);
-          }
-        }}
+        onClick={() => router.push(`/markets/${s.marketSlug}`)}
         onMouseEnter={() => onHoverChange(s.id)}
         onMouseLeave={() => onHoverChange(null)}
         className={cn(
-          "flex cursor-pointer flex-wrap items-center gap-x-6 gap-y-2 rounded-sm border bg-card px-5 py-3.5 transition-colors duration-150",
+          "flex cursor-pointer flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-card px-5 py-3.5 transition-[border-color,box-shadow] duration-150 hover:elev-raised",
           selected ? "border-gold/60" : "border-border hover:border-gold/40"
         )}
       >
         <div className="min-w-0 flex-1 basis-52">
-          <p className="truncate text-sm font-semibold text-foreground">
+          <Link
+            href={`/markets/${s.marketSlug}`}
+            onClick={(e) => e.stopPropagation()}
+            className="block truncate text-sm font-semibold text-foreground transition-colors duration-150 hover:text-gold"
+          >
             {s.name}
-          </p>
+          </Link>
           <p className="truncate text-xs text-muted-foreground">
             in {s.marketName}, {s.stateCode} · {fmtNum(s.activeListings)} listings
           </p>
