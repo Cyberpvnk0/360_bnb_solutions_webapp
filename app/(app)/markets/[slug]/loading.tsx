@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 /** Mirrors the market detail layout so nothing shifts when data lands. */
 export default function MarketDetailLoading() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <Skeleton className="h-4 w-24" />
 
       {/* Header */}
@@ -19,12 +19,12 @@ export default function MarketDetailLoading() {
       </div>
 
       {/* Stat band */}
-      <div className="mt-6 overflow-hidden border-y border-border">
+      <div className="mt-8 overflow-hidden border-y border-border">
         <div className="flex items-stretch divide-x divide-border">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex-1 px-5 py-4 first:pl-0">
+            <div key={i} className="flex-1 px-8 py-6 first:pl-0 last:pr-0">
               <Skeleton className="h-3 w-20" />
-              <Skeleton className="mt-2 h-7 w-16" />
+              <Skeleton className="mt-2 h-8 w-20" />
               <Skeleton className="mt-2 h-3 w-24" />
             </div>
           ))}
@@ -32,18 +32,18 @@ export default function MarketDetailLoading() {
       </div>
 
       {/* Charts */}
-      <div className="mt-6 space-y-6">
-        <Skeleton className="h-[356px] w-full" />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Skeleton className="h-[336px]" />
-          <Skeleton className="h-[336px]" />
+      <div className="mt-8 space-y-8">
+        <Skeleton className="h-[374px] w-full" />
+        <div className="grid gap-8 lg:grid-cols-2">
+          <Skeleton className="h-[354px]" />
+          <Skeleton className="h-[354px]" />
         </div>
       </div>
 
       {/* Regulation + pencils strip */}
-      <div className="mt-6 grid gap-6 pb-10 lg:grid-cols-2">
-        <Skeleton className="h-52" />
-        <Skeleton className="h-52" />
+      <div className="mt-8 grid gap-8 pb-10 lg:grid-cols-2">
+        <Skeleton className="h-[13.5rem]" />
+        <Skeleton className="h-[13.5rem]" />
       </div>
     </div>
   );

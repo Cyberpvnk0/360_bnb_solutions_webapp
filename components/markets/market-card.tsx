@@ -80,12 +80,12 @@ export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
         onMouseEnter={() => onHoverChange(m.slug)}
         onMouseLeave={() => onHoverChange(null)}
         className={cn(
-          "cursor-pointer border-b border-border px-4 py-3 transition-colors duration-150 hover:bg-secondary/50",
+          "cursor-pointer border-b border-border px-5 py-4 transition-colors duration-150 hover:bg-secondary/50",
           selected && "active-rule bg-secondary/40"
         )}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-baseline gap-2.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-baseline gap-3">
             <span className="w-5 shrink-0 text-[11px] text-muted-foreground tabular">
               {String(rank).padStart(2, "0")}
             </span>
@@ -112,7 +112,7 @@ export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
           </StatusChip>
         </div>
 
-        <div className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2 pl-[30px] sm:grid-cols-[1fr_1.1fr_1fr_0.9fr_1.7fr]">
+        <div className="mt-3 grid grid-cols-3 gap-x-4 gap-y-2 pl-8 sm:grid-cols-[1fr_1.1fr_1fr_0.9fr_1.7fr]">
           <Figure label="ADR">{fmtMoney(m.adr)}</Figure>
           <Figure label="Occupancy">{fmtPct(m.occupancy)}</Figure>
           <Figure label="RevPAR">{fmtMoney(revpar(m.adr, m.occupancy))}</Figure>

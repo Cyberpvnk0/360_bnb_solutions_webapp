@@ -33,25 +33,25 @@ export function SettingsScreen({ initialTab }: { initialTab: SettingsTab }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
         title="Settings"
         description="Your account, your plan, and what we send you."
       />
 
-      <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
+      <Tabs value={tab} onValueChange={handleTabChange} className="mt-8">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
-        <TabsContent value="profile" className="mt-6">
+        <TabsContent value="profile" className="mt-8">
           <ProfileTab />
         </TabsContent>
-        <TabsContent value="billing" className="mt-6">
+        <TabsContent value="billing" className="mt-8">
           <BillingTab />
         </TabsContent>
-        <TabsContent value="notifications" className="mt-6">
+        <TabsContent value="notifications" className="mt-8">
           <NotificationsTab />
         </TabsContent>
       </Tabs>

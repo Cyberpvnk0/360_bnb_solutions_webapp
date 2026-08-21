@@ -76,7 +76,7 @@ export function BillingTab() {
 
   if (!ready || !user) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-10">
         <Skeleton className="h-36 w-full" />
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-72 w-full" />
@@ -101,9 +101,9 @@ export function BillingTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       {/* Current plan */}
-      <div className="rounded-sm border border-border bg-card p-5">
+      <div className="rounded-sm border border-border bg-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <MetricLabel>Current plan</MetricLabel>
@@ -124,11 +124,11 @@ export function BillingTab() {
       </div>
 
       {/* Pull usage */}
-      <div className="rounded-sm border border-border bg-card p-5">
+      <div className="rounded-sm border border-border bg-card p-6">
         <MetricLabel>Address pulls this period</MetricLabel>
         {pullLimit > 0 ? (
           <>
-            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-sm bg-secondary">
+            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-sm bg-secondary">
               <div
                 className="h-full rounded-sm transition-all duration-150"
                 style={{
@@ -137,13 +137,13 @@ export function BillingTab() {
                 }}
               />
             </div>
-            <p className="mt-2 text-xs text-muted-foreground tabular">
+            <p className="mt-3 text-xs text-muted-foreground tabular">
               {fmtNum(pullsUsed)} of {fmtNum(pullLimit)} used · resets{" "}
               {fmtDate(user.periodEnd)}
             </p>
           </>
         ) : (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
               The Free plan includes no pulls.
             </p>
@@ -156,7 +156,7 @@ export function BillingTab() {
 
       {/* Invoice history */}
       <div className="rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
+        <div className="border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">
             Invoice history
           </h2>
@@ -164,7 +164,7 @@ export function BillingTab() {
             Every charge to date.
           </p>
         </div>
-        <div className="px-4 pb-2">
+        <div className="px-5 pb-3">
           <DataTable
             columns={INVOICE_COLUMNS}
             rows={invoices ?? []}

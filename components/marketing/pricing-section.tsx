@@ -26,13 +26,13 @@ export function PricingSection() {
           Every plan browses every market. You pay for address pulls, not for
           looking around.
         </p>
-        <BillingToggle billing={billing} onChange={setBilling} className="mt-8" />
+        <BillingToggle billing={billing} onChange={setBilling} className="mt-10" />
       </div>
 
       <PricingTiers
         billing={billing}
         onSelect={() => router.push("/dashboard")}
-        className="mt-10"
+        className="mt-12"
       />
 
       <p className="mt-8 text-center text-xs text-muted-foreground">

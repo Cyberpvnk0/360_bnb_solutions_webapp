@@ -51,7 +51,7 @@ export function NotificationsTab() {
 
   return (
     <div className="rounded-sm border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
+      <div className="border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           What lands in your inbox. Changes apply immediately.
@@ -61,7 +61,7 @@ export function NotificationsTab() {
         {PREFS.map((pref) => (
           <div
             key={pref.id}
-            className="flex items-center justify-between gap-6 px-5 py-4"
+            className="flex items-center justify-between gap-6 px-6 py-5"
           >
             <div className="min-w-0">
               <label

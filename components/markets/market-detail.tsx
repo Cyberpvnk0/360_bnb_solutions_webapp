@@ -85,16 +85,16 @@ function ChartCard({
 }) {
   return (
     <section className="rounded-sm border border-border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-5 py-4">
         <div>
           <MetricLabel>{title}</MetricLabel>
           {sub ? (
-            <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
           ) : null}
         </div>
         {aside}
       </div>
-      <div className="px-2 pb-3 pt-4">{children}</div>
+      <div className="px-3 pb-4 pt-5">{children}</div>
     </section>
   );
 }
@@ -202,7 +202,7 @@ export function MarketDetail({ market: m }: { market: Market }) {
   const banned = m.regulation.status === "banned";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <Link
         href="/markets"
         className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
@@ -253,7 +253,7 @@ export function MarketDetail({ market: m }: { market: Market }) {
       />
 
       {/* Stat band */}
-      <StatHeader className="mt-6">
+      <StatHeader className="mt-8">
         <StatCard
           label="ADR"
           value={fmtMoney(m.adr)}
@@ -305,7 +305,7 @@ export function MarketDetail({ market: m }: { market: Market }) {
       </StatHeader>
 
       {/* Charts */}
-      <div className="mt-6 space-y-6">
+      <div className="mt-8 space-y-8">
         <ChartCard
           title="Monthly revenue per listing"
           sub="RevPAR × 30.4 nights for the 2BR benchmark, trailing 12 months."
@@ -350,7 +350,7 @@ export function MarketDetail({ market: m }: { market: Market }) {
           </ResponsiveContainer>
         </ChartCard>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-8 lg:grid-cols-2">
           <ChartCard
             title="ADR by bedroom count"
             sub="What each unit size commands per booked night."
@@ -451,8 +451,8 @@ export function MarketDetail({ market: m }: { market: Market }) {
       </div>
 
       {/* Regulation + how a 2 bd pencils */}
-      <div className="mt-6 grid gap-6 pb-10 lg:grid-cols-2">
-        <section className="rounded-sm border border-border bg-card p-5">
+      <div className="mt-8 grid gap-8 pb-10 lg:grid-cols-2">
+        <section className="rounded-sm border border-border bg-card p-6">
           <MetricLabel>Regulation</MetricLabel>
           <div className="mt-3 flex items-center gap-3">
             <StatusChip tone={REGULATION_TONE[m.regulation.status]}>
@@ -478,7 +478,7 @@ export function MarketDetail({ market: m }: { market: Market }) {
           </p>
         </section>
 
-        <section className="rounded-sm border border-border bg-card p-5">
+        <section className="rounded-sm border border-border bg-card p-6">
           <MetricLabel>How a 2 bd pencils here</MetricLabel>
           <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-4">
             {[

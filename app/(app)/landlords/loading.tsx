@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function LandlordsLoading() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div>
@@ -13,12 +13,12 @@ export default function LandlordsLoading() {
       </div>
 
       {/* Privacy strip */}
-      <div className="mt-5 border-y border-border py-2.5">
+      <div className="mt-5 border-y border-border py-3.5">
         <Skeleton className="h-4 w-80 max-w-full" />
       </div>
 
       {/* Toolbar */}
-      <div className="mt-5 flex flex-wrap items-center gap-3">
+      <div className="mt-8 flex flex-wrap items-center gap-3">
         <Skeleton className="h-9 w-full sm:w-72" />
         <Skeleton className="h-9 w-40" />
         <Skeleton className="ml-auto h-4 w-20" />

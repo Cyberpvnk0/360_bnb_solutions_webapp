@@ -387,7 +387,7 @@ export function UsaMap({
         </svg>
 
         {/* Zoom controls — hairline buttons. */}
-        <div className="absolute right-3 top-3 flex flex-col gap-1">
+        <div className="absolute right-3 top-3 flex flex-col gap-1.5">
           <button
             type="button"
             aria-label="Zoom in"
@@ -417,7 +417,7 @@ export function UsaMap({
       </div>
 
       {/* Legend */}
-      <div className="flex shrink-0 items-center gap-4 border-t border-border bg-background px-4 py-2 text-xs text-muted-foreground">
+      <div className="flex shrink-0 items-center gap-4 border-t border-border bg-background px-5 py-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="inline-block size-2 rounded-full bg-gold" />
           Strong spread — 8+ pts over breakeven

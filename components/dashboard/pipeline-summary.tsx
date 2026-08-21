@@ -44,10 +44,10 @@ export function PipelineSummary({ deals }: { deals: Deal[] }) {
               <Link
                 key={id}
                 href="/pipeline"
-                className="min-w-[9.5rem] px-5 py-4 transition-colors duration-150 hover:bg-secondary/40"
+                className="min-w-[11rem] px-8 py-6 transition-colors duration-150 hover:bg-secondary/40"
               >
                 <MetricLabel>{label}</MetricLabel>
-                <div className="mt-1.5 text-2xl font-semibold leading-tight tracking-tight text-foreground tabular">
+                <div className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-foreground tabular">
                   <AnimatedNumber value={staged.length} />
                 </div>
                 <div className="mt-1 text-xs tabular">

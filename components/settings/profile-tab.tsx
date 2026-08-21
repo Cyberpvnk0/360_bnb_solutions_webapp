@@ -30,11 +30,11 @@ export function ProfileTab() {
   if (!ready || !user) {
     return (
       <div className="rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
+        <div className="border-b border-border px-5 py-4">
           <Skeleton className="h-4 w-24" />
         </div>
-        <div className="space-y-4 p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-5 p-6">
+          <div className="grid gap-5 sm:grid-cols-2">
             <Skeleton className="h-9" />
             <Skeleton className="h-9" />
           </div>
@@ -55,15 +55,15 @@ function ProfileForm({ user }: { user: SessionUser }) {
 
   return (
     <div className="rounded-sm border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
+      <div className="border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">Profile</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           How your name appears on landlord packets and exports.
         </p>
       </div>
 
-      <div className="p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="p-6">
+        <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="settings-name">Name</Label>
             <Input
@@ -85,7 +85,7 @@ function ProfileForm({ user }: { user: SessionUser }) {
           </div>
         </div>
 
-        <div className="mt-4 max-w-xs space-y-2">
+        <div className="mt-5 max-w-xs space-y-2">
           <Label htmlFor="settings-timezone">Timezone</Label>
           <Select value={timezone} onValueChange={setTimezone}>
             <SelectTrigger id="settings-timezone" className="w-full">
@@ -107,7 +107,7 @@ function ProfileForm({ user }: { user: SessionUser }) {
       </div>
 
       {/* Security */}
-      <div className="border-t border-border p-5">
+      <div className="border-t border-border p-6">
         <h3 className="text-sm font-semibold text-foreground">Security</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Password sign-in comes with the full release.

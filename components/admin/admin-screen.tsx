@@ -30,11 +30,11 @@ function ChartCard({
 }) {
   return (
     <div className="rounded-sm border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
+      <div className="border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </div>
   );
 }
@@ -51,7 +51,7 @@ function LedgerRow({
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-6 px-5 py-3">
+    <div className="flex items-center justify-between gap-6 px-5 py-3.5">
       <span
         className={cn(
           "text-sm",
@@ -104,7 +104,7 @@ export function AdminScreen() {
   const sk = (w: string) => <Skeleton className={cn("mt-0.5 h-7", w)} />;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
         title={
           <span className="inline-flex flex-wrap items-center gap-3">
@@ -116,7 +116,7 @@ export function AdminScreen() {
       />
 
       {/* Stat header */}
-      <StatHeader className="mt-6">
+      <StatHeader className="mt-8">
         <StatCard
           label="MRR"
           serif
@@ -157,7 +157,7 @@ export function AdminScreen() {
       </StatHeader>
 
       {/* Charts */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <ChartCard
           title="Tier distribution"
           sub="Every account in the cohort, by plan."
@@ -191,8 +191,8 @@ export function AdminScreen() {
       </div>
 
       {/* Unit economics */}
-      <div className="mt-6 rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
+      <div className="mt-10 rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">
             Unit economics
           </h2>
@@ -224,7 +224,7 @@ export function AdminScreen() {
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between px-5 py-3"
+                className="flex items-center justify-between px-5 py-3.5"
               >
                 <Skeleton className="h-4 w-48" />
                 <Skeleton className="h-4 w-20" />
@@ -235,14 +235,14 @@ export function AdminScreen() {
       </div>
 
       {/* Users */}
-      <div className="mt-6 rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
+      <div className="mt-10 rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             A sample of the cohort, newest first.
           </p>
         </div>
-        <div className="px-4 pb-2">
+        <div className="px-5 pb-3">
           <AdminUsersTable users={metrics?.users ?? []} loading={loading} />
         </div>
       </div>

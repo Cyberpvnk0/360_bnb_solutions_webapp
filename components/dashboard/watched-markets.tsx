@@ -93,7 +93,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
             <div className="divide-y divide-border border-b border-border">
               {watched === null
                 ? slugs.map((slug) => (
-                    <div key={slug} className={cn(ROW_GRID, "px-3 py-2.5")}>
+                    <div key={slug} className={cn(ROW_GRID, "px-3 py-3.5")}>
                       <div>
                         <Skeleton className="h-5 w-24" />
                         <Skeleton className="mt-1 h-3 w-14" />
@@ -119,7 +119,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                       href={`/markets/${m.slug}`}
                       className={cn(
                         ROW_GRID,
-                        "px-3 py-2.5 transition-colors duration-150 hover:bg-secondary/40"
+                        "px-3 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
                       )}
                     >
                       <div className="min-w-0">

@@ -66,12 +66,12 @@ export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
                 <Link
                   key={event.id}
                   href={event.href}
-                  className="flex items-center gap-3 px-3 py-3 transition-colors duration-150 hover:bg-secondary/40"
+                  className="flex items-center gap-3 px-3 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
                 >
                   <RowContent event={event} />
                 </Link>
               ) : (
-                <div key={event.id} className="flex items-center gap-3 px-3 py-3">
+                <div key={event.id} className="flex items-center gap-3 px-3 py-3.5">
                   <RowContent event={event} />
                 </div>
               )

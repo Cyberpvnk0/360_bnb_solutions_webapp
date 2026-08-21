@@ -10,7 +10,7 @@ export default function MarketingLayout({
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 md:px-8">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-8">
           <Wordmark href="/" />
           <nav className="flex items-center gap-1.5 sm:gap-3">
             <a
@@ -32,7 +32,7 @@ export default function MarketingLayout({
       <main className="flex-1">{children}</main>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 md:flex-row md:items-end md:justify-between md:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-12 md:flex-row md:items-end md:justify-between md:px-8">
           <div>
             <Wordmark href="/" />
             <p className="mt-2 text-sm text-muted-foreground">{APP_TAGLINE}</p>

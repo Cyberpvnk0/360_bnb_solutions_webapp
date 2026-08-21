@@ -113,7 +113,7 @@ function SheetBody({ landlord }: { landlord: Landlord }) {
   return (
     <div className="flex min-h-full flex-col">
       {/* Identity */}
-      <div className="border-b border-border px-5 pt-5 pb-4">
+      <div className="border-b border-border px-5 pt-5 pb-5">
         <SheetTitle className="pr-8 font-display text-xl font-medium tracking-tight text-foreground">
           {landlord.name}
         </SheetTitle>
@@ -126,7 +126,7 @@ function SheetBody({ landlord }: { landlord: Landlord }) {
       </div>
 
       {/* Contact */}
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-border px-5 py-5">
         <MetricLabel>Contact</MetricLabel>
         <div className="mt-2.5 space-y-1.5">
           <a
@@ -163,7 +163,7 @@ function SheetBody({ landlord }: { landlord: Landlord }) {
       </div>
 
       {/* Editable details */}
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-border px-5 py-5">
         <MetricLabel>Details</MetricLabel>
         <div className="mt-3 space-y-3.5">
           <div className="space-y-1.5">
@@ -266,7 +266,7 @@ function SheetBody({ landlord }: { landlord: Landlord }) {
       </div>
 
       {/* Linked deals */}
-      <div className="px-5 py-4">
+      <div className="px-5 py-5">
         <MetricLabel>Linked deals</MetricLabel>
         {linkedDeals.length > 0 ? (
           <ul className="mt-2 -mx-2">

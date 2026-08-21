@@ -30,7 +30,7 @@ export function DashboardScreen() {
     <div>
       {/* Hero band — the one place hero-radial is allowed */}
       <section aria-label="Your desk" className="hero-radial border-b border-border">
-        <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-10 md:flex-row md:items-center md:justify-between md:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14 md:flex-row md:items-center md:justify-between md:px-10">
           <div className="min-w-0">
             <h1 className="font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
               Your desk
@@ -45,10 +45,10 @@ export function DashboardScreen() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
         <PipelineSummary deals={deals} />
 
-        <div className="mt-10 grid grid-cols-1 gap-10 pb-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:gap-8">
+        <div className="mt-12 grid grid-cols-1 gap-10 pb-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <WatchedMarkets slugs={watchedMarketSlugs} />
           <ActivityFeed events={activity} />
         </div>

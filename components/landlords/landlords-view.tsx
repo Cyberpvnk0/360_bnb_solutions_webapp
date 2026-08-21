@@ -133,7 +133,7 @@ export function LandlordsView() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
         title="Landlords"
         description="The relationships behind every lease."
@@ -141,7 +141,7 @@ export function LandlordsView() {
       />
 
       {/* Privacy strip — the selling point, stated plainly. */}
-      <div className="mt-5 flex items-start gap-2 border-y border-border py-2.5">
+      <div className="mt-5 flex items-start gap-2 border-y border-border py-3.5">
         <Lock aria-hidden className="mt-px size-3.5 shrink-0 text-gold" />
         <p className="text-xs leading-4 text-muted-foreground">
           <span className="font-medium text-foreground">Private to you.</span>{" "}
@@ -160,7 +160,7 @@ export function LandlordsView() {
       ) : (
         <>
           {/* Toolbar */}
-          <div className="mt-5 flex flex-wrap items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <div className="relative w-full sm:w-72">
               <Search
                 aria-hidden

@@ -46,7 +46,7 @@ export default function LandingPage() {
     <div className="divide-y divide-border">
       {/* 1 — Hero */}
       <section className="py-20 md:py-28">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 md:px-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <div>
             <h1 className="font-display text-5xl font-medium leading-[1.04] tracking-tight text-foreground md:text-6xl">
               Know your breakeven occupancy before you sign the lease.
@@ -74,7 +74,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 md:px-8">
           <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {PROOF.map((p) => (
-              <div key={p.claim} className="py-5 sm:px-8 sm:py-2 sm:first:pl-0 sm:last:pr-0">
+              <div key={p.claim} className="py-6 sm:px-10 sm:py-2 sm:first:pl-0 sm:last:pr-0">
                 <div className="text-base font-semibold tracking-tight text-foreground">
                   {p.claim}
                 </div>
@@ -92,9 +92,9 @@ export default function LandingPage() {
           <h2 className="mt-3 max-w-xl font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
             From address to decision.
           </h2>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
             {STEPS.map((s) => (
-              <div key={s.n} className="rounded-sm border border-border bg-card p-6">
+              <div key={s.n} className="rounded-sm border border-border bg-card p-7">
                 <MetricLabel className="tabular">{s.n}</MetricLabel>
                 <h3 className="mt-4 text-base font-semibold tracking-tight text-foreground">
                   {s.title}
@@ -110,7 +110,7 @@ export default function LandingPage() {
 
       {/* 4a — Market explorer */}
       <section className="py-20 md:py-28">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 md:px-8 lg:grid-cols-2">
+        <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-2">
           <div>
             <MetricLabel>Market explorer</MetricLabel>
             <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
@@ -129,7 +129,7 @@ export default function LandingPage() {
 
       {/* 4b — Evidence-first comps */}
       <section className="py-20 md:py-28">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 md:px-8 lg:grid-cols-2">
+        <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-2">
           <div className="lg:order-2 lg:justify-self-end">
             <MetricLabel>Evidence-first comps</MetricLabel>
             <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
@@ -147,7 +147,7 @@ export default function LandingPage() {
 
       {/* 4c — Pipeline & landlord book */}
       <section className="py-20 md:py-28">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 md:px-8 lg:grid-cols-2">
+        <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-2">
           <div>
             <MetricLabel>Pipeline &amp; landlord book</MetricLabel>
             <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
@@ -164,7 +164,7 @@ export default function LandingPage() {
       </section>
 
       {/* 5 — Pricing */}
-      <section id="pricing" className="scroll-mt-14 py-20 md:py-28">
+      <section id="pricing" className="scroll-mt-16 py-20 md:py-28">
         <PricingSection />
       </section>
 

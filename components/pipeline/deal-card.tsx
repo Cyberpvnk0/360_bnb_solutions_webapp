@@ -26,7 +26,7 @@ export function DealCardContent({
   return (
     <div
       className={cn(
-        "rounded-sm border border-border bg-card p-3 transition-colors duration-150",
+        "rounded-sm border border-border bg-card p-4 transition-colors duration-150",
         overlay ? "border-gold bg-surface-2" : "hover:border-gold/40",
         className
       )}
@@ -38,7 +38,7 @@ export function DealCardContent({
         {deal.city}, {deal.stateCode}
       </p>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-2 gap-4">
         <div>
           <MetricLabel>Breakeven</MetricLabel>
           <p className="mt-0.5 text-sm font-semibold tabular text-foreground">

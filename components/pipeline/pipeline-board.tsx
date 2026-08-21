@@ -68,11 +68,11 @@ function BoardColumn({
       ref={setNodeRef}
       aria-label={`${label} — ${deals.length} deals`}
       className={cn(
-        "flex min-w-[270px] flex-1 flex-col rounded-sm border border-transparent p-2 transition-colors duration-150",
+        "flex min-w-[284px] flex-1 flex-col rounded-sm border border-transparent p-2 transition-colors duration-150",
         isOver && "border-gold/30 bg-secondary/40"
       )}
     >
-      <div className="flex items-center justify-between gap-2 px-1 pb-3">
+      <div className="flex items-center justify-between gap-2 px-1 pb-4">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="metric-label truncate">{label}</span>
           <StatusChip tone="neutral" className="tabular">
@@ -168,7 +168,7 @@ export function PipelineBoard() {
   return (
     <>
       {/* Header — standard container */}
-      <div className="mx-auto max-w-6xl px-4 pt-6 md:px-8">
+      <div className="mx-auto max-w-6xl px-4 pt-8 md:px-10">
         <PageHeader
           title="Pipeline"
           description="Every deal from first call to first guest."
@@ -189,7 +189,7 @@ export function PipelineBoard() {
         />
 
         {atCapacity ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-sm border border-border bg-secondary/40 px-3 py-2">
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-sm border border-border bg-secondary/40 px-4 py-3">
             <TriangleAlert aria-hidden className="size-4 shrink-0 text-neg" />
             <p className="text-sm text-foreground">
               Pipeline full on the {tier.name} plan
@@ -207,9 +207,9 @@ export function PipelineBoard() {
       </div>
 
       {deals.length === 0 ? (
-        <div className="mx-auto max-w-6xl px-4 pb-10 md:px-8">
+        <div className="mx-auto max-w-6xl px-4 pb-10 md:px-10">
           <EmptyState
-            className="mt-6"
+            className="mt-8"
             icon={Columns3}
             title="No deals yet"
             description="Run an address through the numbers, save it, and work it here from first call to first guest."
@@ -222,7 +222,7 @@ export function PipelineBoard() {
         </div>
       ) : (
         /* Board — bleeds wider than the standard container */
-        <div className="mt-6 px-4 pb-10 md:px-8">
+        <div className="mt-8 px-4 pb-10 md:px-10">
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetection}
@@ -231,7 +231,7 @@ export function PipelineBoard() {
             onDragCancel={handleDragCancel}
           >
             <div className="overflow-x-auto pb-2">
-              <div className="flex items-stretch gap-3">
+              <div className="flex items-stretch gap-5">
                 {PIPELINE_STAGES.map(({ id, label }) => (
                   <BoardColumn
                     key={id}

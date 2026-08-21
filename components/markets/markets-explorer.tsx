@@ -141,9 +141,9 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
   }, []);
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden">
       {/* Filter bar — pinned above both panes. */}
-      <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-4 py-2">
+      <div className="flex shrink-0 items-center gap-3 overflow-x-auto border-b border-border px-5 py-3.5">
         <Select value={stateFilter} onValueChange={setStateFilter}>
           <SelectTrigger size="sm" aria-label="State" className="shrink-0">
             <SelectValue />
@@ -208,7 +208,7 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
           </Button>
         ) : null}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+        <div className="ml-auto flex shrink-0 items-center gap-3 pl-3">
           <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
             <SelectTrigger size="sm" aria-label="Sort markets by" className="shrink-0">
               <ArrowDownWideNarrow
