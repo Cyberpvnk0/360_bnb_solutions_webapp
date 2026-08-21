@@ -80,7 +80,10 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
         <div className="overflow-x-auto">
           <div className="min-w-[560px]">
             <div
-              className={cn(ROW_GRID, "border-b border-border px-6 py-2")}
+              className={cn(
+                ROW_GRID,
+                "border-b border-border bg-secondary/60 px-6 py-2"
+              )}
             >
               <MetricLabel>Market</MetricLabel>
               <MetricLabel>ADR</MetricLabel>

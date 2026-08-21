@@ -9,14 +9,16 @@
 /* ------------------------------------------------------------------ */
 
 :root {
-  /* Light theme — the default. Airy canvas, quiet hairlines, and a
-     whisper of elevation under panels (see --elev below). */
-  --ink: #f7f7f9;
+  /* Light theme — the default. A clearly-grey canvas so white cards read
+     as raised objects, not regions of the same sheet. Separation comes
+     from three layers working together: canvas vs card contrast, soft
+     ambient shadows (--elev), and quiet borders. */
+  --ink: #eef0f4;
   --surface: #ffffff;
-  --surface-2: #f1f1f4;
-  --border: #e5e5ea;
+  --surface-2: #f3f4f8;
+  --border: #e4e6ec;
   --text: #101012;
-  --text-muted: #63636c;
+  --text-muted: #616570;
   --red: #c41e2e;
   --red-deep: #8f1521;
   --red-muted: #9e3e49;
@@ -53,12 +55,14 @@
   --chart-neg: var(--red-muted);
 
   /* Monochrome map: land near the canvas, water slightly darker. */
-  --map-water: #ececf0;
-  --map-land: #fbfbfc;
-  --map-stroke: #dfdfe4;
+  --map-water: #e4e7ed;
+  --map-land: #fafbfc;
+  --map-stroke: #d9dce4;
 
   /* Soft ambient lift under panels — light mode only. */
-  --elev: 0 1px 2px rgb(16 16 18 / 0.04), 0 6px 20px rgb(16 16 18 / 0.05);
+  --elev: 0 1px 2px rgb(18 20 28 / 0.05), 0 8px 24px rgb(18 20 28 / 0.07);
+  /* Deeper lift for hovered interactive cards. */
+  --elev-raised: 0 2px 4px rgb(18 20 28 / 0.06), 0 14px 36px rgb(18 20 28 / 0.11);
 }
 
 .dark {
@@ -105,6 +109,7 @@
 
   /* Dark stays flat — hairlines carry the structure. */
   --elev: 0 0 #0000;
+  --elev-raised: 0 0 #0000;
 }
 
 /* ------------------------------------------------------------------ */
@@ -149,12 +154,12 @@
   --font-display: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman",
     serif;
 
-  /* Soft-but-disciplined corners. */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
+  /* Rounded, friendly corners — cards sit at 12–16px. */
+  --radius-xs: 6px;
+  --radius-sm: 12px;
+  --radius-md: 14px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
 
   --animate-gold-ring: gold-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
@@ -264,4 +269,9 @@
 /* Thin gold left rule marking active state. */
 @utility active-rule {
   box-shadow: inset 2px 0 0 0 var(--gold);
+}
+
+/* Deeper shadow for hovered interactive cards (no-op in dark). */
+@utility elev-raised {
+  box-shadow: var(--elev-raised);
 }

@@ -83,7 +83,13 @@ function OutputTile({
   );
 }
 
-export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
+export function AnalyzeResult({
+  analysis,
+  marketCenter,
+}: {
+  analysis: Analysis;
+  marketCenter: { lat: number; lon: number } | null;
+}) {
   const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
   const [inputs, setInputs] = React.useState<DealInputs>(analysis.defaults);
 
@@ -398,7 +404,12 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
 
       {/* Evidence */}
       <div className="mt-14 space-y-14 pb-14">
-        <CompsExplorer comps={analysis.strComps} />
+        <CompsExplorer
+          comps={analysis.strComps}
+          analysisId={analysis.id}
+          address={analysis.address}
+          marketCenter={marketCenter}
+        />
         <LtrCompsTable comps={analysis.ltrComps} />
       </div>
     </div>

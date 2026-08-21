@@ -86,7 +86,8 @@ export function DataTable<T>({
     <div className={cn("overflow-x-auto", className)}>
       <Table>
         <TableHeader>
-          <TableRow className="hover:bg-transparent">
+          {/* Tinted header band separates the table from the card body. */}
+          <TableRow className="bg-secondary/60 hover:bg-secondary/60">
             {columns.map((col) => {
               const sortable = Boolean(col.sortValue);
               const active = sort?.key === col.key;

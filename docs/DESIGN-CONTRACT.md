@@ -12,10 +12,14 @@ No emoji. Never letter grades or 0–100 scores — the hero metric is always
 ## Palette
 
 Defined as CSS variables in `app/globals.css`. **No other hues anywhere.**
-Never green, never blue, never teal. **Light is the default theme** — an
-airy, AirDNA-clean read: soft panel elevation (`--elev`, light mode only),
-quiet hairlines, white cards on a near-white canvas. Dark stays flat and
-hairline-structured.
+Never green, never blue, never teal. **Light is the default theme**, and it
+is layered, not flat: a clearly-grey canvas (`--ink #eef0f4`), white cards
+that read as raised objects (auto `--elev` shadow on `.bg-card`), white
+chrome (rail, top bar, explorer toolbar bands use `bg-surface`), and tinted
+table-header bands (`bg-secondary/60`). Three cues — canvas contrast,
+shadow, hairline — always work together; if a section reads as "everything
+blends", the canvas/card contrast is what's missing. Dark stays flat and
+hairline-structured (`--elev` is a no-op).
 
 | Token / Tailwind class | Meaning |
 | --- | --- |
@@ -53,15 +57,21 @@ Color semantics — resolve the red conflict deliberately:
 
 - 1px hairline borders (`border-border`). Panels carry the soft `--elev`
   ambient lift in light mode only — never ad-hoc `shadow-*` classes.
+  Interactive cards (whole-card links) may add
+  `hover:-translate-y-0.5 hover:elev-raised` for the pick-me-up cue.
 - 8px grid. Generous whitespace around key numbers; tight density in tables.
 - Transitions 150ms (`duration-150`). Numbers animate with `AnimatedNumber`
   (200ms count-up).
 - Active state = thin gold underline or left rule (`active-rule` utility,
   gold-bordered tabs are built into `TabsTrigger`).
-- `rounded-sm` corners everywhere (the radius scale is a soft 8–14px —
-  bubblier than a terminal, calmer than AirDNA); `rounded-full` ONLY for
-  `StatusChip` and genuinely circular elements (gauges, rings, pins,
-  the margin badge).
+- Corners: cards `rounded-lg`/`rounded-sm` (the radius scale is 12–20px —
+  friendly, AirDNA-adjacent); `rounded-full` for chips of every kind
+  (StatusChip, filter chips, map price pills, segmented scope toggles) and
+  genuinely circular elements (gauges, rings, pins, the margin badge).
+- Clickability is honest: if a card or row looks like a unit, clicking
+  anywhere on it navigates (`cursor-pointer` + hover lift); an inner
+  `<Link>` on the title carries keyboard/screen-reader semantics, and
+  nested buttons stopPropagation.
 - No gradients except: `hero-radial` (dashboard hero only) and the 8% gold
   fill under the primary area chart (`CHART.areaFill` / `areaFillOpacity`).
 - Every screen has a real empty state (`EmptyState`) and a skeleton loading
@@ -98,6 +108,17 @@ import { PageHeader } from "@/components/primitives/page-header"; // {title, des
 import { BreakevenGauge } from "@/components/primitives/breakeven-gauge"; // {breakeven, marketOccupancy, size?, strokeWidth?, children}
 import { DataTable } from "@/components/primitives/data-table"; // typed columns, sorting, skeleton + empty built in
 ```
+
+Street maps (MapLibre): follow `components/analyze/comps-street-map.tsx` —
+CARTO `light_all`/`dark_all` raster tiles with OSM+CARTO attribution,
+`cooperativeGestures`, compact attribution, zoom-only NavigationControl, a
+MutationObserver that swaps tiles when the theme class flips, and a small
+pill caption fallback when tiles can't load (pins always render regardless).
+Markers are rounded-full price pills (`bg-surface`, gold on hover/active);
+the subject is the brand-red diamond in a gold ring. External listing links
+open in a new tab with `rel="noopener noreferrer"` and honest preview copy
+until live data lands. The national `/markets` overview map stays the
+monochrome SVG choropleth — it is a data surface, not a street map.
 
 Charts (Recharts): use `components/charts/kit.tsx` — `CHART` colors,
 `AXIS_PROPS`, `GRID_PROPS`, `makeTooltip`, `ChartLegend`, `ChartTooltipCard`.

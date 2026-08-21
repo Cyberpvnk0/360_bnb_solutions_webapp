@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Live comps, two ways at once: the ranked table and the top-down map,
+ * Live comps, two ways at once: the ranked table and the street map,
  * hover-synced in both directions. The projection's assumptions are the
  * averages of exactly these rows — stated in the footer.
  */
@@ -13,7 +13,7 @@ import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { MetricLabel } from "@/components/primitives/metric-label";
-import { CompsMap } from "./comps-map";
+import { CompsStreetMap, subjectPoint } from "./comps-street-map";
 
 const STR_COLUMNS: DataTableColumn<StrComp>[] = [
   {
@@ -62,9 +62,25 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
   },
 ];
 
-export function CompsExplorer({ comps }: { comps: StrComp[] }) {
+export function CompsExplorer({
+  comps,
+  analysisId,
+  address,
+  marketCenter,
+}: {
+  comps: StrComp[];
+  analysisId: string;
+  address: string;
+  marketCenter: { lat: number; lon: number } | null;
+}) {
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
+  // Anchor the map near the market center; Orlando only as a last-resort
+  // fallback for an analysis whose market record is missing.
+  const subject = subjectPoint(
+    marketCenter ?? { lat: 28.54, lon: -81.38 },
+    analysisId
+  );
 
   return (
     <section aria-label="Short-term rental comps">
@@ -80,7 +96,7 @@ export function CompsExplorer({ comps }: { comps: StrComp[] }) {
         <MetricLabel className="hidden shrink-0 sm:block">STR comps</MetricLabel>
       </div>
 
-      <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0">
           <DataTable
             columns={STR_COLUMNS}
@@ -105,8 +121,10 @@ export function CompsExplorer({ comps }: { comps: StrComp[] }) {
           </p>
         </div>
 
-        <CompsMap
+        <CompsStreetMap
           comps={comps}
+          subject={subject}
+          subjectLabel={`Your property — ${address}`}
           hoveredId={hoveredId}
           onHover={setHoveredId}
           className="lg:sticky lg:top-24 lg:self-start"
