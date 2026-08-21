@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 /** Skeleton split view mirroring the explorer so nothing shifts. */
 export default function MarketsLoading() {
   return (
-    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden contain-paint">
       {/* Filter bar */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3.5">
         <Skeleton className="h-8 w-28" />
@@ -48,7 +48,7 @@ export default function MarketsLoading() {
                 {Array.from({ length: 5 }).map((_, j) => (
                   <div key={j}>
                     <Skeleton className="h-3 w-12" />
-                    <Skeleton className="mt-1 h-4 w-14" />
+                    <Skeleton className="mt-1 h-5 w-14" />
                   </div>
                 ))}
               </div>

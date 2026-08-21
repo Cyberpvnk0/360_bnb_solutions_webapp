@@ -141,7 +141,7 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
   }, []);
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden contain-paint">
       {/* Filter bar — pinned above both panes. */}
       <div className="flex shrink-0 items-center gap-3 overflow-x-auto border-b border-border px-5 py-3.5">
         <Select value={stateFilter} onValueChange={setStateFilter}>

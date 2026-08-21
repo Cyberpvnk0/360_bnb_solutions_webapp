@@ -23,9 +23,9 @@ export default function MarketDetailLoading() {
         <div className="flex items-stretch divide-x divide-border">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex-1 px-8 py-6 first:pl-0 last:pr-0">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="mt-2 h-8 w-20" />
-              <Skeleton className="mt-2 h-3 w-24" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="mt-2 h-[35px] w-24" />
+              <Skeleton className="mt-1.5 h-6 w-24" />
             </div>
           ))}
         </div>
@@ -33,17 +33,17 @@ export default function MarketDetailLoading() {
 
       {/* Charts */}
       <div className="mt-8 space-y-8">
-        <Skeleton className="h-[374px] w-full" />
+        <Skeleton className="h-[387px] w-full" />
         <div className="grid gap-8 lg:grid-cols-2">
-          <Skeleton className="h-[354px]" />
-          <Skeleton className="h-[354px]" />
+          <Skeleton className="h-[367px]" />
+          <Skeleton className="h-[367px]" />
         </div>
       </div>
 
       {/* Regulation + pencils strip */}
       <div className="mt-8 grid gap-8 pb-10 lg:grid-cols-2">
-        <Skeleton className="h-[13.5rem]" />
-        <Skeleton className="h-[13.5rem]" />
+        <Skeleton className="h-[14.5rem]" />
+        <Skeleton className="h-[14.5rem]" />
       </div>
     </div>
   );
