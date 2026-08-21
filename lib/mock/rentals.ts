@@ -223,6 +223,26 @@ export function rentalsFor(market: Market): RentalListing[] {
   return listings;
 }
 
+/* ------------------------------------------------------------------ */
+/* Live listings registry                                              */
+/* ------------------------------------------------------------------ */
+
+/** Live rows fetched this session (RentCast via /api/rentals), indexed by
+ *  analysis id so "Run the numbers" resolves them exactly like seeded
+ *  inventory. Session-scoped by design: a hard refresh on a live
+ *  analysis id simply falls back to the blank analyzer entry. */
+const LIVE_BY_ANALYSIS_ID = new Map<string, RentalListing>();
+
+export function registerLiveListings(listings: RentalListing[]): void {
+  for (const l of listings) LIVE_BY_ANALYSIS_ID.set(l.analysisId, l);
+}
+
+export function liveListingByAnalysisId(
+  id: string
+): RentalListing | undefined {
+  return LIVE_BY_ANALYSIS_ID.get(id);
+}
+
 let allCache: RentalListing[] | null = null;
 
 /** Listings by their analysis id — filled the first time allRentals()

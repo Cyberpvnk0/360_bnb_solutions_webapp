@@ -72,7 +72,8 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             </span>
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground tabular">
-            {l.bedrooms} bd · {l.bathrooms} ba · {fmtNum(l.sqft)} sqft ·{" "}
+            {l.bedrooms} bd · {l.bathrooms} ba ·{" "}
+            {l.sqft > 0 ? `${fmtNum(l.sqft)} sqft · ` : ""}
             {TYPE_LABEL[l.propertyType]}
           </p>
           <p className="mt-2 truncate text-sm font-medium text-foreground">

@@ -12,7 +12,7 @@
 
 import * as React from "react";
 import { LayoutGrid, Map as MapIcon, ArrowDownWideNarrow, SearchX } from "lucide-react";
-import { getRentalTotals } from "@/lib/data";
+import { getLiveRentals, getRentalTotals } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
 import { estimateCushionPts } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
@@ -122,11 +122,66 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     };
   }, []);
 
+  // Live mode: when the Location search resolves to exactly one market,
+  // swap that market's preview rows for today's actual inventory.
+  const liveTarget = React.useMemo(() => {
+    const q = filters.query.trim().toLowerCase();
+    if (!q) return null;
+    const hits = markets.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        `${m.name}, ${m.stateCode}`.toLowerCase().includes(q)
+    );
+    return hits.length === 1 ? hits[0] : null;
+  }, [filters.query, markets]);
+
+  const [live, setLive] = React.useState<{
+    slug: string;
+    asOf?: string;
+    listings: RentalListing[];
+  } | null>(null);
+  // The last market slug the feed answered for (live or fallback) —
+  // "checking" is derived, so no synchronous setState in the effect.
+  const [liveChecked, setLiveChecked] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!liveTarget) return;
+    const slug = liveTarget.slug;
+    let cancelled = false;
+    getLiveRentals(slug).then((result) => {
+      if (cancelled) return;
+      setLive(
+        result.live
+          ? { slug, asOf: result.asOf, listings: result.listings }
+          : null
+      );
+      setLiveChecked(slug);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [liveTarget]);
+
+  const liveActive = Boolean(
+    liveTarget && live && live.slug === liveTarget.slug
+  );
+  const liveChecking = Boolean(
+    liveTarget && liveChecked !== liveTarget.slug
+  );
+
   // Join listings with their market once — cushion comes through
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
   const rows = React.useMemo<Row[]>(() => {
     const bySlug = new Map(markets.map((m) => [m.slug, m]));
-    return rentals.flatMap((listing) => {
+    // In live mode the target market's rows come from the feed; its
+    // preview rows drop out so real and seeded inventory never mix.
+    const source = liveActive
+      ? [
+          ...live!.listings,
+          ...rentals.filter((l) => l.marketSlug !== live!.slug),
+        ]
+      : rentals;
+    return source.flatMap((listing) => {
       const market = bySlug.get(listing.marketSlug);
       if (!market) return [];
       return [
@@ -148,7 +203,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         },
       ];
     });
-  }, [rentals, markets]);
+  }, [rentals, markets, liveActive, live]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -197,9 +252,19 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     else cardRefs.current.delete(key);
   };
 
-  const countLabel = `${fmtNum(filtered.length)} of ${fmtNum(
-    totals?.rentals ?? rentals.length
-  )} rentals`;
+  const countLabel = liveActive
+    ? `${fmtNum(filtered.length)} live rentals in ${liveTarget!.name}`
+    : `${fmtNum(filtered.length)} of ${fmtNum(
+        totals?.rentals ?? rentals.length
+      )} rentals`;
+
+  const liveAsOfLabel =
+    liveActive && live?.asOf
+      ? new Date(live.asOf).toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : null;
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden contain-paint">
@@ -224,6 +289,27 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           >
             Reset all
           </Button>
+        ) : null}
+
+        {/* Provenance — students always know which inventory they see. */}
+        {liveActive ? (
+          <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
+            <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+            Live · {liveTarget!.name}
+            {liveAsOfLabel ? (
+              <span className="font-normal text-muted-foreground">
+                as of {liveAsOfLabel}
+              </span>
+            ) : null}
+          </span>
+        ) : liveTarget && liveChecking ? (
+          <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
+            Checking live listings…
+          </span>
+        ) : liveTarget ? (
+          <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
+            Preview inventory
+          </span>
         ) : null}
 
         <div className="ml-auto flex shrink-0 items-center gap-3 pl-3">

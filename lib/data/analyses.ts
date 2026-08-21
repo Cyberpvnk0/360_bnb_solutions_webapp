@@ -8,18 +8,24 @@ import {
   ANALYSIS_BY_ID,
   analysisForListing,
 } from "@/lib/mock/analyses";
-import { allRentals, RENTAL_BY_ANALYSIS_ID } from "@/lib/mock/rentals";
+import {
+  allRentals,
+  liveListingByAnalysisId,
+  RENTAL_BY_ANALYSIS_ID,
+} from "@/lib/mock/rentals";
 import type { Analysis } from "@/lib/mock/types";
 import { simulateLatency } from "./latency";
 
 /** Seeded pulls first; `r--` ids resolve lazily through the Deal Finder's
- *  listing set, so handing a listing to the analyzer just works. */
+ *  listing set — seeded inventory or live rows registered this session —
+ *  so handing any listing to the analyzer just works. */
 function resolveAnalysis(id: string): Analysis | null {
   const seeded = ANALYSIS_BY_ID.get(id);
   if (seeded) return seeded;
   if (id.startsWith("r--")) {
     allRentals(); // ensure the lazy by-analysis-id index is built
-    const listing = RENTAL_BY_ANALYSIS_ID.get(id);
+    const listing =
+      RENTAL_BY_ANALYSIS_ID.get(id) ?? liveListingByAnalysisId(id);
     if (listing) return analysisForListing(listing);
   }
   return null;

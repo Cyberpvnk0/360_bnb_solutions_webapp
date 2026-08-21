@@ -27,6 +27,20 @@ The top-right avatar menu has a **Demo: view as** switcher to preview the
 product as Free / Starter / Pro / Scale — the fastest way to see the
 upgrade flow (submit an address on /analyze as a Free user).
 
+### Live rentals (RentCast)
+
+Copy `.env.example` to `.env.local` and set `RENTCAST_API_KEY`. With the
+key present, searching a single market in Deal Finder's Location filter
+(e.g. "Jacksonville") swaps that market's preview inventory for today's
+actual active rentals — a gold **Live** chip shows the fetch time.
+Without a key, or when the feed is unreachable, the same search shows the
+seeded preview with an honest **Preview inventory** chip.
+
+The key stays server-side (`app/api/rentals` holds it; the browser never
+sees it) and responses cache for 24 hours per market, so the free
+50-requests/month tier comfortably covers daily browsing of a handful of
+markets — one request per market per day, shared by every user.
+
 ## Map of the codebase
 
 | Path | What lives there |
