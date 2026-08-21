@@ -17,7 +17,12 @@
 import { breakevenOccupancy } from "@/lib/calc/arbitrage";
 import { benchmark2brInputs, MARKETS } from "./markets";
 import { hashStr, Rng, roundTo } from "./seed";
-import type { Market, PropertyType, RentalListing } from "./types";
+import type {
+  Market,
+  MarketTerrain,
+  PropertyType,
+  RentalListing,
+} from "./types";
 
 /* ------------------------------------------------------------------ */
 /* Name pools                                                          */
@@ -64,6 +69,61 @@ const TYPE_POOL: readonly PropertyType[] = [
   "condo", "condo",
   "townhome",
 ];
+
+/* ------------------------------------------------------------------ */
+/* Feature tags — the Zillow-style keyword surface                     */
+/* ------------------------------------------------------------------ */
+
+/** Tags any listing can carry, anywhere in the country. */
+export const BASE_FEATURES = [
+  "Renovated",
+  "Washer & dryer",
+  "Garage",
+  "Balcony",
+  "Fenced yard",
+  "New build",
+  "Corner unit",
+  "Gated community",
+  "Near downtown",
+  "Covered parking",
+] as const;
+
+/** Tags that only make sense in a market's terrain — a mountain-town
+ *  listing can be ski-in, a coastal one waterfront, never the reverse. */
+export const TERRAIN_FEATURES: Record<MarketTerrain, readonly string[]> = {
+  metro: ["Rooftop deck", "Near transit", "City view", "Private pool"],
+  coastal: ["Waterfront", "Ocean view", "Near the beach", "Boat slip", "Private pool"],
+  mountain: ["Mountain view", "Hot tub", "Fireplace", "Ski storage"],
+  desert: ["Private pool", "Casita", "Desert view", "Covered patio"],
+};
+
+/**
+ * Seeded independently of the listing's own value stream (`feat|id`), so
+ * adding tags never reshuffles rents or addresses. "Furnished" is rolled
+ * on its own — it is the tag arbitrage operators hunt for, since it can
+ * zero out the furnishing budget. Terrain tags appear twice in the pool
+ * so a coastal market actually reads coastal.
+ */
+function featuresFor(
+  id: string,
+  terrain: MarketTerrain,
+  petFriendly: boolean
+): string[] {
+  const rng = new Rng(hashStr(`feat|${id}`));
+  const features: string[] = [];
+  if (rng.chance(0.2)) features.push("Furnished");
+  if (petFriendly) features.push("Pet friendly");
+  const pool = [
+    ...TERRAIN_FEATURES[terrain],
+    ...TERRAIN_FEATURES[terrain],
+    ...BASE_FEATURES,
+  ];
+  const wanted = rng.int(2, 4);
+  const chosen = new Set<string>();
+  while (chosen.size < wanted) chosen.add(pool[rng.int(0, pool.length - 1)]);
+  features.push(...chosen);
+  return features;
+}
 
 /** Same shape as the analyses generator: 1–3 baths in half steps. */
 function bathsFor(bedrooms: number, rng: Rng): number {
@@ -130,8 +190,11 @@ export function rentalsFor(market: Market): RentalListing[] {
       rng.chance(0.6)
         ? ` #${rng.int(2, 48)}`
         : "";
-    return {
-      id: `rl--${market.slug}--${i}`,
+    const id = `rl--${market.slug}--${i}`;
+    // The base draws stay in their original order so adding features never
+    // reshuffles addresses or rents; features use their own per-id stream.
+    const base = {
+      id,
       analysisId: `r--${market.slug}--${i}`,
       address: `${rng.int(100, 9800)} ${rng.pick(STREETS)} ${rng.pick(STREET_TYPES)}${unit}`,
       city: market.name,
@@ -149,6 +212,10 @@ export function rentalsFor(market: Market): RentalListing[] {
       ),
       daysOnMarket: rng.int(0, 45),
       petFriendly: rng.chance(0.45),
+    };
+    return {
+      ...base,
+      features: featuresFor(id, market.terrain, base.petFriendly),
     };
   });
 

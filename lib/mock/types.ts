@@ -180,6 +180,9 @@ export interface RentalListing {
   /** Days since the listing went up (0 = today). */
   daysOnMarket: number;
   petFriendly: boolean;
+  /** Zillow-style keyword tags ("Furnished", "Waterfront", …). Terrain-aware,
+   *  seeded per listing; "Pet friendly" appears here iff petFriendly. */
+  features: string[];
 }
 
 /* ------------------------------------------------------------------ */

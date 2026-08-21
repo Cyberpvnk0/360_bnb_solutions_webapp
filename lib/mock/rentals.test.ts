@@ -4,12 +4,14 @@ import { analysisForListing } from "./analyses";
 import { MARKET_BY_SLUG, MARKETS } from "./markets";
 import {
   allRentals,
+  BASE_FEATURES,
   BEDROOM_ADR_FACTOR,
   BEDROOM_RENT_FACTOR,
   estimateCushionPts,
   RENTAL_BY_ANALYSIS_ID,
   rentalCountFor,
   rentalsFor,
+  TERRAIN_FEATURES,
   totalRentalCount,
 } from "./rentals";
 
@@ -110,5 +112,35 @@ describe("rentals", () => {
   it("analysisForListing is memoized (same reference twice)", () => {
     const listing = allRentals()[3];
     expect(analysisForListing(listing)).toBe(analysisForListing(listing));
+  });
+
+  it("every listing carries 2–6 distinct feature tags", () => {
+    for (const l of allRentals()) {
+      expect(l.features.length).toBeGreaterThanOrEqual(2);
+      expect(l.features.length).toBeLessThanOrEqual(6);
+      expect(new Set(l.features).size).toBe(l.features.length);
+    }
+  });
+
+  it("'Pet friendly' appears in features exactly when petFriendly is set", () => {
+    for (const l of allRentals()) {
+      expect(l.features.includes("Pet friendly")).toBe(l.petFriendly);
+    }
+  });
+
+  it("feature tags respect the market's terrain — no waterfront in the desert", () => {
+    for (const m of MARKETS) {
+      const allowed = new Set<string>([
+        "Furnished",
+        "Pet friendly",
+        ...BASE_FEATURES,
+        ...TERRAIN_FEATURES[m.terrain],
+      ]);
+      for (const l of rentalsFor(m)) {
+        for (const f of l.features) {
+          expect(allowed.has(f), `${f} on ${l.id} (${m.terrain})`).toBe(true);
+        }
+      }
+    }
   });
 });

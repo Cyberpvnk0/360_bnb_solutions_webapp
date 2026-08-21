@@ -55,6 +55,8 @@ export interface DealFilters {
   bathsMin: number;
   /** All four checked = everything. */
   types: PropertyType[];
+  /** Zillow-style keyword terms — a listing must match every one. */
+  keywords: string[];
 }
 
 export const DEFAULT_DEAL_FILTERS: DealFilters = {
@@ -65,6 +67,7 @@ export const DEFAULT_DEAL_FILTERS: DealFilters = {
   bedsMin: 0,
   bathsMin: 0,
   types: TYPE_OPTIONS.map((t) => t.value),
+  keywords: [],
 };
 
 export function isDefaultDealFilters(f: DealFilters): boolean {
@@ -75,8 +78,17 @@ export function isDefaultDealFilters(f: DealFilters): boolean {
     f.rentMax === DEFAULT_DEAL_FILTERS.rentMax &&
     f.bedsMin === 0 &&
     f.bathsMin === 0 &&
-    f.types.length === TYPE_OPTIONS.length
+    f.types.length === TYPE_OPTIONS.length &&
+    f.keywords.length === 0
   );
+}
+
+/**
+ * Loose, punctuation-blind matching: "water front" finds "Waterfront",
+ * "washer dryer" finds "Washer & dryer". Both sides normalize the same way.
+ */
+export function normalizeKeyword(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 /* ------------------------------------------------------------------ */
@@ -444,6 +456,114 @@ function HomeTypePanel({
   );
 }
 
+/** The tags operators actually hunt for — Furnished first: it can zero
+ *  out the furnishing budget. */
+const KEYWORD_SUGGESTIONS = [
+  "Furnished",
+  "Pet friendly",
+  "Waterfront",
+  "Private pool",
+  "Mountain view",
+  "Hot tub",
+  "Renovated",
+  "Garage",
+];
+
+function KeywordsPanel({
+  applied,
+  onApply,
+  onClose,
+}: {
+  applied: DealFilters;
+  onApply: (patch: Partial<DealFilters>) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = React.useState(applied.keywords.join(", "));
+
+  const terms = React.useMemo(
+    () =>
+      text
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    [text]
+  );
+
+  const hasTerm = (kw: string) =>
+    terms.some((t) => normalizeKeyword(t) === normalizeKeyword(kw));
+
+  const toggleTerm = (kw: string) => {
+    const next = hasTerm(kw)
+      ? terms.filter((t) => normalizeKeyword(t) !== normalizeKeyword(kw))
+      : [...terms, kw];
+    setText(next.join(", "));
+  };
+
+  const apply = () => {
+    // Dedupe on the normalized form; keep the user's own spelling.
+    const seen = new Set<string>();
+    const keywords = terms.filter((t) => {
+      const n = normalizeKeyword(t);
+      if (!n || seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    });
+    onApply({ keywords });
+    onClose();
+  };
+
+  return (
+    <>
+      <PanelBody>
+        <div>
+          <Label htmlFor="df-keywords" className="text-xs text-muted-foreground">
+            Keywords — comma-separated
+          </Label>
+          <Input
+            id="df-keywords"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") apply();
+            }}
+            placeholder="furnished, waterfront…"
+            className="mt-1.5 h-8"
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Listings must match every keyword. Spelling is forgiving —
+            &ldquo;water front&rdquo; finds Waterfront.
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Common tags</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {KEYWORD_SUGGESTIONS.map((kw) => {
+              const on = hasTerm(kw);
+              return (
+                <button
+                  key={kw}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleTerm(kw)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs transition-colors duration-150",
+                    on
+                      ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                      : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                  )}
+                >
+                  {kw}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PanelBody>
+      <PanelFooter onReset={() => setText("")} onApply={apply} />
+    </>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* The chip row                                                        */
 /* ------------------------------------------------------------------ */
@@ -562,6 +682,19 @@ export function DealFilterChips({
         {...chip("type")}
       >
         <HomeTypePanel applied={filters} onApply={onChange} onClose={close} />
+      </FilterChip>
+
+      <FilterChip
+        label="Keywords"
+        active={filters.keywords.length > 0}
+        summary={
+          filters.keywords.length > 1
+            ? `${filters.keywords[0]} +${filters.keywords.length - 1}`
+            : filters.keywords[0]
+        }
+        {...chip("keywords")}
+      >
+        <KeywordsPanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
     </>
   );

@@ -29,6 +29,8 @@ import {
   DealFilterChips,
   DEFAULT_DEAL_FILTERS,
   isDefaultDealFilters,
+  normalizeKeyword,
+  TYPE_LABEL,
   type DealFilters,
 } from "./deal-filters";
 import { ListingCard } from "./listing-card";
@@ -53,6 +55,9 @@ interface Row {
   cushionPts: number;
   /** Lowercased market-name/state haystack for the Location search. */
   haystack: string;
+  /** Punctuation-blind haystack for the Keywords filter: features,
+   *  address, market, and home type, all through normalizeKeyword. */
+  keywordHaystack: string;
 }
 
 const SORTERS: Record<SortKey, (a: Row, b: Row) => number> = {
@@ -78,6 +83,10 @@ function matchesFilters(row: Row, f: DealFilters): boolean {
   if (f.bedsMin > 0 && l.bedrooms < f.bedsMin) return false;
   if (f.bathsMin > 0 && l.bathrooms < f.bathsMin) return false;
   if (!f.types.includes(l.propertyType)) return false;
+  // Every keyword must land somewhere in the listing (Zillow semantics).
+  for (const kw of f.keywords) {
+    if (!row.keywordHaystack.includes(normalizeKeyword(kw))) return false;
+  }
   return true;
 }
 
@@ -125,6 +134,16 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           cushionPts: estimateCushionPts(listing, market),
           haystack:
             `${market.name} ${market.state} ${market.stateCode}`.toLowerCase(),
+          keywordHaystack: normalizeKeyword(
+            [
+              listing.address,
+              market.name,
+              market.state,
+              market.stateCode,
+              TYPE_LABEL[listing.propertyType],
+              ...listing.features,
+            ].join(" ")
+          ),
         },
       ];
     });

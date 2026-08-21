@@ -81,6 +81,31 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           <p className="text-xs text-muted-foreground">
             in {l.city}, {l.stateCode}
           </p>
+
+          {/* Feature tags — Furnished reads gold: it can zero the
+              furnishing budget, so it's the tag operators hunt. */}
+          {l.features.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              {l.features.slice(0, 3).map((feature) => (
+                <span
+                  key={feature}
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                    feature === "Furnished"
+                      ? "border-gold/50 bg-gold-fill/10 text-gold"
+                      : "border-border text-muted-foreground"
+                  )}
+                >
+                  {feature}
+                </span>
+              ))}
+              {l.features.length > 3 ? (
+                <span className="text-[10px] text-muted-foreground">
+                  +{l.features.length - 3}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
