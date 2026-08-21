@@ -48,7 +48,7 @@ export function DashboardScreen() {
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
         <PipelineSummary deals={deals} />
 
-        <div className="mt-12 grid grid-cols-1 gap-10 pb-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="mt-12 grid grid-cols-1 gap-10 pb-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-start">
           <WatchedMarkets slugs={watchedMarketSlugs} />
           <ActivityFeed events={activity} />
         </div>

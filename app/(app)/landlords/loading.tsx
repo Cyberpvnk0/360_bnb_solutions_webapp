@@ -17,19 +17,27 @@ export default function LandlordsLoading() {
         <Skeleton className="h-4 w-80 max-w-full" />
       </div>
 
-      {/* Toolbar */}
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        <Skeleton className="h-9 w-full sm:w-72" />
-        <Skeleton className="h-9 w-40" />
-        <Skeleton className="ml-auto h-4 w-20" />
-      </div>
+      {/* The book: toolbar header + table, one card */}
+      <div className="mt-6 overflow-hidden rounded-sm border border-border bg-card">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
+          <Skeleton className="h-9 w-full sm:w-72" />
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="ml-auto h-4 w-20" />
+        </div>
 
-      {/* Table */}
-      <div className="mt-4 rounded-sm border border-border bg-card p-4">
-        <Skeleton className="h-3.5 w-full" />
-        <div className="mt-4 space-y-3.5">
+        {/* Table */}
+        <div className="px-2">
+          <div className="flex h-9 items-center border-b border-border">
+            <Skeleton className="h-3 w-full" />
+          </div>
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-6 w-full" />
+            <div
+              key={i}
+              className="border-b border-border py-2.5 last:border-0"
+            >
+              <Skeleton className="h-3.5 w-full" />
+            </div>
           ))}
         </div>
       </div>

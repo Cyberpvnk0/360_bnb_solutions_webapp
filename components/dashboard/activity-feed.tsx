@@ -11,7 +11,6 @@ import {
 import type { ActivityEvent, ActivityType } from "@/lib/mock/types";
 import { fmtDate } from "@/lib/format";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { MetricLabel } from "@/components/primitives/metric-label";
 
 const TYPE_ICON: Record<ActivityType, LucideIcon> = {
   pull: Crosshair,
@@ -43,41 +42,52 @@ function RowContent({ event }: { event: ActivityEvent }) {
   );
 }
 
-/** The last 30 days of pulls, saves, stage moves and exports. */
+/**
+ * Recent-activity module: the last 30 days of pulls, saves, stage moves
+ * and exports, in a card with feed rows flush to its edges.
+ */
 export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
   const shown = events.slice(0, 8);
 
   return (
-    <section aria-labelledby="activity-title">
-      <MetricLabel id="activity-title">Recent activity</MetricLabel>
+    <section
+      aria-labelledby="activity-title"
+      className="overflow-hidden rounded-sm border border-border bg-card"
+    >
+      <div className="border-b border-border px-6 py-4">
+        <h2 id="activity-title" className="text-sm font-semibold text-foreground">
+          Recent activity
+        </h2>
+      </div>
 
       {shown.length === 0 ? (
-        <EmptyState
-          className="mt-3"
-          icon={Crosshair}
-          title="No activity yet"
-          description="Pulls, saved deals and stage moves will land here."
-        />
+        <div className="p-6">
+          <EmptyState
+            icon={Crosshair}
+            title="No activity yet"
+            description="Pulls, saved deals and stage moves will land here."
+          />
+        </div>
       ) : (
         <>
-          <div className="mt-3 divide-y divide-border border-y border-border">
+          <div className="divide-y divide-border">
             {shown.map((event) =>
               event.href ? (
                 <Link
                   key={event.id}
                   href={event.href}
-                  className="flex items-center gap-3 px-3 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
+                  className="flex items-center gap-3 px-6 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
                 >
                   <RowContent event={event} />
                 </Link>
               ) : (
-                <div key={event.id} className="flex items-center gap-3 px-3 py-3.5">
+                <div key={event.id} className="flex items-center gap-3 px-6 py-3.5">
                   <RowContent event={event} />
                 </div>
               )
             )}
           </div>
-          <p className="mt-3 px-3 text-xs text-muted-foreground">
+          <p className="border-t border-border px-6 py-3.5 text-xs text-muted-foreground">
             That&apos;s the last 30 days.
           </p>
         </>

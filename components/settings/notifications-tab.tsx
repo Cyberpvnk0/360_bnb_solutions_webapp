@@ -51,7 +51,7 @@ export function NotificationsTab() {
 
   return (
     <div className="rounded-sm border border-border bg-card">
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-border px-6 py-4">
         <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           What lands in your inbox. Changes apply immediately.

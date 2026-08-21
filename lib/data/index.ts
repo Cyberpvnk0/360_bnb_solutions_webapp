@@ -8,6 +8,7 @@
  */
 
 export * from "./markets";
+export * from "./submarkets";
 export * from "./analyses";
 export * from "./deals";
 export * from "./landlords";

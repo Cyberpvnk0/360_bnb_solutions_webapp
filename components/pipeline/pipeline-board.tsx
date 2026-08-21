@@ -64,12 +64,13 @@ function BoardColumn({
   const totalCashFlow = deals.reduce((sum, d) => sum + d.netCashFlow, 0);
 
   return (
+    // Soft panel — deal cards keep bg-card so they float on it.
     <section
       ref={setNodeRef}
       aria-label={`${label} — ${deals.length} deals`}
       className={cn(
-        "flex min-w-[284px] flex-1 flex-col rounded-sm border border-transparent p-2 transition-colors duration-150",
-        isOver && "border-gold/30 bg-secondary/40"
+        "flex min-w-[284px] flex-1 flex-col rounded-sm border border-border bg-secondary/40 p-3 transition-colors duration-150",
+        isOver && "border-gold/30"
       )}
     >
       <div className="flex items-center justify-between gap-2 px-1 pb-4">

@@ -13,8 +13,8 @@ import { ACTIVITY } from "./user";
  */
 
 describe("markets", () => {
-  it("has exactly 40 markets within the spec's ranges", () => {
-    expect(MARKETS).toHaveLength(40);
+  it("has exactly 387 markets within the spec's ranges", () => {
+    expect(MARKETS).toHaveLength(387);
     for (const m of MARKETS) {
       expect(m.occupancy).toBeGreaterThanOrEqual(0.45);
       expect(m.occupancy).toBeLessThanOrEqual(0.72);
@@ -48,6 +48,11 @@ describe("markets", () => {
     for (const m of MARKETS) {
       expect(revpar(m.adr, m.occupancy)).toBeCloseTo(m.adr * m.occupancy, 10);
     }
+  });
+
+  it("slugs are globally unique so every market routes cleanly", () => {
+    const slugs = new Set(MARKETS.map((m) => m.slug));
+    expect(slugs.size).toBe(MARKETS.length);
   });
 });
 

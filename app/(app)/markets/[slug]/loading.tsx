@@ -6,28 +6,35 @@ export default function MarketDetailLoading() {
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <Skeleton className="h-4 w-24" />
 
-      {/* Header */}
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0 space-y-2">
-          <Skeleton className="h-9 w-72" />
-          <Skeleton className="h-4 w-56" />
+      {/* Hero card */}
+      <div className="mt-4 overflow-hidden rounded-sm border border-border bg-card">
+        {/* Banner + margin badge + watch toggle */}
+        <div className="relative">
+          <Skeleton className="h-28 w-full rounded-none" />
+          <Skeleton className="absolute right-4 top-4 h-8 w-32" />
+          <Skeleton className="absolute -bottom-6 left-6 size-14 rounded-full" />
         </div>
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-9 w-36" />
+
+        {/* Identity + primary CTA */}
+        <div className="flex flex-col gap-4 p-6 pt-8 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0 space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-4 w-72" />
+          </div>
           <Skeleton className="h-9 w-64" />
         </div>
-      </div>
 
-      {/* Stat band */}
-      <div className="mt-8 overflow-hidden border-y border-border">
-        <div className="flex items-stretch divide-x divide-border">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex-1 px-8 py-6 first:pl-0 last:pr-0">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="mt-2 h-[35px] w-24" />
-              <Skeleton className="mt-1.5 h-6 w-24" />
-            </div>
-          ))}
+        {/* Headline figures */}
+        <div className="overflow-hidden border-t border-border">
+          <div className="flex items-stretch divide-x divide-border">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex-1 px-6 py-5">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="mt-2 h-8 w-20" />
+                <Skeleton className="mt-2 h-3.5 w-24" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -40,9 +47,31 @@ export default function MarketDetailLoading() {
         </div>
       </div>
 
-      {/* Pencils strip */}
-      <div className="mt-8 grid gap-8 pb-10">
-        <Skeleton className="h-[14.5rem]" />
+      {/* Submarkets table */}
+      <div className="mt-8 overflow-hidden rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
+          <Skeleton className="h-4 w-72" />
+          <Skeleton className="mt-2 h-3 w-64" />
+        </div>
+        <div className="px-6 py-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="my-3 h-3.5 w-full" />
+          ))}
+        </div>
+      </div>
+
+      {/* Pencils card */}
+      <div className="mt-8 pb-10">
+        <div className="rounded-sm border border-border bg-card">
+          <div className="border-b border-border px-6 py-4">
+            <Skeleton className="h-4 w-44" />
+            <Skeleton className="mt-2 h-3 w-64" />
+          </div>
+          <div className="p-6">
+            <Skeleton className="h-[4.5rem] w-full" />
+            <Skeleton className="mt-3 h-4 w-3/4" />
+          </div>
+        </div>
       </div>
     </div>
   );

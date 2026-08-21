@@ -22,7 +22,6 @@ import {
   type DataTableColumn,
 } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,10 +75,10 @@ export function BillingTab() {
 
   if (!ready || !user) {
     return (
-      <div className="space-y-10">
-        <Skeleton className="h-36 w-full" />
-        <Skeleton className="h-28 w-full" />
-        <Skeleton className="h-72 w-full" />
+      <div className="space-y-8">
+        <Skeleton className="h-44 w-full" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-96 w-full" />
         <Skeleton className="h-96 w-full" />
       </div>
     );
@@ -101,62 +100,70 @@ export function BillingTab() {
   };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {/* Current plan */}
-      <div className="rounded-sm border border-border bg-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <MetricLabel>Current plan</MetricLabel>
-            <div className="mt-1.5 font-display text-3xl font-medium tracking-tight text-foreground">
-              {tier.name}
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground tabular">
-              {priceLine}
-            </p>
-            {isPaid ? (
-              <p className="mt-0.5 text-xs text-muted-foreground tabular">
-                Renews {fmtDate(user.periodEnd)}
-              </p>
-            ) : null}
-          </div>
+      <section className="rounded-sm border border-border bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
+          <h2 className="text-sm font-semibold text-foreground">
+            Current plan
+          </h2>
           {isPaid ? <StatusChip tone="gold">Active</StatusChip> : null}
         </div>
-      </div>
+        <div className="p-6">
+          <div className="font-display text-3xl font-medium tracking-tight text-foreground">
+            {tier.name}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground tabular">
+            {priceLine}
+          </p>
+          {isPaid ? (
+            <p className="mt-0.5 text-xs text-muted-foreground tabular">
+              Renews {fmtDate(user.periodEnd)}
+            </p>
+          ) : null}
+        </div>
+      </section>
 
       {/* Pull usage */}
-      <div className="rounded-sm border border-border bg-card p-6">
-        <MetricLabel>Address pulls this period</MetricLabel>
-        {pullLimit > 0 ? (
-          <>
-            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-sm bg-secondary">
-              <div
-                className="h-full rounded-sm transition-all duration-150"
-                style={{
-                  width: `${usedFraction * 100}%`,
-                  background: exhausted ? "var(--red-muted)" : "var(--gold)",
-                }}
-              />
+      <section className="rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-sm font-semibold text-foreground">
+            Address pulls this period
+          </h2>
+        </div>
+        <div className="p-6">
+          {pullLimit > 0 ? (
+            <>
+              <div className="h-1.5 w-full overflow-hidden rounded-sm bg-secondary">
+                <div
+                  className="h-full rounded-sm transition-all duration-150"
+                  style={{
+                    width: `${usedFraction * 100}%`,
+                    background: exhausted ? "var(--red-muted)" : "var(--gold)",
+                  }}
+                />
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground tabular">
+                {fmtNum(pullsUsed)} of {fmtNum(pullLimit)} used · resets{" "}
+                {fmtDate(user.periodEnd)}
+              </p>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                The Free plan includes no pulls.
+              </p>
+              <Button onClick={() => openUpgrade({ reason: "pulls" })}>
+                Upgrade for pulls
+              </Button>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground tabular">
-              {fmtNum(pullsUsed)} of {fmtNum(pullLimit)} used · resets{" "}
-              {fmtDate(user.periodEnd)}
-            </p>
-          </>
-        ) : (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">
-              The Free plan includes no pulls.
-            </p>
-            <Button onClick={() => openUpgrade({ reason: "pulls" })}>
-              Upgrade for pulls
-            </Button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </section>
 
       {/* Invoice history */}
-      <div className="rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-5 py-4">
+      <section className="overflow-hidden rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">
             Invoice history
           </h2>
@@ -164,45 +171,44 @@ export function BillingTab() {
             Every charge to date.
           </p>
         </div>
-        <div className="px-5 pb-3">
-          <DataTable
-            columns={INVOICE_COLUMNS}
-            rows={invoices ?? []}
-            rowKey={(row) => row.id}
-            loading={invoices === null}
-            skeletonRows={5}
-            emptyState={
-              <EmptyState
-                icon={Receipt}
-                title="No invoices yet."
-                description="Charges appear here once a paid plan starts."
-                className="my-4"
-              />
-            }
-          />
-        </div>
-      </div>
+        <DataTable
+          columns={INVOICE_COLUMNS}
+          rows={invoices ?? []}
+          rowKey={(row) => row.id}
+          loading={invoices === null}
+          skeletonRows={5}
+          emptyState={
+            <EmptyState
+              icon={Receipt}
+              title="No invoices yet."
+              description="Charges appear here once a paid plan starts."
+              className="border-0"
+            />
+          }
+        />
+      </section>
 
       {/* Change plan */}
-      <section className="pt-2">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <section className="rounded-sm border border-border bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
           <div>
-            <h2 className="font-display text-xl font-medium tracking-tight text-foreground">
+            <h2 className="text-sm font-semibold text-foreground">
               Change plan
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Anything unlimited stays unlimited — that&apos;s the point.
             </p>
           </div>
           <BillingToggle billing={billing} onChange={setBilling} />
         </div>
-        <PricingTiers
-          billing={billing}
-          compact={false}
-          currentTierId={user.tier}
-          onSelect={handleSelect}
-          className="mt-6"
-        />
+        <div className="p-6">
+          <PricingTiers
+            billing={billing}
+            compact={false}
+            currentTierId={user.tier}
+            onSelect={handleSelect}
+          />
+        </div>
       </section>
     </div>
   );

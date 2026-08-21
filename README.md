@@ -34,7 +34,7 @@ upgrade flow (submit an address on /analyze as a Free user).
 | `config/app.ts` | Product name, tagline, pricing tiers — the rename file |
 | `lib/calc/arbitrage.ts` | All underwriting math, documented, unit-tested |
 | `lib/calc/comps.ts` | Projection assumptions derived from displayed comps |
-| `lib/mock/*` | Seeded, internally consistent mock world (40 markets, 30 analyses, 25 deals, 40 landlords) |
+| `lib/mock/*` | Seeded, internally consistent mock world (387 markets, 6,500+ submarkets, 30 analyses, 25 deals, 40 landlords) |
 | `lib/data/*` | Async data-access stubs (swap bodies for real APIs) |
 | `components/ui/*` | Vendored shadcn-style Radix components |
 | `components/primitives/*` | StatCard, MetricLabel, DataTable, StatusChip, BreakevenGauge, EmptyState, … |

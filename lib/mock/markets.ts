@@ -7,7 +7,8 @@
  */
 
 import { breakevenOccupancy } from "@/lib/calc/arbitrage";
-import { clamp, Rng, roundTo, trailingMonths } from "./seed";
+import { EXPANSION_SEEDS, type MarketKind } from "./market-seeds";
+import { clamp, hashStr, Rng, roundTo, trailingMonths } from "./seed";
 import type { BedroomAdr, Market, MarketMonth, MarketTerrain, Regulation, RegulationStatus } from "./types";
 
 /** Seasonality shapes — monthly multipliers, Jan..Dec, mean ≈ 1. */
@@ -28,6 +29,8 @@ interface MarketSeed {
   name: string;
   state: string;
   code: string;
+  /** Override when another market shares the slugified name. */
+  slug?: string;
   lat: number;
   lon: number;
   adr: number; // 2BR benchmark ADR
@@ -188,7 +191,7 @@ function buildMarket(seed: MarketSeed, rng: Rng): Market {
   });
 
   return {
-    slug: slugify(seed.name),
+    slug: seed.slug ?? slugify(seed.name),
     name: seed.name,
     state: seed.state,
     stateCode: seed.code,
@@ -215,7 +218,58 @@ function buildMarket(seed: MarketSeed, rng: Rng): Market {
 
 const rng = new Rng(0xa11ce);
 
-export const MARKETS: Market[] = SEEDS.map((seed) => buildMarket(seed, rng));
+/** The 40 hand-authored flagship markets (stable RNG stream — do not
+ *  reorder or the seeded world shifts). */
+const FLAGSHIPS: Market[] = SEEDS.map((seed) => buildMarket(seed, rng));
+
+/* ------------------------------------------------------------------ */
+/* Expansion to full coverage                                          */
+/* ------------------------------------------------------------------ */
+
+/** Value bands per market kind. Occupancy and ADR stay inside the
+ *  product-wide bands (45–72%, $95–$310). */
+const KIND_CONFIG: Record<
+  MarketKind,
+  {
+    adr: [number, number];
+    occ: [number, number];
+    listings: [number, number];
+    rent: [number, number];
+    season: SeasonType;
+  }
+> = {
+  metro: { adr: [120, 195], occ: [0.55, 0.67], listings: [2400, 9000], rent: [1250, 2200], season: "metro" },
+  mid: { adr: [105, 165], occ: [0.51, 0.63], listings: [700, 3200], rent: [1000, 1650], season: "metro" },
+  small: { adr: [95, 145], occ: [0.45, 0.58], listings: [150, 950], rent: [850, 1350], season: "metro" },
+  beach: { adr: [155, 305], occ: [0.5, 0.66], listings: [800, 7000], rent: [1300, 2300], season: "beach" },
+  mountain: { adr: [150, 310], occ: [0.5, 0.66], listings: [400, 6000], rent: [1200, 2100], season: "mountain" },
+  lake: { adr: [135, 260], occ: [0.46, 0.6], listings: [250, 3500], rent: [1050, 1800], season: "beach" },
+  desert: { adr: [130, 300], occ: [0.52, 0.67], listings: [500, 5200], rent: [1200, 2200], season: "desert" },
+};
+
+/** Each expansion market seeds its own RNG from its identity, so adding
+ *  or reordering seeds never shifts anyone else's numbers. */
+const EXPANSION: Market[] = EXPANSION_SEEDS.map((e) => {
+  const marketRng = new Rng(hashStr(`${e.name}|${e.code}`));
+  const cfg = KIND_CONFIG[e.kind];
+  const seed: MarketSeed = {
+    name: e.name,
+    state: e.state,
+    code: e.code,
+    slug: e.slug,
+    lat: e.lat,
+    lon: e.lon,
+    adr: clamp(roundTo(marketRng.float(...cfg.adr), 1), 95, 310),
+    occ: clamp(Math.round(marketRng.float(...cfg.occ) * 100) / 100, 0.45, 0.72),
+    listings: Math.max(120, roundTo(marketRng.float(...cfg.listings), 10)),
+    rent2br: roundTo(marketRng.float(...cfg.rent), 25),
+    season: cfg.season,
+    reg: "unverified",
+  };
+  return buildMarket(seed, marketRng);
+});
+
+export const MARKETS: Market[] = [...FLAGSHIPS, ...EXPANSION];
 
 export const MARKET_BY_SLUG: Map<string, Market> = new Map(
   MARKETS.map((m) => [m.slug, m])

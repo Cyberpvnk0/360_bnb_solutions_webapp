@@ -30,11 +30,11 @@ function ChartCard({
 }) {
   return (
     <div className="rounded-sm border border-border bg-card">
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-border px-6 py-4">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-6">{children}</div>
     </div>
   );
 }
@@ -51,7 +51,7 @@ function LedgerRow({
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-6 px-5 py-3.5">
+    <div className="flex items-center justify-between gap-6 px-6 py-3.5">
       <span
         className={cn(
           "text-sm",
@@ -192,7 +192,7 @@ export function AdminScreen() {
 
       {/* Unit economics */}
       <div className="mt-10 rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-5 py-4">
+        <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">
             Unit economics
           </h2>
@@ -224,7 +224,7 @@ export function AdminScreen() {
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between px-5 py-3.5"
+                className="flex items-center justify-between px-6 py-3.5"
               >
                 <Skeleton className="h-4 w-48" />
                 <Skeleton className="h-4 w-20" />
@@ -235,16 +235,14 @@ export function AdminScreen() {
       </div>
 
       {/* Users */}
-      <div className="mt-10 rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-5 py-4">
+      <div className="mt-10 overflow-hidden rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             A sample of the cohort, newest first.
           </p>
         </div>
-        <div className="px-5 pb-3">
-          <AdminUsersTable users={metrics?.users ?? []} loading={loading} />
-        </div>
+        <AdminUsersTable users={metrics?.users ?? []} loading={loading} />
       </div>
     </div>
   );

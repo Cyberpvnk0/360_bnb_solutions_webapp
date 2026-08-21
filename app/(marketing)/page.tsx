@@ -10,8 +10,8 @@ import { PricingSection } from "@/components/marketing/pricing-section";
 
 const PROOF = [
   {
-    claim: "40 markets, coast to coast",
-    sub: "From Phoenix to Myrtle Beach — occupancy, nightly rates, and lease spreads for every one.",
+    claim: "387 markets, 6,500+ submarkets",
+    sub: "Coast to coast, down to the neighborhood — occupancy, nightly rates, and lease spreads for every one.",
   },
   {
     claim: "Comps behind every number",
@@ -117,10 +117,11 @@ export default function LandingPage() {
               Start where the spread is widest.
             </h2>
             <p className="mt-4 max-w-md text-base text-muted-foreground">
-              A split map of 40 markets across the country, ranked by the gap
-              between nightly revenue and long-term rent. Gold clears the
-              lease; muted red doesn&apos;t. Pick your market with the same
-              discipline you pick your lease.
+              387 markets across all fifty states, ranked by the gap between
+              nightly revenue and long-term rent — then drill into the
+              neighborhoods inside each one. Gold clears the lease; muted red
+              doesn&apos;t. Pick your market with the same discipline you pick
+              your lease.
             </p>
           </div>
           <MarketMapVisual className="w-full max-w-xl justify-self-center lg:justify-self-end" />

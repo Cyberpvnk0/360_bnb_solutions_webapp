@@ -149,56 +149,56 @@ export function LandlordsView() {
         </p>
       </div>
 
-      {bookEmpty ? (
-        <EmptyState
-          icon={Contact}
-          title="Your book is empty"
-          description="Every deal starts with a landlord who said yes. Add your first contact."
-          action={addButton}
-          className="mt-6"
-        />
-      ) : (
-        <>
-          {/* Toolbar */}
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <div className="relative w-full sm:w-72">
-              <Search
-                aria-hidden
-                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search name, company, or email"
-                aria-label="Search contacts"
-                className="pl-8"
-              />
+      {/* The book: toolbar header + table, one card */}
+      <div className="mt-6 overflow-hidden rounded-sm border border-border bg-card">
+        {bookEmpty ? (
+          <EmptyState
+            icon={Contact}
+            title="Your book is empty"
+            description="Every deal starts with a landlord who said yes. Add your first contact."
+            action={addButton}
+            className="border-0"
+          />
+        ) : (
+          <>
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
+              <div className="relative w-full sm:w-72">
+                <Search
+                  aria-hidden
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search name, company, or email"
+                  aria-label="Search contacts"
+                  className="pl-8"
+                />
+              </div>
+              <Select
+                value={policy}
+                onValueChange={(v) => setPolicy(v as PolicyFilter)}
+              >
+                <SelectTrigger className="w-40" aria-label="Filter by STR policy">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="yes">Allows STR</SelectItem>
+                  <SelectItem value="negotiable">Negotiable</SelectItem>
+                  <SelectItem value="no">Doesn&apos;t allow</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="ml-auto text-sm text-muted-foreground tabular">
+                {ready
+                  ? `${fmtNum(filtered.length)} ${
+                      filtered.length === 1 ? "contact" : "contacts"
+                    }`
+                  : "—"}
+              </p>
             </div>
-            <Select
-              value={policy}
-              onValueChange={(v) => setPolicy(v as PolicyFilter)}
-            >
-              <SelectTrigger className="w-40" aria-label="Filter by STR policy">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="yes">Allows STR</SelectItem>
-                <SelectItem value="negotiable">Negotiable</SelectItem>
-                <SelectItem value="no">Doesn&apos;t allow</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="ml-auto text-sm text-muted-foreground tabular">
-              {ready
-                ? `${fmtNum(filtered.length)} ${
-                    filtered.length === 1 ? "contact" : "contacts"
-                  }`
-                : "—"}
-            </p>
-          </div>
 
-          {/* The book */}
-          <div className="mt-4 rounded-sm border border-border bg-card">
             <DataTable
               columns={COLUMNS}
               rows={filtered}
@@ -221,9 +221,9 @@ export function LandlordsView() {
                 />
               }
             />
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
 
       <LandlordSheet
         landlord={selected}

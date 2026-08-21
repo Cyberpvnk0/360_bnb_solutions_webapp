@@ -39,6 +39,9 @@ const STATE_PATHS = STATE_FEATURES.map((f) => ({
 /** Matches the pre-projected albers atlas files. */
 const project = geoAlbersUsa().scale(1300).translate([487.5, 305]);
 
+/** 0.01 user units ≈ sub-pixel even at max zoom. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 const BASE = { x: 0, y: 0, w: 975, h: 610 } as const;
 const MAX_ZOOM = 8;
 
@@ -69,7 +72,7 @@ function zoomView(v: ViewBox, factor: number, cx: number, cy: number): ViewBox {
 }
 
 /** Strong spread: market occupancy clears the 2BR breakeven by 8+ points. */
-export function hasStrongSpread(m: Market): boolean {
+export function hasStrongSpread(m: MapPin): boolean {
   return m.occupancy - m.avgBreakeven2br >= 0.08;
 }
 
@@ -77,8 +80,15 @@ export function hasStrongSpread(m: Market): boolean {
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
+/** The fields a pin needs — Markets satisfy this, and so do Submarkets
+ *  once their id is passed as `slug`. */
+export type MapPin = Pick<
+  Market,
+  "slug" | "name" | "stateCode" | "lat" | "lon" | "adr" | "occupancy" | "avgBreakeven2br"
+>;
+
 interface UsaMapProps {
-  markets: Market[];
+  markets: MapPin[];
   selectedSlug: string | null;
   /** Ring a pin while its list card is hovered. */
   highlightSlug?: string | null;
@@ -102,7 +112,9 @@ export function UsaMap({
     const map = new Map<string, [number, number]>();
     for (const m of markets) {
       const p = project([m.lon, m.lat]);
-      if (p) map.set(m.slug, [p[0], p[1]]);
+      // Round: projection trig can differ in the last ulp between the
+      // server and client render, which trips hydration.
+      if (p) map.set(m.slug, [round2(p[0]), round2(p[1])]);
     }
     return map;
   }, [markets]);

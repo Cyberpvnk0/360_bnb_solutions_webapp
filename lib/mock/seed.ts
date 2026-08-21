@@ -61,6 +61,16 @@ export class Rng {
   }
 }
 
+/** FNV-1a string hash — stable seeds from names/slugs. */
+export function hashStr(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 /** Round to the nearest step (e.g. step 25 → $1,675). */
 export function roundTo(value: number, step: number): number {
   return Math.round(value / step) * step;

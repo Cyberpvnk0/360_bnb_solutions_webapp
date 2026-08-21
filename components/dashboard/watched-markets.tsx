@@ -20,8 +20,8 @@ const ROW_GRID =
   "grid grid-cols-[minmax(8rem,1.4fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)] items-center gap-x-4";
 
 /**
- * The markets the operator is watching: ADR, occupancy and RevPAR for
- * each, resolved from the market dataset.
+ * Watched-markets module: ADR, occupancy and RevPAR for every market the
+ * operator watches, in a card with rows flush to its edges.
  */
 export function WatchedMarkets({ slugs }: { slugs: string[] }) {
   const [bySlug, setBySlug] = React.useState<Map<string, Market> | null>(null);
@@ -44,9 +44,17 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
     : null;
 
   return (
-    <section aria-labelledby="watched-markets-title">
-      <div className="flex items-baseline justify-between gap-4">
-        <MetricLabel id="watched-markets-title">Watched markets</MetricLabel>
+    <section
+      aria-labelledby="watched-markets-title"
+      className="overflow-hidden rounded-sm border border-border bg-card"
+    >
+      <div className="flex items-baseline justify-between gap-4 border-b border-border px-6 py-4">
+        <h2
+          id="watched-markets-title"
+          className="text-sm font-semibold text-foreground"
+        >
+          Watched markets
+        </h2>
         <Link
           href="/markets"
           className="text-xs font-medium text-gold transition-colors duration-150 hover:text-gold-bright"
@@ -56,30 +64,33 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
       </div>
 
       {slugs.length === 0 ? (
-        <EmptyState
-          className="mt-3"
-          icon={Eye}
-          title="You're not watching any markets"
-          description="Watch a market to keep its ADR, occupancy and RevPAR on your desk."
-          action={
-            <Button asChild variant="outline">
-              <Link href="/markets">Browse markets</Link>
-            </Button>
-          }
-        />
+        <div className="p-6">
+          <EmptyState
+            icon={Eye}
+            title="You're not watching any markets"
+            description="Watch a market to keep its ADR, occupancy and RevPAR on your desk."
+            action={
+              <Button asChild variant="outline">
+                <Link href="/markets">Browse markets</Link>
+              </Button>
+            }
+          />
+        </div>
       ) : (
-        <div className="mt-3 overflow-x-auto">
+        <div className="overflow-x-auto">
           <div className="min-w-[560px]">
-            <div className={cn(ROW_GRID, "border-y border-border px-3 py-2")}>
+            <div
+              className={cn(ROW_GRID, "border-b border-border px-6 py-2")}
+            >
               <MetricLabel>Market</MetricLabel>
               <MetricLabel>ADR</MetricLabel>
               <MetricLabel>Occupancy</MetricLabel>
               <MetricLabel>RevPAR</MetricLabel>
             </div>
-            <div className="divide-y divide-border border-b border-border">
+            <div className="divide-y divide-border">
               {watched === null
                 ? slugs.map((slug) => (
-                    <div key={slug} className={cn(ROW_GRID, "px-3 py-3.5")}>
+                    <div key={slug} className={cn(ROW_GRID, "px-6 py-3.5")}>
                       <div>
                         <Skeleton className="h-5 w-24" />
                         <Skeleton className="mt-1 h-3 w-14" />
@@ -104,7 +115,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                       href={`/markets/${m.slug}`}
                       className={cn(
                         ROW_GRID,
-                        "px-3 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
+                        "px-6 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
                       )}
                     >
                       <div className="min-w-0">

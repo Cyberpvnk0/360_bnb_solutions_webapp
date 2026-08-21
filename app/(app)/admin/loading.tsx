@@ -19,13 +19,56 @@ export default function AdminLoading() {
 
       {/* Charts row */}
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Skeleton className="h-80" />
-        <Skeleton className="h-80" />
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="rounded-sm border border-border bg-card">
+            <div className="border-b border-border px-6 py-4">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-2 h-3.5 w-56 max-w-full" />
+            </div>
+            <div className="p-6">
+              <Skeleton className="h-[268px] w-full" />
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Unit economics + users table */}
-      <Skeleton className="mt-10 h-56 w-full" />
-      <Skeleton className="mt-10 h-96 w-full" />
+      {/* Unit economics */}
+      <div className="mt-10 rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="mt-2 h-3.5 w-48 max-w-full" />
+        </div>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between border-b border-border px-6 py-3.5 last:border-0"
+          >
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+        ))}
+      </div>
+
+      {/* Users table */}
+      <div className="mt-10 overflow-hidden rounded-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="mt-2 h-3.5 w-56 max-w-full" />
+        </div>
+        <div className="px-2">
+          <div className="flex h-9 items-center border-b border-border">
+            <Skeleton className="h-3 w-full" />
+          </div>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="border-b border-border py-2.5 last:border-0"
+            >
+              <Skeleton className="h-3.5 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

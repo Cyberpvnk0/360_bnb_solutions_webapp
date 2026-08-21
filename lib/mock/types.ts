@@ -74,6 +74,31 @@ export interface Market {
   };
 }
 
+/**
+ * A submarket: a neighborhood or district inside a market (San Marco or
+ * San Pablo inside Jacksonville). Lean by design — generated lazily per
+ * market, no monthly series.
+ */
+export interface Submarket {
+  /** Globally unique: `${marketSlug}--${slug}`. */
+  id: string;
+  slug: string;
+  name: string;
+  marketSlug: string;
+  marketName: string;
+  stateCode: string;
+  lat: number;
+  lon: number;
+  adr: number;
+  /** Fraction, whole-point precision. */
+  occupancy: number;
+  /** Listing counts of a market's submarkets sum EXACTLY to the parent. */
+  activeListings: number;
+  medianRent2br: number;
+  /** Whole-point precision, via lib/calc. */
+  avgBreakeven2br: number;
+}
+
 /* ------------------------------------------------------------------ */
 /* Analyses (address pulls)                                            */
 /* ------------------------------------------------------------------ */

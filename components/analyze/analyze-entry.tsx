@@ -190,173 +190,194 @@ export function AnalyzeEntry({
         )}
       </div>
 
-      {/* Address */}
-      <div className="relative mt-8">
-        <MetricLabel className="pb-2">Property address</MetricLabel>
-        <div className="relative">
-          <MapPin
-            aria-hidden
-            className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            role="combobox"
-            aria-expanded={listOpen}
-            aria-controls="analyze-address-listbox"
-            aria-autocomplete="list"
-            aria-label="Property address"
-            placeholder="Start typing a street address…"
-            value={query}
-            onChange={(e) => {
-              const value = e.target.value;
-              chooseSeq.current += 1; // invalidate any in-flight pick
-              setQuery(value);
-              setSelected(null);
-              if (value.trim().length < 2) {
-                setSuggestions([]);
-                setListOpen(false);
-              }
-            }}
-            className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-gold/50"
-          />
-        </div>
-        {listOpen ? (
-          <div
-            id="analyze-address-listbox"
-            role="listbox"
-            className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-sm border border-border bg-popover"
-          >
-            {suggestions.map((s) => (
-              <button
-                key={s.analysisId}
-                type="button"
-                role="option"
-                aria-selected={false}
-                onClick={() => choose(s)}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
-              >
-                <MapPin aria-hidden className="size-3.5 shrink-0 text-gold" />
-                {s.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Unit details */}
-      <div className="mt-8 grid gap-6 sm:grid-cols-[1fr_1fr_1.2fr]">
-        <div>
-          <MetricLabel className="pb-2">Bedrooms</MetricLabel>
-          <div
-            role="radiogroup"
-            aria-label="Bedrooms"
-            className="flex overflow-hidden rounded-sm border border-border"
-          >
-            {BEDROOM_OPTIONS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={bedrooms === n}
-                onClick={() => setBedrooms(n)}
-                className={cn(
-                  "h-9 flex-1 border-r border-border text-sm transition-colors duration-150 last:border-r-0 tabular",
-                  bedrooms === n
-                    ? "bg-secondary font-semibold text-gold"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                )}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <MetricLabel className="pb-2">Bathrooms</MetricLabel>
-          <div
-            role="radiogroup"
-            aria-label="Bathrooms"
-            className="flex overflow-hidden rounded-sm border border-border"
-          >
-            {BATHROOM_OPTIONS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={bathrooms === n}
-                onClick={() => setBathrooms(n)}
-                className={cn(
-                  "h-9 flex-1 border-r border-border text-xs transition-colors duration-150 last:border-r-0 tabular",
-                  bathrooms === n
-                    ? "bg-secondary font-semibold text-gold"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                )}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <MetricLabel className="pb-2">Property type</MetricLabel>
-          <Select
-            value={propertyType}
-            onValueChange={(v) => setPropertyType(v as PropertyType)}
-          >
-            <SelectTrigger aria-label="Property type" className="h-9 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TYPE_OPTIONS.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Button
-        size="lg"
-        className="mt-10 w-full gap-2 sm:w-auto"
-        disabled={!selected || !ready}
-        onClick={submit}
+      {/* Property card — address, unit details and the submit action */}
+      <section
+        aria-label="Property"
+        className="mt-6 rounded-sm border border-border bg-card"
       >
-        Run the numbers
-        <ArrowRight aria-hidden className="size-4" />
-      </Button>
-      {!selected ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Pick an address from the suggestions to continue.
-        </p>
-      ) : null}
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-sm font-semibold text-foreground">Property</h2>
+        </div>
+        <div className="p-6">
+          {/* Address */}
+          <div className="relative">
+            <MetricLabel className="pb-2">Property address</MetricLabel>
+            <div className="relative">
+              <MapPin
+                aria-hidden
+                className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                type="text"
+                role="combobox"
+                aria-expanded={listOpen}
+                aria-controls="analyze-address-listbox"
+                aria-autocomplete="list"
+                aria-label="Property address"
+                placeholder="Start typing a street address…"
+                value={query}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  chooseSeq.current += 1; // invalidate any in-flight pick
+                  setQuery(value);
+                  setSelected(null);
+                  if (value.trim().length < 2) {
+                    setSuggestions([]);
+                    setListOpen(false);
+                  }
+                }}
+                className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-gold/50"
+              />
+            </div>
+            {listOpen ? (
+              <div
+                id="analyze-address-listbox"
+                role="listbox"
+                className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-sm border border-border bg-popover"
+              >
+                {suggestions.map((s) => (
+                  <button
+                    key={s.analysisId}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => choose(s)}
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
+                  >
+                    <MapPin aria-hidden className="size-3.5 shrink-0 text-gold" />
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Unit details */}
+          <div className="mt-6 grid gap-6 sm:grid-cols-[1fr_1fr_1.2fr]">
+            <div>
+              <MetricLabel className="pb-2">Bedrooms</MetricLabel>
+              <div
+                role="radiogroup"
+                aria-label="Bedrooms"
+                className="flex overflow-hidden rounded-sm border border-border"
+              >
+                {BEDROOM_OPTIONS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={bedrooms === n}
+                    onClick={() => setBedrooms(n)}
+                    className={cn(
+                      "h-9 flex-1 border-r border-border text-sm transition-colors duration-150 last:border-r-0 tabular",
+                      bedrooms === n
+                        ? "bg-secondary font-semibold text-gold"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <MetricLabel className="pb-2">Bathrooms</MetricLabel>
+              <div
+                role="radiogroup"
+                aria-label="Bathrooms"
+                className="flex overflow-hidden rounded-sm border border-border"
+              >
+                {BATHROOM_OPTIONS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={bathrooms === n}
+                    onClick={() => setBathrooms(n)}
+                    className={cn(
+                      "h-9 flex-1 border-r border-border text-xs transition-colors duration-150 last:border-r-0 tabular",
+                      bathrooms === n
+                        ? "bg-secondary font-semibold text-gold"
+                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <MetricLabel className="pb-2">Property type</MetricLabel>
+              <Select
+                value={propertyType}
+                onValueChange={(v) => setPropertyType(v as PropertyType)}
+              >
+                <SelectTrigger aria-label="Property type" className="h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPE_OPTIONS.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Button
+            size="lg"
+            className="mt-8 w-full gap-2 sm:w-auto"
+            disabled={!selected || !ready}
+            onClick={submit}
+          >
+            Run the numbers
+            <ArrowRight aria-hidden className="size-4" />
+          </Button>
+          {!selected ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Pick an address from the suggestions to continue.
+            </p>
+          ) : null}
+        </div>
+      </section>
 
       {/* Recent pulls */}
-      <section aria-label="Recent pulls" className="mt-16 pb-12">
-        <div className="border-b border-border pb-3">
+      <section
+        aria-label="Recent pulls"
+        className="mb-12 mt-12 overflow-hidden rounded-sm border border-border bg-card"
+      >
+        <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">Recent pulls</h2>
         </div>
         {recent === null ? (
-          <div className="mt-3 space-y-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
+          <div className="divide-y divide-border">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-4 px-6 py-2.5"
+              >
+                <Skeleton className="h-5 w-56 max-w-full" />
+                <Skeleton className="h-[21px] w-24 shrink-0" />
+              </div>
             ))}
           </div>
         ) : recent.length === 0 ? (
-          <EmptyState
-            icon={Crosshair}
-            title="No pulls yet"
-            description="Your first address lands here, ready to reopen."
-            className="mt-4"
-          />
+          <div className="p-6">
+            <EmptyState
+              icon={Crosshair}
+              title="No pulls yet"
+              description="Your first address lands here, ready to reopen."
+            />
+          </div>
         ) : (
           <ul className="divide-y divide-border">
             {recent.map((a) => (
               <li key={a.id}>
                 <Link
                   href={`/analyze/${a.id}`}
-                  className="flex items-center justify-between gap-4 py-2.5 transition-colors duration-150 hover:bg-secondary/40"
+                  className="flex items-center justify-between gap-4 px-6 py-2.5 transition-colors duration-150 hover:bg-secondary/40"
                 >
                   <span className="min-w-0 truncate text-sm text-foreground">
                     {a.address}, {a.city}, {a.stateCode}
