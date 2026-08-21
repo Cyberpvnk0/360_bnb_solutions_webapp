@@ -10,8 +10,8 @@ import { PricingSection } from "@/components/marketing/pricing-section";
 
 const PROOF = [
   {
-    claim: "40 markets covered",
-    sub: "Occupancy, nightly rates, and lease spreads for every one.",
+    claim: "40 markets, coast to coast",
+    sub: "From Phoenix to Myrtle Beach — occupancy, nightly rates, and lease spreads for every one.",
   },
   {
     claim: "Comps behind every number",
@@ -117,10 +117,10 @@ export default function LandingPage() {
               Start where the spread is widest.
             </h2>
             <p className="mt-4 max-w-md text-base text-muted-foreground">
-              A split map of every covered market, ranked by the gap between
-              nightly revenue and long-term rent. Gold clears the lease; muted
-              red doesn&apos;t. Pick your market with the same discipline you
-              pick your lease.
+              A split map of 40 markets across the country, ranked by the gap
+              between nightly revenue and long-term rent. Gold clears the
+              lease; muted red doesn&apos;t. Pick your market with the same
+              discipline you pick your lease.
             </p>
           </div>
           <MarketMapVisual className="w-full max-w-xl justify-self-center lg:justify-self-end" />
@@ -172,7 +172,7 @@ export default function LandingPage() {
       <section className="py-20 md:py-28">
         <div className="mx-auto flex max-w-6xl flex-col items-center px-4 text-center md:px-8">
           <p className="max-w-2xl font-display text-3xl font-medium tracking-tight text-foreground md:text-5xl">
-            The lease is the risk. Know your number first.
+            The numbers first. Then the keys.
           </p>
           <Button asChild size="lg" className="mt-8">
             <Link href="/dashboard">Get started</Link>
