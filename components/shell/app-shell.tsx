@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,7 @@ import {
 import { APP_NAME } from "@/config/app";
 import { AddressSearch } from "./address-search";
 import { PullCounter } from "./pull-counter";
-import { SidebarNav } from "./sidebar-nav";
+import { SidebarNav, SidebarRail } from "./sidebar-nav";
 import { ThemeToggle, UserMenu } from "./user-menu";
 import { Wordmark } from "./wordmark";
 import { UpgradeModal } from "@/components/upgrade/upgrade-modal";
@@ -28,13 +29,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh">
-      {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex">
-        <div className="flex h-16 items-center border-b border-border px-5">
-          <Wordmark />
-        </div>
+      {/* Desktop icon rail */}
+      <aside className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+        <Link
+          href="/dashboard"
+          aria-label={`${APP_NAME} home`}
+          className="flex h-16 shrink-0 items-center justify-center border-b border-border transition-opacity duration-150 hover:opacity-80"
+        >
+          <span
+            aria-hidden
+            className="block size-3 rotate-45 border border-gold bg-gold-fill/20"
+          />
+        </Link>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <SidebarNav />
+          <SidebarRail />
         </div>
       </aside>
 

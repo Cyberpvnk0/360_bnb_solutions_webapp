@@ -37,8 +37,88 @@ function NavLink({
   );
 }
 
+function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = item.match(pathname);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "group flex w-full flex-col items-center gap-1.5 py-2.5 transition-colors duration-150",
+        active && "active-rule"
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-9 items-center justify-center rounded-sm border transition-colors duration-150",
+          active
+            ? "border-gold-fill/40 bg-gold-fill/10 text-gold"
+            : "border-transparent text-muted-foreground group-hover:bg-secondary/60 group-hover:text-foreground"
+        )}
+      >
+        <Icon aria-hidden className="size-4" strokeWidth={1.75} />
+      </span>
+      <span
+        className={cn(
+          "px-1 text-center text-[10px] font-medium leading-none tracking-wide",
+          active
+            ? "text-foreground"
+            : "text-muted-foreground group-hover:text-foreground"
+        )}
+      >
+        {item.label}
+      </span>
+    </Link>
+  );
+}
+
 /**
- * Sidebar nav body, shared by the fixed desktop rail and the mobile sheet.
+ * Desktop icon rail: icon tile with the page name beneath, stacked.
+ * The active item carries the gold-washed tile and the thin gold left rule.
+ */
+export function SidebarRail() {
+  const pathname = usePathname();
+  const { tier, openUpgrade } = useSession();
+
+  return (
+    <div className="flex h-full flex-col">
+      <nav aria-label="Primary" className="mt-3 flex flex-col">
+        {NAV_MAIN.map((item) => (
+          <RailLink key={item.href} item={item} pathname={pathname} />
+        ))}
+      </nav>
+
+      <div aria-hidden className="mx-4 my-3 border-t border-border" />
+      {NAV_SYSTEM.map((item) => (
+        <RailLink key={item.href} item={item} pathname={pathname} />
+      ))}
+
+      <div aria-hidden className="mx-4 my-3 border-t border-border" />
+      {NAV_INTERNAL.map((item) => (
+        <RailLink key={item.href} item={item} pathname={pathname} />
+      ))}
+
+      <div className="mt-auto flex flex-col items-center gap-2 border-t border-border p-3">
+        <StatusChip tone={tier.id === "free" ? "neutral" : "gold"}>
+          {tier.name}
+        </StatusChip>
+        {tier.id !== "scale" ? (
+          <Button
+            size="sm"
+            className="h-7 w-full px-1 text-[11px]"
+            onClick={() => openUpgrade({ reason: "generic" })}
+          >
+            Upgrade
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Full-width nav list used by the mobile sheet.
  * Active item carries the thin gold left rule.
  */
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {

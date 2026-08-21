@@ -19,7 +19,7 @@ import {
   MoveDownRight,
 } from "lucide-react";
 import { toast } from "sonner";
-import { projectDeal, type DealInputs } from "@/lib/calc/arbitrage";
+import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import {
   fmtDate,
@@ -32,6 +32,7 @@ import { useSession } from "@/components/providers/session-provider";
 import { AnimatedNumber } from "@/components/primitives/animated-number";
 import { BreakevenGauge } from "@/components/primitives/breakeven-gauge";
 import { MetricLabel } from "@/components/primitives/metric-label";
+import { StatCard, StatHeader } from "@/components/primitives/stat-card";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { CalculatorInputs } from "./calculator-inputs";
@@ -176,6 +177,57 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
           )}
         </div>
       </div>
+
+      {/* Revenue forecast band — the figures investors scan first.
+          Recalculates live with the calculator inputs. */}
+      <StatHeader className="mt-8">
+        <StatCard
+          label="Projected annual revenue"
+          serif
+          value={<AnimatedNumber value={p.monthlyRevenue * 12} format={fmtMoney} />}
+          sub={
+            <span className="text-[11px] text-muted-foreground">
+              gross bookings at market occupancy
+            </span>
+          }
+        />
+        <StatCard
+          label="ADR"
+          value={fmtMoney(assumptions.adr)}
+          sub={
+            <span className="text-[11px] text-muted-foreground">
+              from {analysis.strComps.length} comps below
+            </span>
+          }
+        />
+        <StatCard
+          label="Occupancy estimate"
+          value={fmtPct(assumptions.marketOccupancy)}
+          sub={
+            <span className="text-[11px] text-muted-foreground">
+              what this market actually runs
+            </span>
+          }
+        />
+        <StatCard
+          label="RevPAR"
+          value={fmtMoney(revpar(assumptions.adr, assumptions.marketOccupancy))}
+          sub={
+            <span className="text-[11px] text-muted-foreground">
+              ADR × occupancy, per night
+            </span>
+          }
+        />
+        <StatCard
+          label="Booked nights"
+          value={<AnimatedNumber value={p.occupiedNights} format={(n) => String(Math.round(n))} />}
+          sub={
+            <span className="text-[11px] text-muted-foreground tabular">
+              per month · {Math.round(p.turnovers)} turnovers
+            </span>
+          }
+        />
+      </StatHeader>
 
       {/* Hero: the breakeven gauge */}
       <section
