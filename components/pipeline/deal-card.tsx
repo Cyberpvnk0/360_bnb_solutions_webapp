@@ -101,11 +101,19 @@ export function DraggableDealCard({
       {...listeners}
       {...attributes}
       onClick={() => onOpen(deal.id)}
+      onKeyDown={(e) => {
+        // Enter opens the drawer; Space (handled by the KeyboardSensor)
+        // picks the card up for a keyboard drag.
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onOpen(deal.id);
+        }
+      }}
       className={cn(
         "cursor-grab touch-none rounded-sm",
         isDragging && "opacity-40"
       )}
-      aria-label={`${deal.address} — open deal`}
+      aria-label={`${deal.address} — Enter opens the deal, Space picks it up to move it`}
     >
       <DealCardContent deal={deal} />
     </div>

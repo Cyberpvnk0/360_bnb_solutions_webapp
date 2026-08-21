@@ -149,6 +149,17 @@ export function DataTable<T>({
                 <TableRow
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onRowClick(row);
+                          }
+                        }
+                      : undefined
+                  }
                   className={cn(
                     "transition-colors duration-150",
                     onRowClick && "cursor-pointer",

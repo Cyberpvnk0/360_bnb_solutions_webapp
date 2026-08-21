@@ -103,11 +103,22 @@ export function PipelineBoard() {
   const { ready, deals, tier, openUpgrade, moveDeal } = useSession();
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [openDealId, setOpenDealId] = React.useState<string | null>(null);
+  // The last opened deal stays rendered so the drawer's 300ms exit
+  // animation doesn't play over an emptied panel.
+  const [lastOpenDeal, setLastOpenDeal] = React.useState<Deal | null>(null);
   const suppressClickRef = React.useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor)
+    // Space starts a keyboard drag; Enter is left free so it can open the
+    // deal drawer from the keyboard (see DraggableDealCard).
+    useSensor(KeyboardSensor, {
+      keyboardCodes: {
+        start: ["Space"],
+        cancel: ["Escape"],
+        end: ["Space"],
+      },
+    })
   );
 
   if (!ready) return <PipelineSkeleton />;
@@ -118,6 +129,8 @@ export function PipelineBoard() {
   const openDeal = openDealId
     ? deals.find((d) => d.id === openDealId) ?? null
     : null;
+  // Guarded adjust-state-during-render: remember the deal while it's open.
+  if (openDeal && openDeal !== lastOpenDeal) setLastOpenDeal(openDeal);
 
   const handleOpen = (dealId: string) => {
     if (suppressClickRef.current) return;
@@ -245,7 +258,7 @@ export function PipelineBoard() {
       )}
 
       <DealDrawer
-        deal={openDeal}
+        deal={openDeal ?? lastOpenDeal}
         open={openDeal !== null}
         onOpenChange={(open) => {
           if (!open) setOpenDealId(null);

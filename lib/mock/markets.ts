@@ -188,7 +188,9 @@ function buildMarket(seed: MarketSeed, rng: Rng): Market {
     occupancy: seed.occ,
     activeListings: seed.listings,
     medianRent2br: seed.rent2br,
-    avgBreakeven2br: Math.round(avgBreakeven2br * 1000) / 1000,
+    // Whole-point precision so every screen that shows this figure, or a
+    // margin derived from it, rounds identically and can never disagree.
+    avgBreakeven2br: Math.round(avgBreakeven2br * 100) / 100,
     regulation: buildRegulation(seed, rng),
     monthly,
     adrByBedroom: buildBedroomAdr(seed, rng),

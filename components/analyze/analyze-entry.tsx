@@ -11,7 +11,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Coins, MapPin } from "lucide-react";
+import { ArrowRight, Coins, Crosshair, MapPin } from "lucide-react";
 import {
   getAnalysis,
   getRecentAnalyses,
@@ -22,6 +22,7 @@ import {
 import type { Analysis, PropertyType } from "@/lib/mock/types";
 import { fmtDate } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
+import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { PageHeader } from "@/components/primitives/page-header";
 import { StatusChip } from "@/components/primitives/status-chip";
@@ -92,11 +93,16 @@ export function AnalyzeEntry({
     };
   }, [query, selected]);
 
+  const chooseSeq = React.useRef(0);
+
   const choose = async (s: AddressSuggestion) => {
+    const seq = ++chooseSeq.current;
     setQuery(s.label);
     setListOpen(false);
     setSuggestions([]);
     const analysis = await getAnalysis(s.analysisId);
+    // If the user resumed typing while this resolved, drop the stale pick.
+    if (seq !== chooseSeq.current) return;
     setSelected(analysis);
     if (analysis) {
       setBedrooms(analysis.bedrooms);
@@ -203,6 +209,7 @@ export function AnalyzeEntry({
             value={query}
             onChange={(e) => {
               const value = e.target.value;
+              chooseSeq.current += 1; // invalidate any in-flight pick
               setQuery(value);
               setSelected(null);
               if (value.trim().length < 2) {
@@ -336,6 +343,13 @@ export function AnalyzeEntry({
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
+        ) : recent.length === 0 ? (
+          <EmptyState
+            icon={Crosshair}
+            title="No pulls yet"
+            description="Your first address lands here, ready to reopen."
+            className="mt-4"
+          />
         ) : (
           <ul className="divide-y divide-border">
             {recent.map((a) => (

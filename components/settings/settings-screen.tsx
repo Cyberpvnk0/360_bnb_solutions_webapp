@@ -6,8 +6,7 @@
  * /settings?tab=billing from the pull counter land on the right pane.
  */
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/primitives/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillingTab } from "./billing-tab";
@@ -18,12 +17,19 @@ export type SettingsTab = "profile" | "billing" | "notifications";
 
 export function SettingsScreen({ initialTab }: { initialTab: SettingsTab }) {
   const router = useRouter();
-  const [tab, setTab] = React.useState<SettingsTab>(initialTab);
+  const searchParams = useSearchParams();
+
+  // The URL is the single source of truth, so navigating to
+  // /settings?tab=billing while already on /settings switches panes, and
+  // browser back/forward walk the tab history.
+  const raw = searchParams.get("tab");
+  const tab: SettingsTab =
+    raw === "billing" || raw === "notifications" || raw === "profile"
+      ? raw
+      : initialTab;
 
   const handleTabChange = (value: string) => {
-    const next = value as SettingsTab;
-    setTab(next);
-    router.replace(`/settings?tab=${next}`, { scroll: false });
+    router.replace(`/settings?tab=${value}`, { scroll: false });
   };
 
   return (

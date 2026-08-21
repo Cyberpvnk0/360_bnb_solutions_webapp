@@ -19,10 +19,12 @@ const REG_CHIP: Record<
   RegulationStatus,
   { tone: "gold" | "neutral" | "neg" | "outline"; label: string }
 > = {
+  // Same tone mapping as the markets explorer so a status never changes
+  // color between screens.
   permitted: { tone: "gold", label: "Permitted" },
-  "permit-required": { tone: "neutral", label: "Permit required" },
+  "permit-required": { tone: "outline", label: "Permit required" },
   banned: { tone: "neg", label: "Banned" },
-  unverified: { tone: "outline", label: "Unverified" },
+  unverified: { tone: "neutral", label: "Unverified" },
 };
 
 // Every row is its own grid, so all tracks must resolve identically across

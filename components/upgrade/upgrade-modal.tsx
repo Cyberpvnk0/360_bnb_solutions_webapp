@@ -34,14 +34,7 @@ import {
 
 export function UpgradeModal() {
   const router = useRouter();
-  const {
-    upgrade,
-    closeUpgrade,
-    upgradeTo,
-    consumePull,
-    tier,
-    user,
-  } = useSession();
+  const { upgrade, closeUpgrade, upgradeTo, tier, user } = useSession();
   const [billing, setBilling] = React.useState<BillingCycle>("annual");
 
   const analysis = upgrade.analysis;
@@ -77,16 +70,18 @@ export function UpgradeModal() {
         : "Markets and the calculator stay unlimited on every plan. Paid plans add address pulls and pipeline capacity.";
 
   const handleSelect = (tierId: TierId) => {
-    upgradeTo(tierId);
+    const completesPull = upgrade.reason === "pulls" && Boolean(analysis);
+    // Tier switch and the promised pull spend happen in one atomic update —
+    // a deferred consumePull() would close over the pre-upgrade user and
+    // silently skip the spend.
+    upgradeTo(tierId, { consumePull: completesPull });
     toast.success(`You're on ${TIERS[tierId].name} now`, {
       description:
         billing === "annual" ? "Billed annually. Two months free." : "Billed monthly.",
     });
     closeUpgrade();
-    // Complete the interrupted flow: spend the pull, open the result.
-    if (upgrade.reason === "pulls" && analysis) {
+    if (completesPull && analysis) {
       setTimeout(() => {
-        consumePull();
         router.push(`/analyze/${analysis.id}`);
       }, 150);
     }
@@ -127,8 +122,7 @@ export function UpgradeModal() {
                 </div>
               </div>
             </div>
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background/95" />
-            <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 border-t border-border bg-background/90 py-2.5 text-xs text-muted-foreground">
               <Lock aria-hidden className="size-3 text-gold" />
               Result computed. Unlock to see the full read.
             </div>

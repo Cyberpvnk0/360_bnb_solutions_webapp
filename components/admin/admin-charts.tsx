@@ -55,10 +55,12 @@ const TIER_SLICE: Record<TierId, { fill: string; fillOpacity: number; legend: st
     legend: "color-mix(in srgb, var(--gold-fill) 45%, transparent)",
   },
   pro: { fill: "var(--gold-fill)", fillOpacity: 1, legend: "var(--gold-fill)" },
+  // Neutral foreground, not muted red: red-family is the bad-deal signal,
+  // and the top paying tier is anything but.
   scale: {
-    fill: "var(--red-muted)",
-    fillOpacity: 1,
-    legend: "var(--red-muted)",
+    fill: "var(--foreground)",
+    fillOpacity: 0.85,
+    legend: "color-mix(in srgb, var(--foreground) 85%, transparent)",
   },
 };
 

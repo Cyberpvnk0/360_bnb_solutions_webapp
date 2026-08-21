@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <AddressSearch className="w-full max-w-sm" />
 
           <div className="ml-auto flex items-center gap-2">
-            <PullCounter className="hidden sm:flex" />
+            <PullCounter />
             <ThemeToggle />
             <UserMenu />
           </div>

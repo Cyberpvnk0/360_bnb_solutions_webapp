@@ -11,7 +11,11 @@
 
 import * as React from "react";
 import { TIERS, type Tier, type TierId } from "@/config/app";
-import { breakevenOccupancy, netCashFlow } from "@/lib/calc/arbitrage";
+import {
+  breakevenOccupancy,
+  netCashFlow,
+  type DealInputs,
+} from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import {
   getActivity,
@@ -59,7 +63,7 @@ interface SessionContextValue {
 
   /** Spend one pull. Returns false (and opens nothing) if none remain. */
   consumePull: () => boolean;
-  saveDeal: (analysis: Analysis) => SaveDealResult;
+  saveDeal: (analysis: Analysis, inputs?: DealInputs) => SaveDealResult;
   isAnalysisSaved: (analysisId: string) => boolean;
   moveDeal: (dealId: string, stage: PipelineStage) => void;
   updateDeal: (dealId: string, patch: Partial<Deal>) => void;
@@ -72,8 +76,9 @@ interface SessionContextValue {
 
   /** Demo-only: preview the product as another tier. */
   setTier: (tier: TierId) => void;
-  /** Mock checkout: switch tier, keep usage, toast handled by caller. */
-  upgradeTo: (tier: TierId) => void;
+  /** Mock checkout: switch tier (clamping usage into the new limit) and
+   *  optionally spend one pull in the same atomic update. */
+  upgradeTo: (tier: TierId, opts?: { consumePull?: boolean }) => void;
 
   upgrade: UpgradeState;
   openUpgrade: (opts?: { reason?: UpgradeReason; analysis?: Analysis }) => void;
@@ -139,13 +144,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const saveDeal = React.useCallback(
-    (analysis: Analysis): SaveDealResult => {
+    (analysis: Analysis, inputs?: DealInputs): SaveDealResult => {
       if (deals.some((d) => d.analysisId === analysis.id)) {
         return { ok: false, reason: "duplicate" };
       }
       if (deals.length >= tier.savedDealLimit) {
         return { ok: false, reason: "limit" };
       }
+      // Save the scenario the user is looking at: their edited inputs when
+      // provided, the comp defaults otherwise.
+      const effective = inputs ?? analysis.defaults;
       const assumptions = deriveMarketAssumptions(analysis.strComps);
       const now = new Date().toISOString().slice(0, 10);
       const deal: Deal = {
@@ -157,11 +165,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         marketSlug: analysis.marketSlug,
         bedrooms: analysis.bedrooms,
         stage: "prospecting",
+        // Whole-point precision so the pipeline shows exactly what the
+        // analysis gauge showed.
         breakevenOccupancy:
-          Math.round(breakevenOccupancy(analysis.defaults, assumptions) * 1000) /
-          1000,
+          Math.round(breakevenOccupancy(effective, assumptions) * 100) / 100,
         netCashFlow: Math.round(
-          netCashFlow(analysis.defaults, assumptions, assumptions.marketOccupancy)
+          netCashFlow(effective, assumptions, assumptions.marketOccupancy)
         ),
         landlordIds: [],
         notes: "",
@@ -275,9 +284,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const upgradeTo = React.useCallback((tierId: TierId) => {
-    setUser((prev) => (prev ? { ...prev, tier: tierId } : prev));
-  }, []);
+  const upgradeTo = React.useCallback(
+    (tierId: TierId, opts?: { consumePull?: boolean }) => {
+      setUser((prev) => {
+        if (!prev) return prev;
+        const limit = TIERS[tierId].pullLimit;
+        // Atomic: switch tier, clamp usage into the new limit, and spend the
+        // promised pull in the same update so no stale closure can skip it.
+        const clamped = Math.min(prev.pullsUsed, limit);
+        const pullsUsed =
+          opts?.consumePull && limit - clamped > 0 ? clamped + 1 : clamped;
+        return { ...prev, tier: tierId, pullsUsed };
+      });
+    },
+    []
+  );
 
   const openUpgrade = React.useCallback(
     (opts?: { reason?: UpgradeReason; analysis?: Analysis }) => {

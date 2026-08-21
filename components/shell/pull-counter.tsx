@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
 import { useSession } from "@/components/providers/session-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -42,10 +43,18 @@ export function PullCounter({ className }: { className?: string }) {
 
   const label = (
     <span className="text-xs text-muted-foreground">
-      <span className={cn("font-medium tabular", exhausted ? "text-neg" : "text-foreground")}>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 font-medium tabular",
+          exhausted ? "text-neg" : "text-foreground"
+        )}
+      >
+        {exhausted ? (
+          <TriangleAlert aria-hidden className="size-3" strokeWidth={2.5} />
+        ) : null}
         {pullsUsed} of {pullLimit}
       </span>{" "}
-      pulls
+      <span className="hidden md:inline">pulls</span>
     </span>
   );
 

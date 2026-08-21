@@ -67,7 +67,11 @@ export function BreakevenGauge({
       className={cn("relative inline-flex items-center justify-center", className)}
       style={{ width: size, height: size }}
       role="img"
-      aria-label={`Breakeven occupancy ${Math.round(breakeven * 100)} percent; market occupancy ${Math.round(marketOccupancy * 100)} percent`}
+      aria-label={
+        Number.isFinite(breakeven)
+          ? `Breakeven occupancy ${Math.round(breakeven * 100)} percent; market occupancy ${Math.round(marketOccupancy * 100)} percent`
+          : `This deal never breaks even at these costs; market occupancy ${Math.round(marketOccupancy * 100)} percent`
+      }
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         {/* Track */}

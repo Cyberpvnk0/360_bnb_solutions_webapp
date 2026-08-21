@@ -11,7 +11,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, FileDown, FolderPlus } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  FileDown,
+  FolderPlus,
+  MoveDownRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { projectDeal, type DealInputs } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
@@ -57,12 +63,15 @@ function OutputTile({
       <MetricLabel>{label}</MetricLabel>
       <div
         className={cn(
-          "mt-1.5 text-xl font-semibold leading-tight tracking-tight tabular",
+          "mt-1.5 flex items-center gap-1 text-xl font-semibold leading-tight tracking-tight tabular",
           tone === "gold" && "text-gold",
           tone === "neg" && "text-neg",
           !tone && "text-foreground"
         )}
       >
+        {tone === "neg" ? (
+          <MoveDownRight aria-hidden className="size-3.5 shrink-0" />
+        ) : null}
         {children}
       </div>
       {sub ? (
@@ -91,7 +100,9 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
   const marginPts = Math.round(p.marginOfSafety * 100);
 
   const handleSave = () => {
-    const result = saveDeal(analysis);
+    // Save the scenario on screen — the user's edited inputs, not the
+    // comp defaults they may have already negotiated away from.
+    const result = saveDeal(analysis, inputs);
     if (result.ok) {
       toast.success("Saved to pipeline", {
         description: `${analysis.address} is now in Prospecting.`,
@@ -284,6 +295,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
             </OutputTile>
             <OutputTile
               label="Furnishing payback"
+              tone={Number.isFinite(p.furnishingPaybackMonths) ? undefined : "neg"}
               sub="Months of cash flow to recover setup"
             >
               {Number.isFinite(p.furnishingPaybackMonths) ? (
@@ -292,7 +304,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
                   format={fmtMonths}
                 />
               ) : (
-                <span className="text-neg">Never</span>
+                <span>Never</span>
               )}
             </OutputTile>
             <OutputTile

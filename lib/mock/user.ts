@@ -4,6 +4,7 @@
  * free-tier upgrade path; these are just the starting values.
  */
 
+import { TIERS } from "@/config/app";
 import { ANALYSES } from "./analyses";
 import { DEALS } from "./deals";
 import { daysAgo } from "./seed";
@@ -27,14 +28,16 @@ export const SESSION_USER: SessionUser = {
   billingCycle: "monthly",
 };
 
+/** Amounts and names come from config/app so a price change there keeps
+ *  the invoice history consistent with the plan card above it. */
 export const INVOICES: Invoice[] = [
-  { id: "inv-0008", date: "2026-08-05", description: "Pro — monthly", amount: 29.97, status: "paid" },
-  { id: "inv-0007", date: "2026-07-05", description: "Pro — monthly", amount: 29.97, status: "paid" },
-  { id: "inv-0006", date: "2026-06-05", description: "Pro — monthly", amount: 29.97, status: "paid" },
-  { id: "inv-0005", date: "2026-05-05", description: "Pro — monthly", amount: 29.97, status: "paid" },
-  { id: "inv-0004", date: "2026-04-05", description: "Starter — monthly", amount: 9.97, status: "paid" },
-  { id: "inv-0003", date: "2026-03-05", description: "Starter — monthly", amount: 9.97, status: "paid" },
-  { id: "inv-0002", date: "2026-02-14", description: "Starter — first month", amount: 9.97, status: "paid" },
+  { id: "inv-0008", date: "2026-08-05", description: `${TIERS.pro.name} — monthly`, amount: TIERS.pro.priceMonthly, status: "paid" },
+  { id: "inv-0007", date: "2026-07-05", description: `${TIERS.pro.name} — monthly`, amount: TIERS.pro.priceMonthly, status: "paid" },
+  { id: "inv-0006", date: "2026-06-05", description: `${TIERS.pro.name} — monthly`, amount: TIERS.pro.priceMonthly, status: "paid" },
+  { id: "inv-0005", date: "2026-05-05", description: `${TIERS.pro.name} — monthly`, amount: TIERS.pro.priceMonthly, status: "paid" },
+  { id: "inv-0004", date: "2026-04-05", description: `${TIERS.starter.name} — monthly`, amount: TIERS.starter.priceMonthly, status: "paid" },
+  { id: "inv-0003", date: "2026-03-05", description: `${TIERS.starter.name} — monthly`, amount: TIERS.starter.priceMonthly, status: "paid" },
+  { id: "inv-0002", date: "2026-02-14", description: `${TIERS.starter.name} — first month`, amount: TIERS.starter.priceMonthly, status: "paid" },
 ];
 
 /** Recent activity, newest first. References real analyses and deals. */

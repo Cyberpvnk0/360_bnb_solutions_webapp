@@ -3,8 +3,8 @@ import { StatusChip } from "@/components/primitives/status-chip";
 
 const STAGES = [
   { label: "Prospecting", count: 4, tone: "neutral" as const },
-  { label: "Negotiating", count: 2, tone: "outline" as const },
-  { label: "Signed", count: 1, tone: "gold" as const },
+  { label: "LOI Sent", count: 2, tone: "outline" as const },
+  { label: "Live", count: 1, tone: "gold" as const },
 ];
 
 /**

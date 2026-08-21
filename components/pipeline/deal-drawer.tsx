@@ -67,7 +67,7 @@ function LandlordRow({ landlord }: { landlord: Landlord }) {
       </div>
       <div className="mt-2 flex flex-col gap-1">
         <a
-          href={`tel:${landlord.phone}`}
+          href={`tel:+1${landlord.phone.replace(/\D/g, "")}`}
           className="inline-flex items-center gap-1.5 text-xs tabular text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
           <Phone aria-hidden className="size-3 shrink-0" />

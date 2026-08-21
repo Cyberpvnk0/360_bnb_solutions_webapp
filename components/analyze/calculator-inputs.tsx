@@ -139,8 +139,10 @@ export function CalculatorInputs({
             <div className="space-y-3">
               {group.fields.map((field) => {
                 const raw = inputs[field.key];
+                // Strip float noise (0.03 × 100 → 3.0000000000000004) without
+                // truncating what the user typed (3.75 stays 3.75).
                 const display = field.percent
-                  ? Math.round(raw * 1000) / 10
+                  ? Number.parseFloat((raw * 100).toPrecision(12))
                   : raw;
                 const id = `calc-${field.key}`;
                 return (

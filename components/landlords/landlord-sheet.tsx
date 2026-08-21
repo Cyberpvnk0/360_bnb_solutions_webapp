@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarCheck, Mail, Phone } from "lucide-react";
+import { CalendarCheck, Mail, MoveDownRight, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import type { Landlord, StrPolicy } from "@/lib/mock/types";
@@ -286,10 +286,13 @@ function SheetBody({ landlord }: { landlord: Landlord }) {
                   </span>
                   <span
                     className={cn(
-                      "shrink-0 text-sm tabular",
+                      "inline-flex shrink-0 items-center gap-1 text-sm tabular",
                       deal.netCashFlow >= 0 ? "text-gold" : "text-neg"
                     )}
                   >
+                    {deal.netCashFlow < 0 ? (
+                      <MoveDownRight aria-hidden className="size-3" />
+                    ) : null}
                     {fmtMoney(deal.netCashFlow)}/mo
                   </span>
                 </Link>

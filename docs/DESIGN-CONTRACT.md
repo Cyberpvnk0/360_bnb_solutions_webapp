@@ -33,7 +33,10 @@ Color semantics — resolve the red conflict deliberately:
 - **Muted red + icon = bad deal / unfavorable.** (`StatusChip tone="neg"` and
   `DeltaIndicator` already do this.)
 - **Full-saturation `--red` is reserved for brand and primary action buttons.**
-  Never use it as a data/signal color.
+  Never use it as a data/signal color. One sanctioned exception, by product
+  spec: the map's **actively selected pin** is brand red with the animated
+  gold ring — selection is a brand state, not a deal-quality signal, and the
+  ring + enlarged radius carry the meaning redundantly.
 
 ## Typography
 
@@ -64,7 +67,8 @@ Color semantics — resolve the red conflict deliberately:
 ## Layout
 
 - Standard page container: `mx-auto max-w-6xl px-4 py-6 md:px-8`
-  (markets split view is full-bleed instead).
+  (markets split view is full-bleed instead; the /analyze entry form uses a
+  narrow `max-w-3xl` column by design — it is a single-task form).
 - Stat header rows: `StatHeader` + `StatCard` (hairline dividers built in).
 - Comps/evidence always visible beneath projections — never behind a click.
 

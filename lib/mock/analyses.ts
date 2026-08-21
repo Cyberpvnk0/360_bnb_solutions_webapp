@@ -128,11 +128,16 @@ const rng = new Rng(0xbee5);
  * the rest appear as recent pull history. `ANALYSES[0]` is also the demo
  * result the /analyze flow lands on.
  */
+/** The last four analyses are the "recent pulls" the activity feed cites,
+ *  so their creation dates must match the feed's timestamps exactly. */
+const RECENT_PULL_DAYS: Record<number, number> = { 26: 6, 27: 0, 28: 1, 29: 3 };
+
 export const ANALYSES: Analysis[] = Array.from({ length: 30 }, (_, i) => {
   // Rotate through markets with a bias toward the first (hotter) states.
   const market = MARKETS[(i * 7 + rng.int(0, 4)) % MARKETS.length];
   const bedrooms = rng.pick([1, 2, 2, 2, 3, 3, 4]);
-  const created = daysAgo(rng.int(1, 110));
+  const created =
+    i in RECENT_PULL_DAYS ? daysAgo(RECENT_PULL_DAYS[i]) : daysAgo(rng.int(7, 110));
   const strComps = buildStrComps(market.adr, market.occupancy, bedrooms, i, rng);
   const ltrComps = buildLtrComps(
     market.medianRent2br,

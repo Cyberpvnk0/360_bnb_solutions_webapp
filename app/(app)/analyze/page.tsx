@@ -10,5 +10,12 @@ export default async function AnalyzePage({
 }) {
   const { address } = await searchParams;
   const initialAnalysis = address ? await getAnalysis(address) : null;
-  return <AnalyzeEntry initialAnalysis={initialAnalysis} />;
+  // Key by address so picking a new one from the top-bar search while
+  // already on /analyze remounts the form with the fresh prefill.
+  return (
+    <AnalyzeEntry
+      key={initialAnalysis?.id ?? "blank"}
+      initialAnalysis={initialAnalysis}
+    />
+  );
 }

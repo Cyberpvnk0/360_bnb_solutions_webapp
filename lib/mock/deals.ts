@@ -66,7 +66,9 @@ export const DEALS: Deal[] = STAGE_PLAN.flatMap(({ stage, count }) =>
       marketSlug: analysis.marketSlug,
       bedrooms: analysis.bedrooms,
       stage,
-      breakevenOccupancy: Math.round(be * 1000) / 1000,
+      // Whole-point precision: the pipeline card must show exactly what the
+      // analysis gauge shows (0.5147 → 0.51 → "51%", never "52%").
+      breakevenOccupancy: Math.round(be * 100) / 100,
       netCashFlow: Math.round(net),
       landlordIds: [], // linked by lib/mock/landlords.ts
       notes: rng.pick(NOTE_POOL),

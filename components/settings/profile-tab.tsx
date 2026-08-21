@@ -115,7 +115,11 @@ function ProfileForm({ user }: { user: SessionUser }) {
         <Button
           variant="outline"
           className="mt-3 text-muted-foreground"
-          onClick={() => toast.success(`Reset link sent to ${email}`)}
+          onClick={() =>
+            toast(`Password resets arrive with the full release`, {
+              description: `Nothing was sent to ${email} in this preview.`,
+            })
+          }
         >
           Send reset link
         </Button>
