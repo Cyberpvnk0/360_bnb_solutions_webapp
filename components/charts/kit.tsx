@@ -78,7 +78,8 @@ export function ChartTooltipCard({
 
 /**
  * Generic Recharts tooltip content. Pass `format` to control value text;
- * labels come through as-is.
+ * labels come through as-is. The loose parameter typing keeps the result
+ * assignable to Recharts 3's `Tooltip content` prop.
  */
 export function makeTooltip(
   format: (value: number, seriesKey: string) => string,
@@ -88,7 +89,7 @@ export function makeTooltip(
     active,
     payload,
     label,
-  }: TooltipContentProps<number, string>) {
+  }: Partial<TooltipContentProps<number, string>>) {
     if (!active || !payload || payload.length === 0) return null;
     return (
       <ChartTooltipCard

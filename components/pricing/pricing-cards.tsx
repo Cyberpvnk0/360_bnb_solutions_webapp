@@ -163,7 +163,7 @@ export function PricingCard({
       {onSelect ? (
         <Button
           className="mt-5 w-full"
-          variant={recommended ? "default" : "outline"}
+          variant={isCurrent ? "secondary" : recommended ? "default" : "outline"}
           disabled={isCurrent}
           onClick={() => onSelect(tier.id)}
         >
