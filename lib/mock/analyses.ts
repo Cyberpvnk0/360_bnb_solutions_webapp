@@ -109,13 +109,16 @@ function buildDefaults(ltrComps: LtrComp[], bedrooms: number, rng: Rng): DealInp
   return {
     monthlyRent,
     securityDeposit: monthlyRent,
-    furnishingBudget: roundTo(4500 * bedrooms + 2000, 500),
+    // Product stance: the guest's cleaning fee pays the cleaner, so
+    // cleaning nets out of the P&L and has no input. Furnishing and every
+    // advanced cost start at $0 — operators add what applies to them.
+    furnishingBudget: 0,
     utilitiesMonthly: roundTo(160 + 40 * bedrooms * rng.float(0.9, 1.15), 10),
-    internetMonthly: 65,
-    cleaningCostPerTurnover: roundTo(60 + 25 * bedrooms, 5),
-    avgStayNights: Math.round(rng.float(2.4, 4.4) * 10) / 10,
-    suppliesMonthly: roundTo(60 + 15 * bedrooms, 5),
-    insuranceMonthly: roundTo(70 + 10 * bedrooms, 5),
+    internetMonthly: 0,
+    cleaningCostPerTurnover: 0,
+    avgStayNights: 3,
+    suppliesMonthly: 0,
+    insuranceMonthly: 0,
     platformFeePct: 0.03,
     mgmtFeePct: 0,
   };

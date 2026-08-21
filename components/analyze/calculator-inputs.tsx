@@ -39,6 +39,8 @@ const BASIC_FIELDS: FieldSpec[] = [
   },
 ];
 
+/** Cleaning has no input on purpose: the guest's cleaning fee pays the
+ *  cleaner, so it nets out of the deal's P&L. */
 const ADVANCED_GROUPS: { title: string; fields: FieldSpec[] }[] = [
   {
     title: "Monthly operating",
@@ -46,24 +48,6 @@ const ADVANCED_GROUPS: { title: string; fields: FieldSpec[] }[] = [
       { key: "internetMonthly", label: "Internet", prefix: "$", step: 5 },
       { key: "suppliesMonthly", label: "Supplies", prefix: "$", step: 5 },
       { key: "insuranceMonthly", label: "Insurance", prefix: "$", step: 5 },
-    ],
-  },
-  {
-    title: "Turnovers",
-    fields: [
-      {
-        key: "cleaningCostPerTurnover",
-        label: "Cleaning cost per turnover",
-        prefix: "$",
-        step: 5,
-        hint: "Guests are charged the same amount as a cleaning fee.",
-      },
-      {
-        key: "avgStayNights",
-        label: "Average stay length",
-        suffix: "nights",
-        step: 0.1,
-      },
     ],
   },
   {
@@ -210,7 +194,7 @@ export function CalculatorInputs({
             <span className="ml-2 font-normal text-muted-foreground">
               {advancedDirtyCount > 0
                 ? `${advancedDirtyCount} adjusted`
-                : "cleaning, insurance, stay length, management"}
+                : "internet, supplies, insurance, management"}
             </span>
           </span>
           <ChevronDown
@@ -236,8 +220,9 @@ export function CalculatorInputs({
       </div>
 
       <p className="border-t border-border px-5 py-3 text-[11px] leading-snug text-muted-foreground">
-        Advanced costs are pre-filled from local norms, so the projection is
-        complete even if you never open them.
+        Advanced costs start at $0 — add the ones that apply to your deal.
+        Cleaning never appears here: the guest&apos;s cleaning fee pays the
+        cleaner.
       </p>
     </div>
   );

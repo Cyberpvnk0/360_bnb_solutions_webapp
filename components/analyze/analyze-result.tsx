@@ -311,13 +311,13 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
           <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:[&>*:nth-child(odd)]:border-r sm:[&>*:nth-child(-n+2)]:border-t-0 [&>*]:border-border">
             <OutputTile
               label="Projected monthly STR revenue"
-              sub={`${fmtMoney(assumptions.adr)} ADR × ${Math.round(p.occupiedNights)} booked nights + cleaning fees`}
+              sub={`${fmtMoney(assumptions.adr)} ADR × ${Math.round(p.occupiedNights)} booked nights${p.cleaningCosts > 0 ? " + cleaning fees" : ""}`}
             >
               <AnimatedNumber value={p.monthlyRevenue} format={fmtMoney} />
             </OutputTile>
             <OutputTile
               label="Total monthly costs"
-              sub={`${fmtMoney(p.fixedCosts)} fixed · ${fmtMoney(p.feeCosts)} fees · ${fmtMoney(p.cleaningCosts)} cleaning`}
+              sub={`${fmtMoney(p.fixedCosts)} fixed · ${fmtMoney(p.feeCosts)} fees${p.cleaningCosts > 0 ? ` · ${fmtMoney(p.cleaningCosts)} cleaning` : ""}`}
             >
               <AnimatedNumber value={p.monthlyCosts} format={fmtMoney} />
             </OutputTile>
@@ -355,10 +355,21 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
             </OutputTile>
             <OutputTile
               label="Furnishing payback"
-              tone={Number.isFinite(p.furnishingPaybackMonths) ? undefined : "neg"}
-              sub="Months of cash flow to recover setup"
+              tone={
+                inputs.furnishingBudget <= 0 ||
+                Number.isFinite(p.furnishingPaybackMonths)
+                  ? undefined
+                  : "neg"
+              }
+              sub={
+                inputs.furnishingBudget <= 0
+                  ? "Enter a furnishing budget to see payback"
+                  : "Months of cash flow to recover setup"
+              }
             >
-              {Number.isFinite(p.furnishingPaybackMonths) ? (
+              {inputs.furnishingBudget <= 0 ? (
+                <span className="text-muted-foreground">—</span>
+              ) : Number.isFinite(p.furnishingPaybackMonths) ? (
                 <AnimatedNumber
                   value={p.furnishingPaybackMonths}
                   format={fmtMonths}

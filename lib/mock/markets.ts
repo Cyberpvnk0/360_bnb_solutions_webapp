@@ -90,18 +90,20 @@ const SEEDS: MarketSeed[] = [
 ];
 
 /** Default 2BR operating assumptions used for the market-level breakeven
- *  benchmark. Mirrors the calculator's starting values. */
+ *  benchmark. Mirrors the calculator's starting values: rent + utilities
+ *  and the host fee — cleaning is guest-paid, everything else starts at
+ *  $0 until the operator adds it. */
 export function benchmark2brInputs(rent2br: number) {
   return {
     monthlyRent: rent2br,
     securityDeposit: rent2br,
-    furnishingBudget: 11000,
+    furnishingBudget: 0,
     utilitiesMonthly: 210,
-    internetMonthly: 65,
-    cleaningCostPerTurnover: 110,
-    avgStayNights: 3.2,
-    suppliesMonthly: 85,
-    insuranceMonthly: 80,
+    internetMonthly: 0,
+    cleaningCostPerTurnover: 0,
+    avgStayNights: 3,
+    suppliesMonthly: 0,
+    insuranceMonthly: 0,
     platformFeePct: 0.03,
     mgmtFeePct: 0,
   };

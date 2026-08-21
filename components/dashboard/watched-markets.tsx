@@ -4,37 +4,24 @@ import * as React from "react";
 import Link from "next/link";
 import { Eye } from "lucide-react";
 import { getMarkets } from "@/lib/data";
-import type { Market, RegulationStatus } from "@/lib/mock/types";
+import type { Market } from "@/lib/mock/types";
 import { revpar } from "@/lib/calc/arbitrage";
 import { fmtDeltaPct, fmtDeltaPts, fmtMoney, fmtPct } from "@/lib/format";
 import { DeltaIndicator } from "@/components/primitives/delta-indicator";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
-import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-const REG_CHIP: Record<
-  RegulationStatus,
-  { tone: "gold" | "neutral" | "neg" | "outline"; label: string }
-> = {
-  // Same tone mapping as the markets explorer so a status never changes
-  // color between screens.
-  permitted: { tone: "gold", label: "Permitted" },
-  "permit-required": { tone: "outline", label: "Permit required" },
-  banned: { tone: "neg", label: "Banned" },
-  unverified: { tone: "neutral", label: "Unverified" },
-};
-
-// Every row is its own grid, so all tracks must resolve identically across
-// rows: fixed width for the chip column, minmax+fr for the rest.
+// Every row is its own grid, so all tracks must resolve identically
+// across rows: minmax+fr keeps numeric columns aligned.
 const ROW_GRID =
-  "grid grid-cols-[minmax(8rem,1.4fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)_8.25rem] items-center gap-x-4";
+  "grid grid-cols-[minmax(8rem,1.4fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)] items-center gap-x-4";
 
 /**
- * The markets the operator is watching: ADR, occupancy, RevPAR and the
- * local rule status for each, resolved from the market dataset.
+ * The markets the operator is watching: ADR, occupancy and RevPAR for
+ * each, resolved from the market dataset.
  */
 export function WatchedMarkets({ slugs }: { slugs: string[] }) {
   const [bySlug, setBySlug] = React.useState<Map<string, Market> | null>(null);
@@ -73,7 +60,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
           className="mt-3"
           icon={Eye}
           title="You're not watching any markets"
-          description="Watch a market to keep its ADR, occupancy and rules on your desk."
+          description="Watch a market to keep its ADR, occupancy and RevPAR on your desk."
           action={
             <Button asChild variant="outline">
               <Link href="/markets">Browse markets</Link>
@@ -88,7 +75,6 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
               <MetricLabel>ADR</MetricLabel>
               <MetricLabel>Occupancy</MetricLabel>
               <MetricLabel>RevPAR</MetricLabel>
-              <MetricLabel className="justify-self-end">Rules</MetricLabel>
             </div>
             <div className="divide-y divide-border border-b border-border">
               {watched === null
@@ -110,7 +96,6 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                         <Skeleton className="h-5 w-12" />
                         <Skeleton className="mt-1 h-3 w-12" />
                       </div>
-                      <Skeleton className="h-5 w-20 justify-self-end rounded-full" />
                     </div>
                   ))
                 : watched.map((m) => (
@@ -154,12 +139,6 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                         </p>
                         <p className="text-xs text-muted-foreground">per night</p>
                       </div>
-                      <StatusChip
-                        tone={REG_CHIP[m.regulation.status].tone}
-                        className="justify-self-end"
-                      >
-                        {REG_CHIP[m.regulation.status].label}
-                      </StatusChip>
                     </Link>
                   ))}
             </div>

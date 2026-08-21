@@ -3,7 +3,7 @@
 /**
  * /markets/[slug] — one market, underwritten. Fat stat band up top,
  * seasonality / ADR-by-bedroom / occupancy-vs-breakeven charts below,
- * then the regulation ruling and the "how a 2 bd pencils" strip.
+ * then the "how a 2 bd pencils" strip.
  */
 
 import * as React from "react";
@@ -45,7 +45,6 @@ import { DeltaIndicator } from "@/components/primitives/delta-indicator";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { PageHeader } from "@/components/primitives/page-header";
 import { StatCard, StatHeader } from "@/components/primitives/stat-card";
-import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import {
   AXIS_PROPS,
@@ -55,7 +54,6 @@ import {
   GRID_PROPS,
   makeTooltip,
 } from "@/components/charts/kit";
-import { REGULATION_LABEL, REGULATION_TONE } from "./market-card";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -199,8 +197,6 @@ export function MarketDetail({ market: m }: { market: Market }) {
     }
   };
 
-  const banned = m.regulation.status === "banned";
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <Link
@@ -213,14 +209,7 @@ export function MarketDetail({ market: m }: { market: Market }) {
 
       <PageHeader
         className="mt-3"
-        title={
-          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-            {m.name}
-            <StatusChip tone={REGULATION_TONE[m.regulation.status]}>
-              {REGULATION_LABEL[m.regulation.status]}
-            </StatusChip>
-          </span>
-        }
+        title={m.name}
         description={`${m.state} · ${fmtNum(m.activeListings)} active short-term rentals`}
         actions={
           <>
@@ -450,34 +439,8 @@ export function MarketDetail({ market: m }: { market: Market }) {
         </div>
       </div>
 
-      {/* Regulation + how a 2 bd pencils */}
-      <div className="mt-8 grid gap-8 pb-10 lg:grid-cols-2">
-        <section className="rounded-sm border border-border bg-card p-6">
-          <MetricLabel>Regulation</MetricLabel>
-          <div className="mt-3 flex items-center gap-3">
-            <StatusChip tone={REGULATION_TONE[m.regulation.status]}>
-              {REGULATION_LABEL[m.regulation.status]}
-            </StatusChip>
-            <span className="text-sm font-semibold text-foreground">
-              {REGULATION_LABEL[m.regulation.status]} for short-term rentals
-            </span>
-          </div>
-          {m.regulation.note ? (
-            <p className="mt-3 text-sm leading-relaxed text-foreground">
-              {m.regulation.note}
-            </p>
-          ) : null}
-          {banned ? (
-            <p className="mt-3 flex items-start gap-1.5 text-sm text-neg">
-              <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-              Arbitrage operators are effectively excluded here.
-            </p>
-          ) : null}
-          <p className="mt-3 text-xs text-muted-foreground">
-            Source: {m.regulation.sourceNote}
-          </p>
-        </section>
-
+      {/* How a 2 bd pencils */}
+      <div className="mt-8 grid gap-8 pb-10">
         <section className="rounded-sm border border-border bg-card p-6">
           <MetricLabel>How a 2 bd pencils here</MetricLabel>
           <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-4">

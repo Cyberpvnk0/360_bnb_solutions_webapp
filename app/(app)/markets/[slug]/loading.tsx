@@ -40,9 +40,8 @@ export default function MarketDetailLoading() {
         </div>
       </div>
 
-      {/* Regulation + pencils strip */}
-      <div className="mt-8 grid gap-8 pb-10 lg:grid-cols-2">
-        <Skeleton className="h-[14.5rem]" />
+      {/* Pencils strip */}
+      <div className="mt-8 grid gap-8 pb-10">
         <Skeleton className="h-[14.5rem]" />
       </div>
     </div>

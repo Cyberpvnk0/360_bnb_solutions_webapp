@@ -11,27 +11,9 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { revpar } from "@/lib/calc/arbitrage";
 import { fmtDeltaPts, fmtMoney, fmtNum, fmtPct } from "@/lib/format";
-import type { Market, RegulationStatus } from "@/lib/mock/types";
+import type { Market } from "@/lib/mock/types";
 import { DeltaIndicator } from "@/components/primitives/delta-indicator";
-import { StatusChip } from "@/components/primitives/status-chip";
 import { cn } from "@/lib/utils";
-
-export const REGULATION_LABEL: Record<RegulationStatus, string> = {
-  permitted: "Permitted",
-  "permit-required": "Permit required",
-  banned: "Banned",
-  unverified: "Unverified",
-};
-
-export const REGULATION_TONE: Record<
-  RegulationStatus,
-  "gold" | "outline" | "neg" | "neutral"
-> = {
-  permitted: "gold",
-  "permit-required": "outline",
-  banned: "neg",
-  unverified: "neutral",
-};
 
 function Figure({
   label,
@@ -107,9 +89,6 @@ export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
               <span className="sr-only">View market</span>
             </Link>
           </div>
-          <StatusChip tone={REGULATION_TONE[m.regulation.status]}>
-            {REGULATION_LABEL[m.regulation.status]}
-          </StatusChip>
         </div>
 
         <div className="mt-3 grid grid-cols-3 gap-x-4 gap-y-2 pl-8 sm:grid-cols-[1fr_1.1fr_1fr_0.9fr_1.7fr]">
