@@ -77,11 +77,7 @@ export function AnalyzeEntry({
   }, []);
 
   React.useEffect(() => {
-    if (selected || query.trim().length < 2) {
-      setSuggestions([]);
-      setListOpen(false);
-      return;
-    }
+    if (selected || query.trim().length < 2) return;
     let cancelled = false;
     const t = setTimeout(() => {
       searchAddresses(query).then((results) => {
@@ -99,6 +95,7 @@ export function AnalyzeEntry({
   const choose = async (s: AddressSuggestion) => {
     setQuery(s.label);
     setListOpen(false);
+    setSuggestions([]);
     const analysis = await getAnalysis(s.analysisId);
     setSelected(analysis);
     if (analysis) {
@@ -205,8 +202,13 @@ export function AnalyzeEntry({
             placeholder="Start typing a street address…"
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
+              const value = e.target.value;
+              setQuery(value);
               setSelected(null);
+              if (value.trim().length < 2) {
+                setSuggestions([]);
+                setListOpen(false);
+              }
             }}
             className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-gold/50"
           />

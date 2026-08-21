@@ -98,9 +98,6 @@ export function UsaMap({
   const [hoverSlug, setHoverSlug] = React.useState<string | null>(null);
   const [panning, setPanning] = React.useState(false);
 
-  const vbRef = React.useRef(viewBox);
-  vbRef.current = viewBox;
-
   const positions = React.useMemo(() => {
     const map = new Map<string, [number, number]>();
     for (const m of markets) {
@@ -137,23 +134,32 @@ export function UsaMap({
     return () => svg.removeEventListener("wheel", onWheel);
   }, [toUser]);
 
-  /* Pan when the selected pin sits outside the visible window. */
-  React.useEffect(() => {
-    if (!selectedSlug) return;
-    const pos = positions.get(selectedSlug);
-    if (!pos) return;
-    setViewBox((v) => {
-      const mx = v.w * 0.12;
-      const my = v.h * 0.12;
+  /* When a new selection arrives (e.g. a card click) and its pin sits
+   * outside the visible window, pan to it. State is adjusted during
+   * render, guarded by the previous-selection comparison. */
+  const [lastSelected, setLastSelected] = React.useState(selectedSlug);
+  if (selectedSlug !== lastSelected) {
+    setLastSelected(selectedSlug);
+    const pos = selectedSlug ? positions.get(selectedSlug) : undefined;
+    if (pos) {
+      const mx = viewBox.w * 0.12;
+      const my = viewBox.h * 0.12;
       const inside =
-        pos[0] > v.x + mx &&
-        pos[0] < v.x + v.w - mx &&
-        pos[1] > v.y + my &&
-        pos[1] < v.y + v.h - my;
-      if (inside) return v;
-      return clampView({ ...v, x: pos[0] - v.w / 2, y: pos[1] - v.h / 2 });
-    });
-  }, [selectedSlug, positions]);
+        pos[0] > viewBox.x + mx &&
+        pos[0] < viewBox.x + viewBox.w - mx &&
+        pos[1] > viewBox.y + my &&
+        pos[1] < viewBox.y + viewBox.h - my;
+      if (!inside) {
+        setViewBox(
+          clampView({
+            ...viewBox,
+            x: pos[0] - viewBox.w / 2,
+            y: pos[1] - viewBox.h / 2,
+          })
+        );
+      }
+    }
+  }
 
   /* Drag to pan; capture only after the threshold so pin clicks survive. */
   const dragRef = React.useRef<{
@@ -178,7 +184,7 @@ export function UsaMap({
     const dx = at[0] - drag.anchor[0];
     const dy = at[1] - drag.anchor[1];
     if (!drag.moved) {
-      if (Math.hypot(dx, dy) < vbRef.current.w * 0.006) return;
+      if (Math.hypot(dx, dy) < viewBox.w * 0.006) return;
       drag.moved = true;
       setPanning(true);
       try {

@@ -100,6 +100,14 @@ describe("breakeven occupancy", () => {
     expect(netCashFlow(base, market, be)).toBeCloseTo(0, 6);
   });
 
+  it("satisfies breakeven × contribution/night × 30.4 = fixed costs", () => {
+    const c = contributionPerNight(base, market);
+    expect(breakevenOccupancy(base, market) * c * NIGHTS_PER_MONTH).toBeCloseTo(
+      fixedMonthlyCosts(base),
+      6
+    );
+  });
+
   it("stays the zero of net cash flow with a management fee", () => {
     const i = { ...base, mgmtFeePct: 0.12 };
     const be = breakevenOccupancy(i, market);

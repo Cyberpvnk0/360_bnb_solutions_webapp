@@ -38,13 +38,8 @@ export function AddressSearch({ className }: { className?: string }) {
   }, []);
 
   React.useEffect(() => {
-    if (query.trim().length < 2) {
-      setSuggestions([]);
-      setOpen(false);
-      return;
-    }
+    if (query.trim().length < 2) return;
     let cancelled = false;
-    setSearching(true);
     const t = setTimeout(() => {
       searchAddresses(query).then((results) => {
         if (cancelled) return;
@@ -62,9 +57,21 @@ export function AddressSearch({ className }: { className?: string }) {
 
   const choose = (s: AddressSuggestion) => {
     setOpen(false);
+    setSuggestions([]);
     setQuery("");
     inputRef.current?.blur();
     router.push(`/analyze?address=${encodeURIComponent(s.analysisId)}`);
+  };
+
+  const onQueryChange = (value: string) => {
+    setQuery(value);
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      setOpen(false);
+      setSearching(false);
+    } else {
+      setSearching(true);
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -99,7 +106,7 @@ export function AddressSearch({ className }: { className?: string }) {
         aria-autocomplete="list"
         placeholder="Analyze an address…"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={onKeyDown}
         onFocus={() => suggestions.length > 0 && setOpen(true)}
         onBlur={(e) => {

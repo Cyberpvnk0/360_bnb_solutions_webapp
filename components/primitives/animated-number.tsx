@@ -28,18 +28,19 @@ export function AnimatedNumber({
 
   React.useEffect(() => {
     const from = fromRef.current;
-    if (from === value || !Number.isFinite(value) || !Number.isFinite(from)) {
-      fromRef.current = value;
-      setDisplay(value);
-      return;
-    }
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) {
+    if (
+      from === value ||
+      !Number.isFinite(value) ||
+      !Number.isFinite(from) ||
+      reduced
+    ) {
       fromRef.current = value;
-      setDisplay(value);
-      return;
+      // Jump straight to the value on the next frame (no cascading render).
+      const id = requestAnimationFrame(() => setDisplay(value));
+      return () => cancelAnimationFrame(id);
     }
     const start = performance.now();
     const tick = (now: number) => {
