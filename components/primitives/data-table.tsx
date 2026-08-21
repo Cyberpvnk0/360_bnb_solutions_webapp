@@ -28,6 +28,8 @@ interface DataTableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Fires with the row under the pointer, null on leave. */
+  onRowHover?: (row: T | null) => void;
   /** Rendered instead of the body when rows is empty (and not loading). */
   emptyState?: React.ReactNode;
   loading?: boolean;
@@ -47,6 +49,7 @@ export function DataTable<T>({
   rows,
   rowKey,
   onRowClick,
+  onRowHover,
   emptyState,
   loading = false,
   skeletonRows = 5,
@@ -149,6 +152,8 @@ export function DataTable<T>({
                 <TableRow
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}
+                  onMouseLeave={onRowHover ? () => onRowHover(null) : undefined}
                   tabIndex={onRowClick ? 0 : undefined}
                   onKeyDown={
                     onRowClick

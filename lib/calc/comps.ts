@@ -40,6 +40,33 @@ export function deriveMarketAssumptions(comps: StrCompLike[]): {
 }
 
 /**
+ * Comp set strength: how much to trust the projection, 1 (thin) to 5
+ * (high). More comps and tighter ADR agreement mean a stronger read.
+ * Purely descriptive — never a deal grade.
+ */
+export function compSetStrength(comps: StrCompLike[]): {
+  score: 1 | 2 | 3 | 4 | 5;
+  label: "Thin" | "Fair" | "Good" | "High";
+} {
+  const n = comps.length;
+  if (n === 0) return { score: 1, label: "Thin" };
+  const mean = comps.reduce((a, c) => a + c.adr, 0) / n;
+  const variance =
+    comps.reduce((a, c) => a + (c.adr - mean) ** 2, 0) / n;
+  const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
+
+  let score = 2;
+  if (n >= 8) score += 1;
+  if (n >= 10) score += 1;
+  if (cv < 0.12) score += 1;
+  else if (cv > 0.2) score -= 1;
+  const clamped = Math.min(5, Math.max(1, score)) as 1 | 2 | 3 | 4 | 5;
+  const label =
+    clamped >= 5 ? "High" : clamped === 4 ? "Good" : clamped === 3 ? "Fair" : "Thin";
+  return { score: clamped, label };
+}
+
+/**
  * Lease estimate = median rent of long-term comps, rounded to $25.
  * Median (not mean) so one outlier listing can't skew the lease you
  * negotiate against.

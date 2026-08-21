@@ -48,13 +48,16 @@ export function BreakevenGauge({
     : 1;
 
   // Tick marking the market's actual occupancy, from 12 o'clock clockwise.
+  // Coordinates round to 3 decimals: trig results can differ in the last
+  // ulp between server and client, which trips hydration otherwise.
+  const round3 = (n: number) => Math.round(n * 1000) / 1000;
   const tickAngle = Math.min(Math.max(marketOccupancy, 0), 1) * 2 * Math.PI;
   const tickInner = r - strokeWidth - 3;
   const tickOuter = r + strokeWidth + 3;
-  const tx1 = c + tickInner * Math.sin(tickAngle);
-  const ty1 = c - tickInner * Math.cos(tickAngle);
-  const tx2 = c + tickOuter * Math.sin(tickAngle);
-  const ty2 = c - tickOuter * Math.cos(tickAngle);
+  const tx1 = round3(c + tickInner * Math.sin(tickAngle));
+  const ty1 = round3(c - tickInner * Math.cos(tickAngle));
+  const tx2 = round3(c + tickOuter * Math.sin(tickAngle));
+  const ty2 = round3(c - tickOuter * Math.cos(tickAngle));
 
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {

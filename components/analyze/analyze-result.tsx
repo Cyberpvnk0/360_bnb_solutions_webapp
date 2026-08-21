@@ -3,10 +3,12 @@
 /**
  * THE CORE SCREEN — an address turned into an underwriting decision.
  *
- * Hero: breakeven occupancy inside the circular gauge, against the
- * market's actual occupancy. Left: live calculator inputs. Right: outputs
- * recalculating on every keystroke. Below: the comp evidence for both the
- * revenue projection and the lease estimate.
+ * Hero card: property identity, then the figures investors scan first —
+ * projected annual revenue, occupancy, ADR — with breakeven occupancy as
+ * a compact fourth module (important, deliberately not the centerpiece)
+ * and the comp revenue range beneath. Below: a dumb-simple calculator
+ * with an Advanced disclosure, the live projection, hover-synced comps
+ * table + map, and the lease evidence.
  */
 
 import * as React from "react";
@@ -17,26 +19,25 @@ import {
   FileDown,
   FolderPlus,
   MoveDownRight,
+  MoveUpRight,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
-import {
-  fmtDate,
-  fmtMoney,
-  fmtMonths,
-  fmtPct,
-} from "@/lib/format";
+import { fmtDate, fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
 import type { Analysis } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
 import { AnimatedNumber } from "@/components/primitives/animated-number";
 import { BreakevenGauge } from "@/components/primitives/breakeven-gauge";
 import { MetricLabel } from "@/components/primitives/metric-label";
-import { StatCard, StatHeader } from "@/components/primitives/stat-card";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { CalculatorInputs } from "./calculator-inputs";
-import { LtrCompsTable, StrCompsTable } from "./comps-tables";
+import { CompsExplorer } from "./comps-explorer";
+import { LtrCompsTable } from "./comps-tables";
+import { PropertyThumb } from "./property-thumb";
+import { RevenueRange } from "./revenue-range";
 import { cn } from "@/lib/utils";
 
 const PROPERTY_TYPE_LABEL: Record<Analysis["propertyType"], string> = {
@@ -99,6 +100,11 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
   const neverBreaksEven = !Number.isFinite(p.breakevenOccupancy);
   const comfortable = p.marginOfSafety >= 0.02;
   const marginPts = Math.round(p.marginOfSafety * 100);
+  const sleeps = analysis.bedrooms * 2 + 2;
+  // Annual figures display as rounded-monthly × 12 so a reader who
+  // multiplies the two on-screen numbers gets an exact match.
+  const annualRevenueDisplay = Math.round(p.monthlyRevenue) * 12;
+  const annualProfitDisplay = Math.round(p.netCashFlow) * 12;
 
   const handleSave = () => {
     // Save the scenario on screen — the user's edited inputs, not the
@@ -130,159 +136,159 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <MetricLabel>Address pull · {fmtDate(analysis.createdAt)}</MetricLabel>
-            <StatusChip tone="outline">
-              {analysis.bedrooms} bd · {analysis.bathrooms} ba ·{" "}
-              {PROPERTY_TYPE_LABEL[analysis.propertyType]}
-            </StatusChip>
-          </div>
-          <h1 className="mt-1.5 truncate font-display text-2xl font-medium tracking-tight text-foreground md:text-3xl">
-            {analysis.address}
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {analysis.city}, {analysis.stateCode} ·{" "}
-            <Link
-              href={`/markets/${analysis.marketSlug}`}
-              className="inline-flex items-center gap-0.5 text-gold transition-colors duration-150 hover:text-gold-bright"
-            >
-              View market
-              <ArrowUpRight aria-hidden className="size-3" />
-            </Link>
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button variant="outline" onClick={handleExport} className="gap-1.5">
-            <FileDown aria-hidden className="size-4" />
-            Landlord packet
-            {!tier.pdfExport ? (
-              <span className="text-[10px] uppercase tracking-wider text-gold">Pro</span>
-            ) : null}
-          </Button>
-          {saved ? (
-            <Button asChild variant="secondary" className="gap-1.5">
-              <Link href="/pipeline">
-                <Check aria-hidden className="size-4 text-gold" />
-                In pipeline
-              </Link>
-            </Button>
-          ) : (
-            <Button onClick={handleSave} className="gap-1.5">
-              <FolderPlus aria-hidden className="size-4" />
-              Save to pipeline
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Revenue forecast band — the figures investors scan first.
-          Recalculates live with the calculator inputs. */}
-      <StatHeader className="mt-8">
-        <StatCard
-          label="Projected annual revenue"
-          serif
-          value={<AnimatedNumber value={p.monthlyRevenue * 12} format={fmtMoney} />}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              gross bookings at market occupancy
-            </span>
-          }
-        />
-        <StatCard
-          label="ADR"
-          value={fmtMoney(assumptions.adr)}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              from {analysis.strComps.length} comps below
-            </span>
-          }
-        />
-        <StatCard
-          label="Occupancy estimate"
-          value={fmtPct(assumptions.marketOccupancy)}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              what this market actually runs
-            </span>
-          }
-        />
-        <StatCard
-          label="RevPAR"
-          value={fmtMoney(revpar(assumptions.adr, assumptions.marketOccupancy))}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              ADR × occupancy, per night
-            </span>
-          }
-        />
-        <StatCard
-          label="Booked nights"
-          value={<AnimatedNumber value={p.occupiedNights} format={(n) => String(Math.round(n))} />}
-          sub={
-            <span className="text-[11px] text-muted-foreground tabular">
-              per month · {Math.round(p.turnovers)} turnovers
-            </span>
-          }
-        />
-      </StatHeader>
-
-      {/* Hero: the breakeven gauge */}
-      <section
-        aria-label="Breakeven occupancy"
-        className="mt-8 flex flex-col items-center border-y border-border py-14"
-      >
-        <BreakevenGauge
-          breakeven={p.breakevenOccupancy}
-          marketOccupancy={p.marketOccupancy}
-          size={300}
-          strokeWidth={6}
-        >
-          <MetricLabel>Breakeven occupancy</MetricLabel>
-          <AnimatedNumber
-            value={neverBreaksEven ? 0 : p.breakevenOccupancy * 100}
-            format={(n) => (neverBreaksEven ? "—" : `${Math.round(n)}%`)}
-            className={cn(
-              "font-display text-7xl font-medium leading-none tracking-tight",
-              comfortable ? "text-foreground" : "text-neg"
-            )}
+      {/* Hero card */}
+      <section className="overflow-hidden rounded-sm border border-border bg-card">
+        {/* Identity + actions */}
+        <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center">
+          <PropertyThumb
+            seed={analysis.id}
+            className="h-28 w-full max-w-44 shrink-0 md:h-[104px] md:w-[152px]"
           />
-          <p className="mt-2 text-sm text-muted-foreground">
-            market runs at{" "}
-            <span className="font-medium text-foreground tabular">
-              {fmtPct(p.marketOccupancy)}
-            </span>
-          </p>
-        </BreakevenGauge>
-
-        <div className="mt-6">
-          {neverBreaksEven ? (
-            <StatusChip tone="neg">Never breaks even at these costs</StatusChip>
-          ) : comfortable ? (
-            <StatusChip tone="gold">
-              {marginPts} pts margin of safety
-            </StatusChip>
-          ) : p.marginOfSafety >= 0 ? (
-            <StatusChip tone="neutral">
-              Only {marginPts} pts of headroom — thin
-            </StatusChip>
-          ) : (
-            <StatusChip tone="neg">
-              Market runs {Math.abs(marginPts)} pts below your breakeven
-            </StatusChip>
-          )}
+          <div className="min-w-0 flex-1">
+            <MetricLabel>
+              Address pull · {fmtDate(analysis.createdAt)}
+            </MetricLabel>
+            <h1 className="mt-1 truncate font-display text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+              {analysis.address}
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {analysis.city}, {analysis.stateCode} ·{" "}
+              <Link
+                href={`/markets/${analysis.marketSlug}`}
+                className="inline-flex items-center gap-0.5 text-gold transition-colors duration-150 hover:text-gold-bright"
+              >
+                View market
+                <ArrowUpRight aria-hidden className="size-3" />
+              </Link>
+            </p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <StatusChip tone="outline">{analysis.bedrooms} bd</StatusChip>
+              <StatusChip tone="outline">{analysis.bathrooms} ba</StatusChip>
+              <StatusChip tone="outline">Sleeps {sleeps}</StatusChip>
+              <StatusChip tone="outline">
+                {PROPERTY_TYPE_LABEL[analysis.propertyType]}
+              </StatusChip>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button variant="outline" onClick={handleExport} className="gap-1.5">
+              <FileDown aria-hidden className="size-4" />
+              Landlord packet
+              {!tier.pdfExport ? (
+                <span className="text-[10px] uppercase tracking-wider text-gold">
+                  Pro
+                </span>
+              ) : null}
+            </Button>
+            {saved ? (
+              <Button asChild variant="secondary" className="gap-1.5">
+                <Link href="/pipeline">
+                  <Check aria-hidden className="size-4 text-gold" />
+                  In pipeline
+                </Link>
+              </Button>
+            ) : (
+              <Button onClick={handleSave} className="gap-1.5">
+                <FolderPlus aria-hidden className="size-4" />
+                Save to pipeline
+              </Button>
+            )}
+          </div>
         </div>
-        <p className="mt-3 max-w-md text-center text-xs text-muted-foreground">
-          {neverBreaksEven
-            ? "At these fees, a booked night costs more than it earns. Cut costs or walk away."
-            : comfortable
-              ? "Every occupancy point above the gold arc is profit. The grey tick is what this market actually runs."
-              : p.marginOfSafety >= 0
-                ? "You clear costs, but one soft month puts you underwater. Negotiate the rent down."
-                : "This lease doesn't pencil at market performance. Change the numbers or the address."}
-        </p>
+
+        {/* Headline figures */}
+        <div className="overflow-x-auto border-t border-border">
+          <div className="flex min-w-max items-stretch divide-x divide-border">
+            <div className="px-6 py-5 first:pl-6">
+              <MetricLabel>Projected annual revenue</MetricLabel>
+              <AnimatedNumber
+                value={annualRevenueDisplay}
+                format={fmtMoney}
+                className="mt-1.5 block font-display text-3xl font-medium leading-tight tracking-tight"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                gross bookings · {fmtMoney(p.monthlyRevenue)}/mo
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <MetricLabel>Occupancy</MetricLabel>
+              <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight tabular">
+                {fmtPct(assumptions.marketOccupancy)}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                what this market actually runs
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <MetricLabel>ADR</MetricLabel>
+              <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight tabular">
+                {fmtMoney(assumptions.adr)}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {fmtMoney(revpar(assumptions.adr, assumptions.marketOccupancy))}{" "}
+                RevPAR · {analysis.strComps.length} comps
+              </p>
+            </div>
+            {/* Breakeven — important, deliberately not the centerpiece. */}
+            <div className="flex items-center gap-3.5 px-6 py-5">
+              <BreakevenGauge
+                breakeven={p.breakevenOccupancy}
+                marketOccupancy={p.marketOccupancy}
+                size={68}
+                strokeWidth={3.5}
+              />
+              <div>
+                <MetricLabel>Breakeven occupancy</MetricLabel>
+                <div
+                  className={cn(
+                    "mt-1 text-[1.625rem] font-semibold leading-tight tracking-tight tabular",
+                    !comfortable && "text-neg"
+                  )}
+                >
+                  <AnimatedNumber
+                    value={neverBreaksEven ? 0 : p.breakevenOccupancy * 100}
+                    format={(n) => (neverBreaksEven ? "—" : `${Math.round(n)}%`)}
+                  />
+                </div>
+                <p
+                  className={cn(
+                    "mt-1 flex items-center gap-1 text-[11px]",
+                    neverBreaksEven || p.marginOfSafety < 0
+                      ? "text-neg"
+                      : comfortable
+                        ? "text-gold"
+                        : "text-muted-foreground"
+                  )}
+                >
+                  {neverBreaksEven ? (
+                    <>
+                      <TriangleAlert aria-hidden className="size-3" />
+                      never breaks even at these costs
+                    </>
+                  ) : p.marginOfSafety >= 0 ? (
+                    <>
+                      <MoveUpRight aria-hidden className="size-3" />
+                      {marginPts} pts of cushion under {fmtPct(p.marketOccupancy)}
+                    </>
+                  ) : (
+                    <>
+                      <TriangleAlert aria-hidden className="size-3" />
+                      market runs {Math.abs(marginPts)} pts short
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Comp revenue range */}
+        <div className="border-t border-border px-6 py-5">
+          <RevenueRange
+            comps={analysis.strComps}
+            subjectAnnualRevenue={annualRevenueDisplay}
+          />
+        </div>
       </section>
 
       {/* Calculator: inputs left, outputs right */}
@@ -327,7 +333,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
               tone={p.annualProfit >= 0 ? undefined : "neg"}
               sub="12 months at market occupancy"
             >
-              <AnimatedNumber value={p.annualProfit} format={fmtMoney} />
+              <AnimatedNumber value={annualProfitDisplay} format={fmtMoney} />
             </OutputTile>
             <OutputTile
               label="Total startup capital"
@@ -342,7 +348,9 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
             >
               <AnimatedNumber
                 value={Number.isFinite(p.cashOnCash) ? p.cashOnCash * 100 : 0}
-                format={(n) => (Number.isFinite(p.cashOnCash) ? `${n.toFixed(1)}%` : "—")}
+                format={(n) =>
+                  Number.isFinite(p.cashOnCash) ? `${n.toFixed(1)}%` : "—"
+                }
               />
             </OutputTile>
             <OutputTile
@@ -375,7 +383,7 @@ export function AnalyzeResult({ analysis }: { analysis: Analysis }) {
 
       {/* Evidence */}
       <div className="mt-14 space-y-14 pb-14">
-        <StrCompsTable comps={analysis.strComps} />
+        <CompsExplorer comps={analysis.strComps} />
         <LtrCompsTable comps={analysis.ltrComps} />
       </div>
     </div>

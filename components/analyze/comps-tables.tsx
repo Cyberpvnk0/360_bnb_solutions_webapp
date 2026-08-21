@@ -1,98 +1,17 @@
 "use client";
 
 /**
- * The evidence layer: comps are always visible directly beneath the
- * projected numbers, never behind a click. The footer of each table states
- * the exact figure the projection uses, derived from these same rows.
+ * Lease evidence: the long-term rental comps behind the rent estimate,
+ * always visible beneath the projection, never behind a click. The
+ * footer states the exact figure the calculator starts from.
+ * (STR comps live in comps-explorer.tsx with the hover-synced map.)
  */
 
-import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
-import { deriveMarketAssumptions, estimateRentFromComps } from "@/lib/calc/comps";
-import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
-import type { LtrComp, StrComp } from "@/lib/mock/types";
+import { estimateRentFromComps } from "@/lib/calc/comps";
+import { fmtMiles, fmtMoney } from "@/lib/format";
+import type { LtrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { MetricLabel } from "@/components/primitives/metric-label";
-
-const STR_COLUMNS: DataTableColumn<StrComp>[] = [
-  {
-    key: "name",
-    header: "Listing",
-    cell: (c) => (
-      <span className="font-sans font-medium text-foreground">{c.name}</span>
-    ),
-    sortValue: (c) => c.name,
-    className: "max-w-64 truncate",
-  },
-  {
-    key: "bedrooms",
-    header: "Beds",
-    align: "right",
-    cell: (c) => c.bedrooms,
-    sortValue: (c) => c.bedrooms,
-  },
-  {
-    key: "adr",
-    header: "ADR",
-    align: "right",
-    cell: (c) => fmtMoney(c.adr),
-    sortValue: (c) => c.adr,
-  },
-  {
-    key: "occupancy",
-    header: "Occupancy",
-    align: "right",
-    cell: (c) => fmtPct(c.occupancy),
-    sortValue: (c) => c.occupancy,
-  },
-  {
-    key: "annualRevenue",
-    header: "Annual revenue",
-    align: "right",
-    cell: (c) => fmtMoney(annualRevenueFromAdr(c.adr, c.occupancy)),
-    sortValue: (c) => annualRevenueFromAdr(c.adr, c.occupancy),
-  },
-  {
-    key: "distance",
-    header: "Distance",
-    align: "right",
-    cell: (c) => fmtMiles(c.distanceMiles),
-    sortValue: (c) => c.distanceMiles,
-  },
-];
-
-export function StrCompsTable({ comps }: { comps: StrComp[] }) {
-  const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
-  return (
-    <section aria-label="Short-term rental comps">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">
-            Revenue evidence — {comps.length} nearby short-term rentals
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            The projection above is computed from these listings, nothing else.
-          </p>
-        </div>
-        <MetricLabel className="hidden shrink-0 sm:block">STR comps</MetricLabel>
-      </div>
-      <DataTable
-        columns={STR_COLUMNS}
-        rows={comps}
-        rowKey={(c) => c.id}
-        initialSort={{ key: "distance", dir: "asc" }}
-      />
-      <p className="border-t border-border py-3 text-xs text-muted-foreground">
-        Comp average:{" "}
-        <span className="font-medium text-foreground tabular">{fmtMoney(adr)}</span>{" "}
-        ADR at{" "}
-        <span className="font-medium text-foreground tabular">
-          {fmtPct(marketOccupancy)}
-        </span>{" "}
-        occupancy — exactly the assumptions the projection uses.
-      </p>
-    </section>
-  );
-}
 
 const LTR_COLUMNS: DataTableColumn<LtrComp>[] = [
   {

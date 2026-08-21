@@ -42,6 +42,19 @@ export function fmtNum(value: number): string {
   return num0.format(value);
 }
 
+/** $37.7K / $1.2M — compact money for axis labels and dense readouts. */
+export function fmtMoneyShort(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (abs >= 1_000) {
+    return `$${(value / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  return usd0.format(value);
+}
+
 /** +4.2% / −1.3% — signed delta in percentage points from a fraction. */
 export function fmtDeltaPts(fraction: number, digits = 1): string {
   if (!Number.isFinite(fraction)) return "—";
