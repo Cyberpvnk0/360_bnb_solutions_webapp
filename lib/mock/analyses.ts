@@ -11,9 +11,15 @@
 
 import type { DealInputs } from "@/lib/calc/arbitrage";
 import { estimateRentFromComps } from "@/lib/calc/comps";
-import { BR_MULT, MARKETS, RENT_MULT } from "./markets";
-import { clamp, daysAgo, Rng, roundTo } from "./seed";
-import type { Analysis, LtrComp, PropertyType, StrComp } from "./types";
+import { BR_MULT, MARKET_BY_SLUG, MARKETS, RENT_MULT } from "./markets";
+import { clamp, daysAgo, hashStr, MOCK_TODAY, Rng, roundTo } from "./seed";
+import type {
+  Analysis,
+  LtrComp,
+  PropertyType,
+  RentalListing,
+  StrComp,
+} from "./types";
 
 const STREETS = [
   "Maple", "Oakwood", "Cypress", "Palmetto", "Juniper", "Cedar Ridge",
@@ -56,7 +62,7 @@ function buildStrComps(
   marketAdr: number,
   marketOcc: number,
   bedrooms: number,
-  analysisIdx: number,
+  analysisIdx: number | string,
   rng: Rng
 ): StrComp[] {
   const count = rng.int(8, 10);
@@ -84,7 +90,7 @@ function buildLtrComps(
   bedrooms: number,
   city: string,
   stateCode: string,
-  analysisIdx: number,
+  analysisIdx: number | string,
   rng: Rng
 ): LtrComp[] {
   const baseRent = medianRent2br * RENT_MULT[bedrooms];
@@ -184,3 +190,61 @@ export const ADDRESS_SUGGESTIONS: {
   city: a.city,
   stateCode: a.stateCode,
 }));
+
+/* ------------------------------------------------------------------ */
+/* Lazy analyses for Deal Finder listings                              */
+/* ------------------------------------------------------------------ */
+
+const LISTING_ANALYSES = new Map<string, Analysis>();
+
+/**
+ * The full Analysis behind a Deal Finder listing, built on demand and
+ * memoized per `listing.analysisId`. Seeded from that id alone (its own
+ * Rng — the shared sequential stream above never moves), so the result
+ * is identical no matter which screen asks first. Address, unit details
+ * and market come straight from the listing; the comp evidence and the
+ * calculator defaults follow the exact same construction — and the same
+ * internal consistency — as the 30 seeded pulls.
+ */
+export function analysisForListing(listing: RentalListing): Analysis {
+  const hit = LISTING_ANALYSES.get(listing.analysisId);
+  if (hit) return hit;
+
+  const market = MARKET_BY_SLUG.get(listing.marketSlug);
+  if (!market) {
+    throw new Error(`Unknown market for listing: ${listing.marketSlug}`);
+  }
+
+  const rng = new Rng(hashStr(listing.analysisId));
+  const strComps = buildStrComps(
+    market.adr,
+    market.occupancy,
+    listing.bedrooms,
+    listing.analysisId,
+    rng
+  );
+  const ltrComps = buildLtrComps(
+    market.medianRent2br,
+    listing.bedrooms,
+    market.name,
+    market.stateCode,
+    listing.analysisId,
+    rng
+  );
+  const analysis: Analysis = {
+    id: listing.analysisId,
+    address: listing.address,
+    city: listing.city,
+    stateCode: listing.stateCode,
+    marketSlug: listing.marketSlug,
+    bedrooms: listing.bedrooms,
+    bathrooms: listing.bathrooms,
+    propertyType: listing.propertyType,
+    createdAt: MOCK_TODAY,
+    strComps,
+    ltrComps,
+    defaults: buildDefaults(ltrComps, listing.bedrooms, rng),
+  };
+  LISTING_ANALYSES.set(listing.analysisId, analysis);
+  return analysis;
+}

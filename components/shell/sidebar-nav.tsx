@@ -2,11 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Binoculars } from "lucide-react";
 import { NAV_INTERNAL, NAV_MAIN, NAV_SYSTEM, type NavItem } from "@/config/nav";
 import { useSession } from "@/components/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { cn } from "@/lib/utils";
+
+/** Deal Finder ships with the /deals screen; it slots in above Markets
+ *  here so config/nav.ts stays untouched by that feature. */
+const DEAL_FINDER: NavItem = {
+  href: "/deals",
+  label: "Deal Finder",
+  icon: Binoculars,
+  match: (p) => p.startsWith("/deals"),
+};
+
+const MAIN_ITEMS: NavItem[] = (() => {
+  const items = NAV_MAIN.filter((i) => i.href !== DEAL_FINDER.href);
+  const marketsIdx = items.findIndex((i) => i.href === "/markets");
+  const at = marketsIdx === -1 ? 1 : marketsIdx;
+  return [...items.slice(0, at), DEAL_FINDER, ...items.slice(at)];
+})();
 
 function NavLink({
   item,
@@ -84,7 +101,7 @@ export function SidebarRail() {
   return (
     <div className="flex h-full flex-col">
       <nav aria-label="Primary" className="mt-3 flex flex-col">
-        {NAV_MAIN.map((item) => (
+        {MAIN_ITEMS.map((item) => (
           <RailLink key={item.href} item={item} pathname={pathname} />
         ))}
       </nav>
@@ -128,7 +145,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <nav aria-label="Primary" className="mt-4 flex flex-col">
-        {NAV_MAIN.map((item) => (
+        {MAIN_ITEMS.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
         ))}
       </nav>

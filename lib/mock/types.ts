@@ -148,6 +148,41 @@ export interface Analysis {
 }
 
 /* ------------------------------------------------------------------ */
+/* Rental listings (Deal Finder)                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One long-term rental listing in the Deal Finder browser — rentals only,
+ * never for-sale. Lean by design: generated lazily per market. Handing a
+ * listing to the analyzer resolves `analysisId` into a full Analysis with
+ * the same comp-backed consistency as a seeded pull.
+ */
+export interface RentalListing {
+  /** Globally unique: `rl--${marketSlug}--${i}`. */
+  id: string;
+  /** The analysis this listing becomes on "Run the numbers":
+   *  `r--${marketSlug}--${i}` — resolved lazily by lib/mock/analyses. */
+  analysisId: string;
+  address: string;
+  /** The parent market's name. */
+  city: string;
+  stateCode: string;
+  marketSlug: string;
+  lat: number;
+  lon: number;
+  bedrooms: number;
+  /** 1–3 in half steps, like analyses. */
+  bathrooms: number;
+  sqft: number;
+  propertyType: PropertyType;
+  /** Asking rent, dollars per month. */
+  rentMonthly: number;
+  /** Days since the listing went up (0 = today). */
+  daysOnMarket: number;
+  petFriendly: boolean;
+}
+
+/* ------------------------------------------------------------------ */
 /* Pipeline                                                            */
 /* ------------------------------------------------------------------ */
 

@@ -2,13 +2,32 @@
  * Analysis (address pull) data access. Mock-backed today.
  */
 
-import { ADDRESS_SUGGESTIONS, ANALYSES, ANALYSIS_BY_ID } from "@/lib/mock/analyses";
+import {
+  ADDRESS_SUGGESTIONS,
+  ANALYSES,
+  ANALYSIS_BY_ID,
+  analysisForListing,
+} from "@/lib/mock/analyses";
+import { allRentals, RENTAL_BY_ANALYSIS_ID } from "@/lib/mock/rentals";
 import type { Analysis } from "@/lib/mock/types";
 import { simulateLatency } from "./latency";
 
+/** Seeded pulls first; `r--` ids resolve lazily through the Deal Finder's
+ *  listing set, so handing a listing to the analyzer just works. */
+function resolveAnalysis(id: string): Analysis | null {
+  const seeded = ANALYSIS_BY_ID.get(id);
+  if (seeded) return seeded;
+  if (id.startsWith("r--")) {
+    allRentals(); // ensure the lazy by-analysis-id index is built
+    const listing = RENTAL_BY_ANALYSIS_ID.get(id);
+    if (listing) return analysisForListing(listing);
+  }
+  return null;
+}
+
 export async function getAnalysis(id: string): Promise<Analysis | null> {
   await simulateLatency();
-  return ANALYSIS_BY_ID.get(id) ?? null;
+  return resolveAnalysis(id);
 }
 
 export async function getRecentAnalyses(limit = 5): Promise<Analysis[]> {
@@ -39,6 +58,6 @@ export async function searchAddresses(query: string): Promise<AddressSuggestion[
  */
 export async function runAddressPull(analysisId: string): Promise<{ id: string }> {
   await simulateLatency(2000);
-  const found = ANALYSIS_BY_ID.get(analysisId);
+  const found = resolveAnalysis(analysisId);
   return { id: found?.id ?? ANALYSES[0].id };
 }
