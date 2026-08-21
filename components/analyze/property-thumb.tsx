@@ -19,9 +19,13 @@ function hash(str: string): number {
 export function PropertyThumb({
   seed,
   className,
+  label = "Preview",
 }: {
   seed: string;
   className?: string;
+  /** Corner tag. "Preview" for seeded data; live listings pass
+   *  "No photo" — the listing is real, only the image is pending. */
+  label?: string;
 }) {
   const h = hash(seed);
   // Three gable peaks with seeded heights and offsets.
@@ -75,7 +79,7 @@ export function PropertyThumb({
         />
       </svg>
       <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
-        Preview
+        {label}
       </span>
     </div>
   );

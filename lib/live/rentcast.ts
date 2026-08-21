@@ -121,17 +121,24 @@ function toSortedListings(
     .sort((a, b) => a.rentMonthly - b.rentMonthly);
 }
 
+/** A metro is bigger than its postal city name — Jacksonville includes
+ *  the beaches and Orange Park. Radius search covers the whole market. */
+const MARKET_RADIUS_MILES = 30;
+
 /**
- * Active long-term rentals for one market, mapped and rent-sorted.
- * Throws on transport or auth failures — the route turns that into an
- * honest "preview data" fallback instead of empty-looking results.
+ * Active long-term rentals across one market's whole metro area
+ * (center + radius, so suburbs and beach towns with their own postal
+ * names are included), mapped and rent-sorted. Throws on transport or
+ * auth failures — the route turns that into an honest "preview data"
+ * fallback instead of empty-looking results.
  */
 export async function fetchLiveRentals(
   market: Market
 ): Promise<RentalListing[]> {
   const rows = await rcListings({
-    city: market.name,
-    state: market.stateCode,
+    latitude: String(market.lat),
+    longitude: String(market.lon),
+    radius: String(MARKET_RADIUS_MILES),
   });
   return toSortedListings(rows, market);
 }

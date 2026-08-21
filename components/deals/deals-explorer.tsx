@@ -274,6 +274,20 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     [visible]
   );
 
+  // Targeted searches (a market or a ZIP) pin the ENTIRE result set on
+  // the map — the whole city, not just the page the list is showing.
+  // Nationwide browsing keeps pins to the visible page so the country
+  // view stays readable.
+  const targeted = Boolean(zip || liveTarget);
+  const MAP_PIN_CAP = 400;
+  const mapListings = React.useMemo(
+    () =>
+      targeted
+        ? filtered.slice(0, MAP_PIN_CAP).map((r) => r.listing)
+        : visibleListings,
+    [targeted, filtered, visibleListings]
+  );
+
   const hasActiveFilters = !isDefaultDealFilters(filters) || zip !== null;
   const resetFilters = () => {
     setFilters(DEFAULT_DEAL_FILTERS);
@@ -455,7 +469,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           )}
         >
           <RentalsMap
-            listings={visibleListings}
+            listings={mapListings}
             hoveredId={hoveredId}
             selectedId={selectedId}
             onHover={setHoveredId}
