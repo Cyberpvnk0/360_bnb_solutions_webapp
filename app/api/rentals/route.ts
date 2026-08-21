@@ -8,23 +8,52 @@
  */
 
 import { NextResponse } from "next/server";
-import { fetchLiveRentals } from "@/lib/live/rentcast";
+import { fetchLiveRentals, fetchLiveRentalsByZip } from "@/lib/live/rentcast";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const slug = searchParams.get("market") ?? "";
-  const market = MARKET_BY_SLUG.get(slug);
-  if (!market) {
-    return NextResponse.json(
-      { live: false, reason: "unknown-market" },
-      { status: 404 }
-    );
-  }
+  const slug = searchParams.get("market");
+  const zip = searchParams.get("zip");
+
   if (!process.env.RENTCAST_API_KEY) {
     return NextResponse.json(
       { live: false, reason: "no-key" },
       { status: 503 }
+    );
+  }
+
+  // ZIP search — RentCast queries ZIPs natively, covering the space
+  // between named markets.
+  if (zip) {
+    if (!/^\d{5}$/.test(zip)) {
+      return NextResponse.json(
+        { live: false, reason: "bad-zip" },
+        { status: 400 }
+      );
+    }
+    try {
+      const { market, listings } = await fetchLiveRentalsByZip(zip);
+      return NextResponse.json({
+        live: true,
+        asOf: new Date().toISOString(),
+        zip,
+        market: market?.slug ?? null,
+        listings,
+      });
+    } catch {
+      return NextResponse.json(
+        { live: false, reason: "unreachable" },
+        { status: 502 }
+      );
+    }
+  }
+
+  const market = MARKET_BY_SLUG.get(slug ?? "");
+  if (!market) {
+    return NextResponse.json(
+      { live: false, reason: "unknown-market" },
+      { status: 404 }
     );
   }
 

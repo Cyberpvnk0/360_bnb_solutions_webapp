@@ -63,3 +63,31 @@ export async function getLiveRentals(
   const market = MARKET_BY_SLUG.get(marketSlug);
   return { live: false, listings: market ? rentalsFor(market) : [] };
 }
+
+export interface ZipRentalsResult extends LiveRentalsResult {
+  /** The covered market anchoring cushion math for this ZIP, if any. */
+  marketSlug?: string | null;
+}
+
+/**
+ * Today's actual rentals for a 5-digit ZIP. ZIP search is live-only —
+ * the preview world has no honest ZIP inventory — so `live: false`
+ * means the caller says "needs the live feed" rather than faking rows.
+ */
+export async function getLiveRentalsByZip(
+  zip: string
+): Promise<ZipRentalsResult> {
+  try {
+    const res = await fetch(`/api/rentals?zip=${encodeURIComponent(zip)}`);
+    if (res.ok) {
+      const data = (await res.json()) as ZipRentalsResult;
+      if (data.live && Array.isArray(data.listings)) {
+        registerLiveListings(data.listings);
+        return data;
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return { live: false, listings: [] };
+}

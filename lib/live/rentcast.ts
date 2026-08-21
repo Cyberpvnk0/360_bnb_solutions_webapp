@@ -10,6 +10,7 @@
  * Docs: https://developers.rentcast.io — GET /v1/listings/rental/long-term
  */
 
+import { MARKETS } from "@/lib/mock/markets";
 import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
 const BASE = "https://api.rentcast.io/v1";
@@ -87,6 +88,39 @@ export function mapRentCastListing(
   };
 }
 
+/** Raw RentCast call — daily-cached per unique query so the whole
+ *  student base shares one request. Throws on transport/auth failures. */
+async function rcListings(
+  query: Record<string, string>
+): Promise<RentCastListing[]> {
+  const key = process.env.RENTCAST_API_KEY;
+  if (!key) throw new Error("RENTCAST_API_KEY is not configured");
+  const params = new URLSearchParams({
+    ...query,
+    status: "Active",
+    limit: "500",
+  });
+  const res = await fetch(`${BASE}/listings/rental/long-term?${params}`, {
+    headers: { "X-Api-Key": key, Accept: "application/json" },
+    next: { revalidate: LIVE_REVALIDATE_SECONDS },
+  });
+  if (!res.ok) {
+    throw new Error(`RentCast responded ${res.status}`);
+  }
+  const rows = (await res.json()) as RentCastListing[];
+  return Array.isArray(rows) ? rows : [];
+}
+
+function toSortedListings(
+  rows: RentCastListing[],
+  market: Market
+): RentalListing[] {
+  return rows
+    .map((raw) => mapRentCastListing(raw, market))
+    .filter((l): l is RentalListing => l !== null)
+    .sort((a, b) => a.rentMonthly - b.rentMonthly);
+}
+
 /**
  * Active long-term rentals for one market, mapped and rent-sorted.
  * Throws on transport or auth failures — the route turns that into an
@@ -95,27 +129,46 @@ export function mapRentCastListing(
 export async function fetchLiveRentals(
   market: Market
 ): Promise<RentalListing[]> {
-  const key = process.env.RENTCAST_API_KEY;
-  if (!key) throw new Error("RENTCAST_API_KEY is not configured");
-
-  const params = new URLSearchParams({
+  const rows = await rcListings({
     city: market.name,
     state: market.stateCode,
-    status: "Active",
-    limit: "500",
   });
-  const res = await fetch(`${BASE}/listings/rental/long-term?${params}`, {
-    headers: { "X-Api-Key": key, Accept: "application/json" },
-    // Per-market daily cache — the whole student base shares one request.
-    next: { revalidate: LIVE_REVALIDATE_SECONDS },
-  });
-  if (!res.ok) {
-    throw new Error(`RentCast responded ${res.status}`);
+  return toSortedListings(rows, market);
+}
+
+/** Closest covered market to a point — equirectangular approximation is
+ *  plenty at metro scale. Anchors a ZIP search's cushion math and its
+ *  analyzer handoff to the market the ZIP actually sits in. */
+export function nearestMarket(lat: number, lon: number): Market {
+  let best = MARKETS[0];
+  let bestD = Infinity;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  for (const m of MARKETS) {
+    const dLat = m.lat - lat;
+    const dLon = (m.lon - lon) * cosLat;
+    const d = dLat * dLat + dLon * dLon;
+    if (d < bestD) {
+      bestD = d;
+      best = m;
+    }
   }
-  const rows = (await res.json()) as RentCastListing[];
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .map((raw) => mapRentCastListing(raw, market))
-    .filter((l): l is RentalListing => l !== null)
-    .sort((a, b) => a.rentMonthly - b.rentMonthly);
+  return best;
+}
+
+/**
+ * Active rentals for one ZIP code — RentCast queries ZIPs natively, so
+ * this covers areas between our named markets too. The nearest covered
+ * market supplies the ADR/occupancy context for cushion figures.
+ */
+export async function fetchLiveRentalsByZip(zip: string): Promise<{
+  market: Market | null;
+  listings: RentalListing[];
+}> {
+  const rows = await rcListings({ zipCode: zip });
+  const anchor = rows.find(
+    (r) => typeof r.latitude === "number" && typeof r.longitude === "number"
+  );
+  if (!anchor) return { market: null, listings: [] };
+  const market = nearestMarket(anchor.latitude!, anchor.longitude!);
+  return { market, listings: toSortedListings(rows, market) };
 }

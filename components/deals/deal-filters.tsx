@@ -96,6 +96,19 @@ export function normalizeKeyword(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/**
+ * Location matching that survives how people actually type: every
+ * word/token of the query must appear in the market's haystack
+ * ("name state code", lowercased). "jacksonville florida",
+ * "Jacksonville, FL", and plain "jacksonville" all find the same market;
+ * "springfield mo" pins down one Springfield.
+ */
+export function marketMatchesQuery(haystack: string, query: string): boolean {
+  const tokens = query.toLowerCase().split(/[\s,]+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  return tokens.every((t) => haystack.includes(t));
+}
+
 /* ------------------------------------------------------------------ */
 /* Chip + panel scaffolding                                            */
 /* ------------------------------------------------------------------ */
