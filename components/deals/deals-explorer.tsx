@@ -83,6 +83,7 @@ function matchesFilters(row: Row, f: DealFilters): boolean {
   if (f.bedsMin > 0 && l.bedrooms < f.bedsMin) return false;
   if (f.bathsMin > 0 && l.bathrooms < f.bathsMin) return false;
   if (!f.types.includes(l.propertyType)) return false;
+  if (f.furnishedOnly && !l.features.includes("Furnished")) return false;
   // Every keyword must land somewhere in the listing (Zillow semantics).
   for (const kw of f.keywords) {
     if (!row.keywordHaystack.includes(normalizeKeyword(kw))) return false;

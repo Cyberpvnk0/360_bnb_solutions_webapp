@@ -55,6 +55,9 @@ export interface DealFilters {
   bathsMin: number;
   /** All four checked = everything. */
   types: PropertyType[];
+  /** The deal-maker: only listings tagged Furnished (their furnishing
+   *  budget can start at $0). First-class, not a keyword. */
+  furnishedOnly: boolean;
   /** Zillow-style keyword terms — a listing must match every one. */
   keywords: string[];
 }
@@ -67,6 +70,7 @@ export const DEFAULT_DEAL_FILTERS: DealFilters = {
   bedsMin: 0,
   bathsMin: 0,
   types: TYPE_OPTIONS.map((t) => t.value),
+  furnishedOnly: false,
   keywords: [],
 };
 
@@ -79,6 +83,7 @@ export function isDefaultDealFilters(f: DealFilters): boolean {
     f.bedsMin === 0 &&
     f.bathsMin === 0 &&
     f.types.length === TYPE_OPTIONS.length &&
+    !f.furnishedOnly &&
     f.keywords.length === 0
   );
 }
@@ -456,10 +461,9 @@ function HomeTypePanel({
   );
 }
 
-/** The tags operators actually hunt for — Furnished first: it can zero
- *  out the furnishing budget. */
+/** Common tags for the keyword panel. Furnished isn't here — it has its
+ *  own chip in the row (typing it as a keyword still works). */
 const KEYWORD_SUGGESTIONS = [
-  "Furnished",
   "Pet friendly",
   "Waterfront",
   "Private pool",
@@ -467,6 +471,7 @@ const KEYWORD_SUGGESTIONS = [
   "Hot tub",
   "Renovated",
   "Garage",
+  "Washer & dryer",
 ];
 
 function KeywordsPanel({
@@ -640,6 +645,24 @@ export function DealFilterChips({
       >
         <PricePanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
+
+      {/* The deal-maker gets a one-click toggle, not a panel. */}
+      <button
+        type="button"
+        aria-pressed={filters.furnishedOnly}
+        onClick={() => onChange({ furnishedOnly: !filters.furnishedOnly })}
+        className={cn(
+          "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
+          filters.furnishedOnly
+            ? "border-gold/50 bg-gold-fill/10 text-gold"
+            : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+        )}
+      >
+        {filters.furnishedOnly ? (
+          <Check aria-hidden className="size-3.5" />
+        ) : null}
+        Furnished
+      </button>
 
       <FilterChip
         label="Beds"
