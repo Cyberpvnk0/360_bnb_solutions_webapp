@@ -23,12 +23,14 @@ interface ListingCardProps {
   /** Whole points of cushion (occupancy − breakeven) from lib/mock/rentals. */
   cushionPts: number;
   selected: boolean;
+  /** True while the map's matching price pill is hovered. */
+  hovered: boolean;
   onHoverChange: (id: string | null) => void;
 }
 
 export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
   function ListingCard(
-    { listing: l, cushionPts, selected, onHoverChange },
+    { listing: l, cushionPts, selected, hovered, onHoverChange },
     ref
   ) {
     const strong = cushionPts >= 8;
@@ -43,7 +45,11 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
         onMouseLeave={() => onHoverChange(null)}
         className={cn(
           "overflow-hidden rounded-lg border bg-card transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:elev-raised",
-          selected ? "border-gold/60" : "border-border hover:border-gold/40"
+          selected
+            ? "border-gold/60"
+            : hovered
+              ? "border-gold/40"
+              : "border-border hover:border-gold/40"
         )}
       >
         <div className="relative">

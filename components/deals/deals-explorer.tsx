@@ -309,6 +309,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
                     listing={r.listing}
                     cushionPts={r.cushionPts}
                     selected={r.listing.id === selectedId}
+                    hovered={r.listing.id === hoveredId}
                     onHoverChange={setHoveredId}
                   />
                 ))}

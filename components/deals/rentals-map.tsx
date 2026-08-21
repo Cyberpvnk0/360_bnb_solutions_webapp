@@ -193,7 +193,8 @@ export function RentalsMap({
       const hot = id === hoveredId || id === selectedId;
       el.classList.toggle("border-gold/60", hot);
       el.classList.toggle("text-gold", hot);
-      el.parentElement?.style.setProperty("z-index", hot ? "30" : "10");
+      // The button IS the marker element, so stacking lives on it.
+      el.style.setProperty("z-index", hot ? "30" : "10");
     }
   }, [hoveredId, selectedId, listings]);
 
