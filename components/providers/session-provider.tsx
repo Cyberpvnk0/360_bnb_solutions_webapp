@@ -24,6 +24,11 @@ import {
   getSessionUser,
 } from "@/lib/data";
 import { MOCK_TODAY } from "@/lib/mock/seed";
+import {
+  defaultLists,
+  readLists,
+  writeLists,
+} from "@/lib/storage/deal-lists";
 import type {
   ActivityEvent,
   Analysis,
@@ -114,15 +119,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [landlords, setLandlords] = React.useState<Landlord[]>([]);
   const [activity, setActivity] = React.useState<ActivityEvent[]>([]);
-  // Everyone starts with one list so "Add to list" is one click, not two.
-  const [lists, setLists] = React.useState<DealList[]>([
-    {
-      id: "list-default",
-      name: "My shortlist",
-      createdAt: MOCK_TODAY,
-      listings: [],
-    },
-  ]);
+  // Server and first client render agree on the default; this device's
+  // saved lists arrive right after mount (see the bootstrap effect), so
+  // there's no hydration mismatch and no flash of someone else's data.
+  const [lists, setLists] = React.useState<DealList[]>(defaultLists);
+  const [listsLoaded, setListsLoaded] = React.useState(false);
   const [upgrade, setUpgrade] = React.useState<UpgradeState>({
     open: false,
     reason: "generic",
@@ -137,6 +138,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setDeals(d);
         setLandlords(l);
         setActivity(a);
+        // Lists are local to this device until accounts land.
+        setLists(readLists(window.localStorage) ?? defaultLists());
+        setListsLoaded(true);
         setReady(true);
       }
     );
@@ -144,6 +148,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // Persist after the first load only — otherwise the default would
+  // overwrite this device's saved lists before they're read.
+  React.useEffect(() => {
+    if (!listsLoaded) return;
+    writeLists(window.localStorage, lists);
+  }, [lists, listsLoaded]);
 
   const tier = TIERS[user?.tier ?? "free"];
   const pullsUsed = user?.pullsUsed ?? 0;

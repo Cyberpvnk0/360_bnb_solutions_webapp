@@ -94,12 +94,14 @@ const SEEDS: MarketSeed[] = [
 
 /** Default 2BR operating assumptions used for the market-level breakeven
  *  benchmark. Mirrors the calculator's starting values: rent + utilities
- *  and the host fee — cleaning is guest-paid, everything else starts at
- *  $0 until the operator adds it. */
+ *  and Airbnb's 15% host fee — cleaning is guest-paid, deposit and first
+ *  month start negotiated away, and everything else starts at $0 until
+ *  the operator adds it. Note the deposit and the first-month waiver move
+ *  startup capital only; breakeven and cash flow are untouched by them. */
 export function benchmark2brInputs(rent2br: number) {
   return {
     monthlyRent: rent2br,
-    securityDeposit: rent2br,
+    securityDeposit: 0,
     furnishingBudget: 0,
     utilitiesMonthly: 210,
     internetMonthly: 0,
@@ -107,9 +109,9 @@ export function benchmark2brInputs(rent2br: number) {
     avgStayNights: 3,
     suppliesMonthly: 0,
     insuranceMonthly: 0,
-    platformFeePct: 0.03,
+    platformFeePct: 0.15,
     mgmtFeePct: 0,
-    firstMonthFree: false,
+    firstMonthFree: true,
   };
 }
 

@@ -40,7 +40,7 @@ const BASIC_FIELDS: FieldSpec[] = [
     suffix: "%",
     step: 0.5,
     percent: true,
-    hint: "The platform's cut of each booking. 3% is typical.",
+    hint: "The platform's cut of each booking. Airbnb's host fee is 15%.",
   },
 ];
 

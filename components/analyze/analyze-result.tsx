@@ -344,9 +344,11 @@ export function AnalyzeResult({
             <OutputTile
               label="Total startup capital"
               sub={
-                inputs.firstMonthFree
-                  ? "Deposit + furnishing — first month waived"
-                  : "Deposit + furnishing + first month's rent"
+                p.startupCapital <= 0
+                  ? "Nothing in yet — no deposit, no furnishing, first month waived"
+                  : inputs.firstMonthFree
+                    ? "Deposit + furnishing — first month waived"
+                    : "Deposit + furnishing + first month's rent"
               }
             >
               <AnimatedNumber value={p.startupCapital} format={fmtMoney} />
@@ -354,7 +356,11 @@ export function AnalyzeResult({
             <OutputTile
               label="Cash-on-cash return"
               tone={p.cashOnCash >= 0.3 ? "gold" : p.cashOnCash < 0 ? "neg" : undefined}
-              sub="Annual profit against cash in"
+              sub={
+                Number.isFinite(p.cashOnCash)
+                  ? "Annual profit against cash in"
+                  : "No cash in — add a deposit or furnishing budget"
+              }
             >
               <AnimatedNumber
                 value={Number.isFinite(p.cashOnCash) ? p.cashOnCash * 100 : 0}

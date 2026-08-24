@@ -114,7 +114,10 @@ function buildDefaults(ltrComps: LtrComp[], bedrooms: number, rng: Rng): DealInp
   const monthlyRent = estimateRentFromComps(ltrComps);
   return {
     monthlyRent,
-    securityDeposit: monthlyRent,
+    // Operators negotiate these away routinely, so the calculator starts
+    // where a well-negotiated deal starts — add them back when a landlord
+    // insists.
+    securityDeposit: 0,
     // Product stance: the guest's cleaning fee pays the cleaner, so
     // cleaning nets out of the P&L and has no input. Furnishing and every
     // advanced cost start at $0 — operators add what applies to them.
@@ -125,9 +128,9 @@ function buildDefaults(ltrComps: LtrComp[], bedrooms: number, rng: Rng): DealInp
     avgStayNights: 3,
     suppliesMonthly: 0,
     insuranceMonthly: 0,
-    platformFeePct: 0.03,
+    platformFeePct: 0.15,
     mgmtFeePct: 0,
-    firstMonthFree: false,
+    firstMonthFree: true,
   };
 }
 
