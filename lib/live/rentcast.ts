@@ -88,27 +88,52 @@ export function mapRentCastListing(
   };
 }
 
+/** Why a live fetch failed, in words the UI can show a student. */
+export class RentCastError extends Error {
+  constructor(
+    readonly reason: "no-key" | "auth" | "quota" | "http" | "network",
+    readonly status?: number
+  ) {
+    super(`RentCast ${reason}${status ? ` (${status})` : ""}`);
+    this.name = "RentCastError";
+  }
+}
+
 /** Raw RentCast call — daily-cached per unique query so the whole
- *  student base shares one request. Throws on transport/auth failures. */
+ *  student base shares one request. Throws RentCastError so the route
+ *  can tell "bad key" from "out of quota" from "network". */
 async function rcListings(
   query: Record<string, string>
 ): Promise<RentCastListing[]> {
   const key = process.env.RENTCAST_API_KEY;
-  if (!key) throw new Error("RENTCAST_API_KEY is not configured");
+  if (!key) throw new RentCastError("no-key");
   const params = new URLSearchParams({
     ...query,
     status: "Active",
     limit: "500",
   });
-  const res = await fetch(`${BASE}/listings/rental/long-term?${params}`, {
-    headers: { "X-Api-Key": key, Accept: "application/json" },
-    next: { revalidate: LIVE_REVALIDATE_SECONDS },
-  });
-  if (!res.ok) {
-    throw new Error(`RentCast responded ${res.status}`);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/listings/rental/long-term?${params}`, {
+      headers: { "X-Api-Key": key, Accept: "application/json" },
+      next: { revalidate: LIVE_REVALIDATE_SECONDS },
+    });
+  } catch {
+    throw new RentCastError("network");
   }
-  const rows = (await res.json()) as RentCastListing[];
-  return Array.isArray(rows) ? rows : [];
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new RentCastError("auth", res.status);
+    }
+    if (res.status === 429) throw new RentCastError("quota", res.status);
+    throw new RentCastError("http", res.status);
+  }
+
+  const body: unknown = await res.json().catch(() => null);
+  // RentCast returns a bare array; an object here means an error payload.
+  return Array.isArray(body) ? (body as RentCastListing[]) : [];
 }
 
 function toSortedListings(
@@ -169,13 +194,19 @@ export function nearestMarket(lat: number, lon: number): Market {
  */
 export async function fetchLiveRentalsByZip(zip: string): Promise<{
   market: Market | null;
+  /** Mean position of the ZIP's listings — the map's camera target. */
+  center: { lat: number; lon: number } | null;
   listings: RentalListing[];
 }> {
   const rows = await rcListings({ zipCode: zip });
-  const anchor = rows.find(
+  const located = rows.filter(
     (r) => typeof r.latitude === "number" && typeof r.longitude === "number"
   );
-  if (!anchor) return { market: null, listings: [] };
-  const market = nearestMarket(anchor.latitude!, anchor.longitude!);
-  return { market, listings: toSortedListings(rows, market) };
+  if (located.length === 0) return { market: null, center: null, listings: [] };
+  const center = {
+    lat: located.reduce((s, r) => s + r.latitude!, 0) / located.length,
+    lon: located.reduce((s, r) => s + r.longitude!, 0) / located.length,
+  };
+  const market = nearestMarket(center.lat, center.lon);
+  return { market, center, listings: toSortedListings(rows, market) };
 }

@@ -1,13 +1,16 @@
 /**
  * Rental listings for the Deal Finder: rentals ONLY, never for-sale.
  *
- * Generated lazily and deterministically per market (6–12 each; ~3.5k
- * nationwide across ~390 markets) with per-entity seeds, so generation is
- * order-independent and nothing materializes until a screen asks.
+ * Generated lazily and deterministically per SUBMARKET (1–3 listings in
+ * each of a market's 15–19 neighborhoods, so a city's inventory spreads
+ * across the whole metro the way real inventory does — beaches and
+ * suburbs included, never a downtown blob). Per-entity seeds keep
+ * generation order-independent; nothing materializes until a screen asks.
  *
  * Consistency rules:
- * - Rents jitter ±10% around the parent market's 2 bd median scaled by a
- *   bedroom factor, rounded to $25 like every other rent in the product.
+ * - Rents jitter ±10% around the SUBMARKET's 2 bd median scaled by a
+ *   bedroom factor, rounded to $25 like every other rent in the product,
+ *   so a metro's internal price gradient survives.
  * - The card's cushion figure comes from lib/calc with the same benchmark
  *   inputs the market pages use — never an inline formula.
  * - rentals.ts must NOT import analyses.ts (analyses.ts may import this
@@ -17,6 +20,7 @@
 import { breakevenOccupancy } from "@/lib/calc/arbitrage";
 import { benchmark2brInputs, MARKETS } from "./markets";
 import { hashStr, Rng, roundTo } from "./seed";
+import { submarketsFor } from "./submarkets";
 import type {
   Market,
   MarketTerrain,
@@ -160,64 +164,78 @@ export function estimateCushionPts(
 /* Generation                                                          */
 /* ------------------------------------------------------------------ */
 
-/** 6–12 listings per market — derived from the slug alone so totals can
- *  be counted without generating anything. */
-export function rentalCountFor(marketSlug: string): number {
-  return 6 + (hashStr(`rentals|${marketSlug}`) % 7);
+/** 1–3 listings per neighborhood — enough to read as a real market
+ *  without inventing a city's worth of fake addresses. */
+function rentalCountForSubmarket(submarketId: string): number {
+  return 1 + (hashStr(`rentals|${submarketId}`) % 3);
 }
 
-/** Total listings across every market, computed analytically. */
+/** Listings for one market, summed across its submarkets. */
+export function rentalCountFor(market: Market): number {
+  return submarketsFor(market).reduce(
+    (sum, sub) => sum + rentalCountForSubmarket(sub.id),
+    0
+  );
+}
+
+/** Total listings across every market. */
 export function totalRentalCount(): number {
-  return MARKETS.reduce((sum, m) => sum + rentalCountFor(m.slug), 0);
+  return MARKETS.reduce((sum, m) => sum + rentalCountFor(m), 0);
 }
 
 const cache = new Map<string, RentalListing[]>();
 
-/** Deterministic rental listings for one market (memoized). */
+/** Deterministic rental listings for one market (memoized), spread
+ *  across its neighborhoods. */
 export function rentalsFor(market: Market): RentalListing[] {
   const hit = cache.get(market.slug);
   if (hit) return hit;
 
-  const rng = new Rng(hashStr(`rentals|${market.slug}`));
-  const count = rentalCountFor(market.slug);
-
-  const listings: RentalListing[] = Array.from({ length: count }, (_, i) => {
-    const bedrooms = rng.pick(BEDROOM_POOL);
-    const bathrooms = bathsFor(bedrooms, rng);
-    const propertyType = rng.pick(TYPE_POOL);
-    const unit =
-      (propertyType === "apartment" || propertyType === "condo") &&
-      rng.chance(0.6)
-        ? ` #${rng.int(2, 48)}`
-        : "";
-    const id = `rl--${market.slug}--${i}`;
-    // The base draws stay in their original order so adding features never
-    // reshuffles addresses or rents; features use their own per-id stream.
-    const base = {
-      id,
-      analysisId: `r--${market.slug}--${i}`,
-      address: `${rng.int(100, 9800)} ${rng.pick(STREETS)} ${rng.pick(STREET_TYPES)}${unit}`,
-      city: market.name,
-      stateCode: market.stateCode,
-      marketSlug: market.slug,
-      lat: Math.round((market.lat + rng.float(-0.045, 0.045)) * 1000) / 1000,
-      lon: Math.round((market.lon + rng.float(-0.045, 0.045)) * 1000) / 1000,
-      bedrooms,
-      bathrooms,
-      sqft: roundTo(rng.jitter(420 + bedrooms * 360, 0.12), 10),
-      propertyType,
-      rentMonthly: roundTo(
-        rng.jitter(market.medianRent2br * BEDROOM_RENT_FACTOR[bedrooms], 0.1),
-        25
-      ),
-      daysOnMarket: rng.int(0, 45),
-      petFriendly: rng.chance(0.45),
-    };
-    return {
-      ...base,
-      features: featuresFor(id, market.terrain, base.petFriendly),
-    };
-  });
+  const listings: RentalListing[] = [];
+  for (const sub of submarketsFor(market)) {
+    const rng = new Rng(hashStr(`rentals|${sub.id}`));
+    const count = rentalCountForSubmarket(sub.id);
+    for (let i = 0; i < count; i++) {
+      const bedrooms = rng.pick(BEDROOM_POOL);
+      const bathrooms = bathsFor(bedrooms, rng);
+      const propertyType = rng.pick(TYPE_POOL);
+      const unit =
+        (propertyType === "apartment" || propertyType === "condo") &&
+        rng.chance(0.6)
+          ? ` #${rng.int(2, 48)}`
+          : "";
+      const id = `rl--${sub.id}--${i}`;
+      const base = {
+        id,
+        analysisId: `r--${sub.id}--${i}`,
+        address: `${rng.int(100, 9800)} ${rng.pick(STREETS)} ${rng.pick(STREET_TYPES)}${unit}`,
+        city: market.name,
+        stateCode: market.stateCode,
+        marketSlug: market.slug,
+        submarketName: sub.name,
+        // Tight around the neighborhood, which itself sits away from
+        // the market center — so a metro fills out, block by block.
+        lat: Math.round((sub.lat + rng.float(-0.012, 0.012)) * 1000) / 1000,
+        lon: Math.round((sub.lon + rng.float(-0.012, 0.012)) * 1000) / 1000,
+        bedrooms,
+        bathrooms,
+        sqft: roundTo(rng.jitter(420 + bedrooms * 360, 0.12), 10),
+        propertyType,
+        // The neighborhood's own median carries the market's price
+        // gradient: San Marco doesn't rent like Springfield.
+        rentMonthly: roundTo(
+          rng.jitter(sub.medianRent2br * BEDROOM_RENT_FACTOR[bedrooms], 0.1),
+          25
+        ),
+        daysOnMarket: rng.int(0, 45),
+        petFriendly: rng.chance(0.45),
+      };
+      listings.push({
+        ...base,
+        features: featuresFor(id, market.terrain, base.petFriendly),
+      });
+    }
+  }
 
   cache.set(market.slug, listings);
   return listings;

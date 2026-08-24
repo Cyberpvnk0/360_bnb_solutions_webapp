@@ -82,7 +82,8 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             {l.address}
           </p>
           <p className="text-xs text-muted-foreground">
-            in {l.city}, {l.stateCode}
+            in {l.submarketName ? `${l.submarketName} · ` : ""}
+            {l.city}, {l.stateCode}
           </p>
 
           {/* Feature tags — Furnished reads gold: it can zero the

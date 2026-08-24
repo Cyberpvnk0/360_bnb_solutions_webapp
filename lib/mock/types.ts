@@ -168,6 +168,9 @@ export interface RentalListing {
   city: string;
   stateCode: string;
   marketSlug: string;
+  /** Neighborhood this sits in — preview inventory only; live rows
+   *  carry the feed's own address instead. */
+  submarketName?: string;
   lat: number;
   lon: number;
   bedrooms: number;

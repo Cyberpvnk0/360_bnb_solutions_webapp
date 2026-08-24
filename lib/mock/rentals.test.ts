@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { estimateRentFromComps } from "@/lib/calc/comps";
 import { analysisForListing } from "./analyses";
 import { MARKET_BY_SLUG, MARKETS } from "./markets";
+import { submarketsFor } from "./submarkets";
 import {
   allRentals,
   BASE_FEATURES,
@@ -16,13 +17,29 @@ import {
 } from "./rentals";
 
 describe("rentals", () => {
-  it("every market carries 6–12 listings, matching the analytic count", () => {
+  it("every market's listings span its neighborhoods, matching the count", () => {
     for (const m of MARKETS) {
       const listings = rentalsFor(m);
-      expect(listings.length).toBe(rentalCountFor(m.slug));
-      expect(listings.length).toBeGreaterThanOrEqual(6);
-      expect(listings.length).toBeLessThanOrEqual(12);
+      expect(listings.length).toBe(rentalCountFor(m));
+      // 15–19 submarkets × 1–3 listings each.
+      expect(listings.length).toBeGreaterThanOrEqual(15);
+      expect(listings.length).toBeLessThanOrEqual(57);
+      // Every neighborhood is represented — no downtown-only blobs.
+      const subs = submarketsFor(m);
+      const named = new Set(listings.map((l) => l.submarketName));
+      expect(named.size).toBe(subs.length);
     }
+  });
+
+  it("listings spread across the metro, not one tight cluster", () => {
+    // Jacksonville's neighborhoods span roughly a quarter degree; a
+    // downtown-only blob would collapse this spread toward zero.
+    const jax = MARKETS.find((m) => m.slug === "jacksonville")!;
+    const listings = rentalsFor(jax);
+    const lats = listings.map((l) => l.lat);
+    const lons = listings.map((l) => l.lon);
+    expect(Math.max(...lats) - Math.min(...lats)).toBeGreaterThan(0.1);
+    expect(Math.max(...lons) - Math.min(...lons)).toBeGreaterThan(0.1);
   });
 
   it("the analytic total matches the materialized total", () => {
@@ -35,10 +52,13 @@ describe("rentals", () => {
     expect(allRentals()).toBe(allRentals());
   });
 
-  it("asking rents stay within ±10% of the bedroom-scaled 2 bd median", () => {
+  it("asking rents track the neighborhood's own 2 bd median", () => {
     for (const listing of allRentals()) {
       const market = MARKET_BY_SLUG.get(listing.marketSlug)!;
-      const base = market.medianRent2br * BEDROOM_RENT_FACTOR[listing.bedrooms];
+      const sub = submarketsFor(market).find(
+        (x) => x.name === listing.submarketName
+      )!;
+      const base = sub.medianRent2br * BEDROOM_RENT_FACTOR[listing.bedrooms];
       // $25 rounding can nudge a boundary draw just past the raw band.
       expect(listing.rentMonthly).toBeGreaterThanOrEqual(base * 0.9 - 13);
       expect(listing.rentMonthly).toBeLessThanOrEqual(base * 1.1 + 13);
@@ -55,8 +75,9 @@ describe("rentals", () => {
   it("listings sit near their parent market with the specified shapes", () => {
     for (const listing of allRentals()) {
       const market = MARKET_BY_SLUG.get(listing.marketSlug)!;
-      expect(Math.abs(listing.lat - market.lat)).toBeLessThanOrEqual(0.05);
-      expect(Math.abs(listing.lon - market.lon)).toBeLessThanOrEqual(0.05);
+      // Neighborhood offset (≤0.12) plus in-neighborhood jitter (≤0.012).
+      expect(Math.abs(listing.lat - market.lat)).toBeLessThanOrEqual(0.14);
+      expect(Math.abs(listing.lon - market.lon)).toBeLessThanOrEqual(0.14);
       expect(listing.city).toBe(market.name);
       expect(listing.stateCode).toBe(market.stateCode);
       expect(Number.isInteger(listing.bedrooms)).toBe(true);

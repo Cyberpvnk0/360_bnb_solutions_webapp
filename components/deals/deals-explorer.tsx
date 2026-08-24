@@ -16,6 +16,7 @@ import {
   getLiveRentals,
   getLiveRentalsByZip,
   getRentalTotals,
+  type LiveFailureReason,
 } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
 import { estimateCushionPts } from "@/lib/mock/rentals";
@@ -40,7 +41,7 @@ import {
 } from "./deal-filters";
 import { MarketSearchBox } from "./market-search";
 import { ListingCard } from "./listing-card";
-import { RentalsMap } from "./rentals-map";
+import { RentalsMap, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 24;
@@ -98,6 +99,24 @@ function matchesFilters(row: Row, f: DealFilters): boolean {
   return true;
 }
 
+/** Plain-language explanation of a live-feed miss — a wrong key must
+ *  never read as "no listings here". */
+function liveFailureLabel(reason: LiveFailureReason | null | undefined): string {
+  switch (reason) {
+    case "no-key":
+      return "Live feed not configured";
+    case "auth":
+      return "Live feed key rejected";
+    case "quota":
+      return "Live feed quota reached";
+    case "http":
+    case "network":
+      return "Live feed unreachable";
+    default:
+      return "Preview inventory";
+  }
+}
+
 interface DealsExplorerProps {
   rentals: RentalListing[];
   markets: Market[];
@@ -136,7 +155,8 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     zip: string;
     live: boolean;
     asOf?: string;
-    marketSlug?: string | null;
+    reason?: LiveFailureReason;
+    center?: { lat: number; lon: number } | null;
     listings: RentalListing[];
   } | null>(null);
 
@@ -149,7 +169,8 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         zip,
         live: result.live,
         asOf: result.asOf,
-        marketSlug: result.marketSlug,
+        reason: result.reason,
+        center: result.center,
         listings: result.listings,
       });
     });
@@ -181,6 +202,9 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     asOf?: string;
     listings: RentalListing[];
   } | null>(null);
+  const [liveReason, setLiveReason] = React.useState<LiveFailureReason | null>(
+    null
+  );
   // The last market slug the feed answered for (live or fallback) —
   // "checking" is derived, so no synchronous setState in the effect.
   const [liveChecked, setLiveChecked] = React.useState<string | null>(null);
@@ -196,6 +220,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           ? { slug, asOf: result.asOf, listings: result.listings }
           : null
       );
+      setLiveReason(result.live ? null : (result.reason ?? "network"));
       setLiveChecked(slug);
     });
     return () => {
@@ -214,11 +239,14 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
   const rows = React.useMemo<Row[]>(() => {
     const bySlug = new Map(markets.map((m) => [m.slug, m]));
-    // ZIP mode shows the feed's rows alone; market live mode swaps that
-    // market's preview rows for the feed's so real and seeded inventory
-    // never mix; otherwise the nationwide preview set.
-    const source = zipActive
-      ? zipResult!.listings
+    // A ZIP search is answered by the feed alone — when it can't answer,
+    // the grid stays empty and says why, never a nationwide dump.
+    // Market live mode swaps that market's preview rows for the feed's so
+    // real and seeded inventory never mix.
+    const source = zip
+      ? zipActive
+        ? zipResult!.listings
+        : []
       : liveActive
         ? [
             ...live!.listings,
@@ -247,7 +275,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         },
       ];
     });
-  }, [rentals, markets, liveActive, live, zipActive, zipResult]);
+  }, [rentals, markets, liveActive, live, zip, zipActive, zipResult]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -269,24 +297,38 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     [filtered, visibleCount]
   );
   const remaining = Math.max(0, filtered.length - visibleCount);
-  const visibleListings = React.useMemo(
-    () => visible.map((r) => r.listing),
-    [visible]
+  // Targeted searches (a market or a ZIP) pin the ENTIRE result set —
+  // the whole city, not just the page the list is showing — and frame
+  // the searched area so a metro reads as a metro. Nationwide browsing
+  // spreads a wide sample so the country never looks empty.
+  const targeted = Boolean(zip || liveTarget);
+  const MAP_PIN_CAP = targeted ? 400 : 300;
+  const mapListings = React.useMemo(
+    () => filtered.slice(0, MAP_PIN_CAP).map((r) => r.listing),
+    [filtered, MAP_PIN_CAP]
   );
 
-  // Targeted searches (a market or a ZIP) pin the ENTIRE result set on
-  // the map — the whole city, not just the page the list is showing.
-  // Nationwide browsing keeps pins to the visible page so the country
-  // view stays readable.
-  const targeted = Boolean(zip || liveTarget);
-  const MAP_PIN_CAP = 400;
-  const mapListings = React.useMemo(
-    () =>
-      targeted
-        ? filtered.slice(0, MAP_PIN_CAP).map((r) => r.listing)
-        : visibleListings,
-    [targeted, filtered, visibleListings]
-  );
+  const mapFocus = React.useMemo<MapFocus | null>(() => {
+    if (zipActive && zipResult?.center) {
+      return {
+        key: `zip-${zip}`,
+        lat: zipResult.center.lat,
+        lon: zipResult.center.lon,
+        radiusMiles: 6,
+      };
+    }
+    // A market search frames its whole 30-mile metro whether the rows
+    // came from the feed or the preview set.
+    if (liveTarget) {
+      return {
+        key: `market-${liveTarget.slug}`,
+        lat: liveTarget.lat,
+        lon: liveTarget.lon,
+        radiusMiles: 30,
+      };
+    }
+    return null;
+  }, [zipActive, zipResult, zip, liveTarget]);
 
   const hasActiveFilters = !isDefaultDealFilters(filters) || zip !== null;
   const resetFilters = () => {
@@ -379,33 +421,34 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           </Button>
         ) : null}
 
-        {/* Provenance — students always know which inventory they see. */}
-        {zipActive || liveActive ? (
-          <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
-            <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
-            Live · {zipActive ? `ZIP ${zip}` : liveTarget!.name}
-            {liveAsOfLabel ? (
-              <span className="font-normal text-muted-foreground">
-                as of {liveAsOfLabel}
-              </span>
-            ) : null}
-          </span>
-        ) : zipChecking || (liveTarget && liveChecking) ? (
-          <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
-            Checking live listings…
-          </span>
-        ) : zipFailed ? (
-          <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
-            ZIP search needs the live feed
-          </span>
-        ) : liveTarget ? (
-          <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
-            Preview inventory
-          </span>
-        ) : null}
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-3 pl-3">
+          {/* Provenance — students always know which inventory they see. */}
+          {zipActive || liveActive ? (
+            <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
+              <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+              Live · {zipActive ? `ZIP ${zip}` : liveTarget!.name}
+              {liveAsOfLabel ? (
+                <span className="font-normal text-muted-foreground">
+                  as of {liveAsOfLabel}
+                </span>
+              ) : null}
+            </span>
+          ) : zipChecking || (liveTarget && liveChecking) ? (
+            <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
+              Checking live listings…
+            </span>
+          ) : zipFailed ? (
+            <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
+              {liveFailureLabel(zipResult?.reason)}
+            </span>
+          ) : liveTarget ? (
+            <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
+              {liveFailureLabel(liveReason)} · showing preview
+            </span>
+          ) : null}
+
           <Select
             value={sort}
             onValueChange={(v) => {
@@ -470,6 +513,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         >
           <RentalsMap
             listings={mapListings}
+            focus={mapFocus}
             hoveredId={hoveredId}
             selectedId={selectedId}
             onHover={setHoveredId}
@@ -491,19 +535,23 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
                 icon={SearchX}
                 title={
                   zipFailed
-                    ? "ZIP search needs the live feed"
+                    ? liveFailureLabel(zipResult?.reason)
                     : zipActive
                       ? `No active rentals in ZIP ${zip}`
                       : "No rentals match"
                 }
                 description={
                   zipFailed
-                    ? "This preview can't reach the rental feed. On the deployed app, a ZIP search returns that area's active rentals."
-                    : zipActive
-                      ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
-                      : filters.query
-                        ? "Check the spelling, or pick a market from the search suggestions — they cover all 387."
-                        : "These filters rule out every listing we track. Loosen one and the grid comes back."
+                    ? zipResult?.reason === "auth"
+                      ? "The rental feed rejected the API key. Check RENTCAST_API_KEY, then search again — ZIP search reads live inventory only."
+                      : zipResult?.reason === "quota"
+                        ? "This month's live-feed requests are used up. Market searches still browse the preview inventory."
+                        : "ZIP search reads live inventory only, and the feed didn't answer. Search a market by name to browse the preview set."
+                      : zipActive
+                        ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
+                        : filters.query
+                          ? "Check the spelling, or pick a market from the search suggestions — they cover all 387."
+                          : "These filters rule out every listing we track. Loosen one and the grid comes back."
                 }
                 action={
                   <Button variant="outline" onClick={resetFilters}>

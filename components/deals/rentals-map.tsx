@@ -48,9 +48,19 @@ function rasterStyle(tiles: string[]): maplibregl.StyleSpecification {
 const US_CENTER: [number, number] = [-96.8, 38.6];
 const US_ZOOM = 3.2;
 
+/** Where the camera should sit for a targeted search: the searched
+ *  area itself, so the whole metro frames even when pins cluster. */
+export interface MapFocus {
+  key: string;
+  lat: number;
+  lon: number;
+  radiusMiles: number;
+}
+
 interface RentalsMapProps {
-  /** Only the currently visible page of listings gets a pill. */
   listings: RentalListing[];
+  /** Set for a market/ZIP search; null while browsing nationwide. */
+  focus: MapFocus | null;
   hoveredId: string | null;
   selectedId: string | null;
   onHover: (id: string | null) => void;
@@ -58,8 +68,11 @@ interface RentalsMapProps {
   className?: string;
 }
 
+const MILES_PER_DEG_LAT = 69;
+
 export function RentalsMap({
   listings,
+  focus,
   hoveredId,
   selectedId,
   onHover,
@@ -71,6 +84,7 @@ export function RentalsMap({
   const markersRef = React.useRef(new Map<string, maplibregl.Marker>());
   const markerElsRef = React.useRef(new Map<string, HTMLButtonElement>());
   const marketSigRef = React.useRef<string>("");
+  const focusKeyRef = React.useRef<string>("");
   const [tilesBlocked, setTilesBlocked] = React.useState(false);
 
   // Latest handlers reachable from marker listeners without rebuilds.
@@ -170,12 +184,28 @@ export function RentalsMap({
       );
     }
 
-    // Refit only when the set of markets on screen materially changes —
-    // paging deeper inside the same markets keeps the camera still.
+    // A targeted search frames the searched AREA — the whole metro or
+    // ZIP radius — so the city reads as a city even when its listings
+    // cluster downtown. Nationwide browsing refits only when the mix of
+    // markets on screen materially changes, so paging holds the camera.
     const signature = [...new Set(listings.map((l) => l.marketSlug))]
       .sort()
       .join("|");
-    if (listings.length > 0 && signature !== marketSigRef.current) {
+
+    if (focus) {
+      if (focus.key !== focusKeyRef.current) {
+        const dLat = focus.radiusMiles / MILES_PER_DEG_LAT;
+        const dLon =
+          dLat / Math.max(0.2, Math.cos((focus.lat * Math.PI) / 180));
+        map.fitBounds(
+          new maplibregl.LngLatBounds(
+            [focus.lon - dLon, focus.lat - dLat],
+            [focus.lon + dLon, focus.lat + dLat]
+          ),
+          { padding: 40, duration: 600 }
+        );
+      }
+    } else if (listings.length > 0 && signature !== marketSigRef.current) {
       const bounds = new maplibregl.LngLatBounds(
         [listings[0].lon, listings[0].lat],
         [listings[0].lon, listings[0].lat]
@@ -183,8 +213,9 @@ export function RentalsMap({
       for (const l of listings) bounds.extend([l.lon, l.lat]);
       map.fitBounds(bounds, { padding: 56, maxZoom: 13, duration: 0 });
     }
+    focusKeyRef.current = focus?.key ?? "";
     marketSigRef.current = signature;
-  }, [listings]);
+  }, [listings, focus]);
 
   // Card hover / pill click → pin highlight (map hover feeds back
   // through onHover, so both directions stay in sync).

@@ -29,11 +29,26 @@ export async function getRentalTotals(): Promise<{
   return { rentals: totalRentalCount(), markets: MARKETS.length };
 }
 
+/** Why the live feed didn't answer — surfaced in the toolbar so a
+ *  wrong key never looks like "no listings here". */
+export type LiveFailureReason =
+  | "no-key"
+  | "auth"
+  | "quota"
+  | "http"
+  | "network"
+  | "bad-zip"
+  | "unknown-market";
+
 export interface LiveRentalsResult {
   /** True when the rows are today's actual inventory (RentCast). */
   live: boolean;
   /** Server timestamp of the live fetch. */
   asOf?: string;
+  /** Camera target for the searched area. */
+  center?: { lat: number; lon: number } | null;
+  reason?: LiveFailureReason;
+  status?: number | null;
   listings: RentalListing[];
 }
 
@@ -46,48 +61,59 @@ export interface LiveRentalsResult {
 export async function getLiveRentals(
   marketSlug: string
 ): Promise<LiveRentalsResult> {
+  const market = MARKET_BY_SLUG.get(marketSlug);
+  const preview = (reason: LiveFailureReason, status?: number | null) => ({
+    live: false as const,
+    reason,
+    status: status ?? null,
+    listings: market ? rentalsFor(market) : [],
+  });
   try {
     const res = await fetch(
       `/api/rentals?market=${encodeURIComponent(marketSlug)}`
     );
-    if (res.ok) {
-      const data = (await res.json()) as LiveRentalsResult;
-      if (data.live && Array.isArray(data.listings)) {
-        registerLiveListings(data.listings);
-        return data;
-      }
+    const data = (await res.json().catch(() => null)) as
+      | LiveRentalsResult
+      | null;
+    if (res.ok && data?.live && Array.isArray(data.listings)) {
+      registerLiveListings(data.listings);
+      return data;
     }
+    return preview(data?.reason ?? "network", data?.status);
   } catch {
-    // fall through to the preview inventory
+    return preview("network");
   }
-  const market = MARKET_BY_SLUG.get(marketSlug);
-  return { live: false, listings: market ? rentalsFor(market) : [] };
 }
 
 export interface ZipRentalsResult extends LiveRentalsResult {
   /** The covered market anchoring cushion math for this ZIP, if any. */
-  marketSlug?: string | null;
+  market?: string | null;
 }
 
 /**
  * Today's actual rentals for a 5-digit ZIP. ZIP search is live-only —
- * the preview world has no honest ZIP inventory — so `live: false`
- * means the caller says "needs the live feed" rather than faking rows.
+ * the preview world has no honest ZIP inventory — so a failure returns
+ * NO rows (never a nationwide dump) and the caller explains why.
  */
 export async function getLiveRentalsByZip(
   zip: string
 ): Promise<ZipRentalsResult> {
   try {
     const res = await fetch(`/api/rentals?zip=${encodeURIComponent(zip)}`);
-    if (res.ok) {
-      const data = (await res.json()) as ZipRentalsResult;
-      if (data.live && Array.isArray(data.listings)) {
-        registerLiveListings(data.listings);
-        return data;
-      }
+    const data = (await res.json().catch(() => null)) as
+      | ZipRentalsResult
+      | null;
+    if (res.ok && data?.live && Array.isArray(data.listings)) {
+      registerLiveListings(data.listings);
+      return data;
     }
+    return {
+      live: false,
+      reason: data?.reason ?? "network",
+      status: data?.status ?? null,
+      listings: [],
+    };
   } catch {
-    // fall through
+    return { live: false, reason: "network", status: null, listings: [] };
   }
-  return { live: false, listings: [] };
 }
