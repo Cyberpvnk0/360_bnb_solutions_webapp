@@ -13,18 +13,45 @@
 import { describeListing, ScraperApiError } from "@/lib/live/scraperapi";
 import type { RentalListing } from "@/lib/mock/types";
 
-/** One visible page of results. Enriching beyond what's on screen is
- *  spending money on rows nobody is looking at. */
-export const MAX_ENRICH_PER_REQUEST = 24;
+/**
+ * Properties per request.
+ *
+ * Sized to about one concurrency wave, not one screenful: a request that
+ * bundled all 24 visible cards would hold a serverless function open for
+ * four or five sequential waves and show the student nothing until the
+ * last one landed. Small batches keep every invocation well inside the
+ * function timeout and let cards fill in as answers arrive. Enriching
+ * beyond what's on screen is still money spent on rows nobody is
+ * looking at, so the client never asks for more than the page.
+ */
+export const MAX_ENRICH_PER_REQUEST = 8;
 
-/** Vendor calls in flight at once — enough to keep a page snappy,
- *  gentle enough not to look like a burst. */
-const CONCURRENCY = 6;
+/**
+ * Vendor calls in flight at once.
+ *
+ * This is a VENDOR limit, not a politeness setting: ScraperAPI caps
+ * concurrent threads by plan (5 on the free trial, more as you go up),
+ * and exceeding it earns 429s rather than speed. The default matches
+ * the trial so a first test can't fail for the wrong reason; raise
+ * SCRAPERAPI_CONCURRENCY to your plan's ceiling and the same page
+ * finishes proportionally faster.
+ */
+export const DEFAULT_CONCURRENCY = 5;
+
+function concurrency(): number {
+  const raw = Number(process.env.SCRAPERAPI_CONCURRENCY);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_CONCURRENCY;
+}
 
 /** What one address cost and yielded — diagnostics only, no prose. */
 export interface EnrichmentRecord {
   id: string;
   known: boolean;
+  /** Wall-clock for this one read. The probe aggregates these into the
+   *  answer to "how long will a page take". */
+  ms: number;
   features: string[];
   strategy: string | null;
   textLength: number;
@@ -40,6 +67,9 @@ export interface EnrichmentBatch {
   attempted: number;
   resolved: number;
   creditsSpent: number | null;
+  /** Wall-clock for the whole batch — one wave when the batch fits the
+   *  concurrency limit, more when it doesn't. */
+  ms: number;
 }
 
 export interface EnrichTarget {
@@ -57,7 +87,7 @@ async function pooled<T, R>(
   const results: R[] = new Array(items.length);
   let next = 0;
   const runners = Array.from(
-    { length: Math.min(CONCURRENCY, items.length) },
+    { length: Math.min(concurrency(), items.length) },
     async () => {
       for (;;) {
         const i = next++;
@@ -83,11 +113,14 @@ export async function enrichTargets(
 ): Promise<EnrichmentBatch> {
   const slice = targets.slice(0, MAX_ENRICH_PER_REQUEST);
 
+  const started = Date.now();
   const records = await pooled(slice, async (t): Promise<EnrichmentRecord> => {
+    const at = Date.now();
     try {
       const facts = await describeListing(t.address, t.city, t.stateCode);
       return {
         id: t.id,
+        ms: Date.now() - at,
         known: facts.featuresKnown,
         features: facts.features,
         strategy: facts.strategy,
@@ -99,6 +132,7 @@ export async function enrichTargets(
     } catch (error) {
       return {
         id: t.id,
+        ms: Date.now() - at,
         known: false,
         features: [],
         strategy: null,
@@ -127,6 +161,7 @@ export async function enrichTargets(
     creditsSpent: credited.length
       ? credited.reduce((sum, r) => sum + (r.credits ?? 0), 0)
       : null,
+    ms: Date.now() - started,
   };
 }
 

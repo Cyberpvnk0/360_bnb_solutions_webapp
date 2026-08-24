@@ -287,6 +287,17 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   const [enrichReason, setEnrichReason] =
     React.useState<EnrichFailureReason | null>(null);
   const requestedRef = React.useRef(new Set<string>());
+  /** Whether this page is gone — see the note in the enrichment effect.
+   *  Reset on mount as well as set on teardown: StrictMode mounts,
+   *  unmounts and remounts in development, and a flag that only ever
+   *  went true would leave every later wave bailing out. */
+  const unmountedRef = React.useRef(false);
+  React.useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
 
   const marketRows =
     liveTarget && live?.slug === liveTarget.slug ? live.listings : null;
@@ -385,6 +396,9 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   /** One browsing session must not be able to spend the whole day's
    *  amenity budget chasing a single filter through a long list. */
   const SESSION_ENRICH_LIMIT = 96;
+  /** Properties per request — one concurrency wave, matching the
+   *  server's own batch ceiling. */
+  const ENRICH_BATCH = 8;
 
   // Reading a listing page costs money, so it happens only once a
   // student has actually asked a question that needs the answer.
@@ -411,25 +425,46 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     if (todo.length === 0) return;
     for (const l of todo) requestedRef.current.add(l.id);
 
-    let cancelled = false;
-    enrichListings(todo).then((result) => {
-      if (cancelled) return;
-      // Every id gets marked answered, hit or miss — otherwise a row we
-      // couldn't read would spin forever.
-      setAnswered((prev) => {
-        const next = { ...prev };
-        for (const l of todo) next[l.id] = true;
-        return next;
-      });
-      if (result.ok) {
-        setEnriched((prev) => ({ ...prev, ...result.facts }));
-      } else {
-        setEnrichReason(result.reason ?? "network");
+    // Reading a protected listing page takes seconds, so a whole page of
+    // cards is several waves of work. Send it a wave at a time and merge
+    // each answer as it lands: cards fill in progressively instead of
+    // the list sitting frozen until the last one returns, and no single
+    // request ever approaches the function timeout.
+    //
+    // Deliberately NOT cancelled when this effect re-runs. Merging a
+    // wave changes `pending`, which restarts the effect — so a
+    // per-effect cancel would discard the next wave's answer while its
+    // ids stayed marked as requested, paying the vendor and binning the
+    // result. A fact about a listing is valid whenever it arrives; the
+    // only thing worth stopping for is an unmounted page.
+    void (async () => {
+      for (let i = 0; i < todo.length; i += ENRICH_BATCH) {
+        if (unmountedRef.current) return;
+        const wave = todo.slice(i, i + ENRICH_BATCH);
+        const result = await enrichListings(wave);
+        if (unmountedRef.current) return;
+        // Every id gets marked answered, hit or miss — otherwise a row
+        // we couldn't read would spin forever.
+        setAnswered((prev) => {
+          const next = { ...prev };
+          for (const l of wave) next[l.id] = true;
+          return next;
+        });
+        if (result.ok) {
+          setEnriched((prev) => ({ ...prev, ...result.facts }));
+        } else {
+          // A configuration or budget failure applies to every wave, so
+          // stop rather than burning the rest of the page on it.
+          setEnrichReason(result.reason ?? "network");
+          setAnswered((prev) => {
+            const next = { ...prev };
+            for (const l of todo) next[l.id] = true;
+            return next;
+          });
+          return;
+        }
       }
-    });
-    return () => {
-      cancelled = true;
-    };
+    })();
   }, [pending]);
   // Targeted searches (a market or a ZIP) pin the ENTIRE result set —
   // the whole city, not just the page the list is showing — and frame

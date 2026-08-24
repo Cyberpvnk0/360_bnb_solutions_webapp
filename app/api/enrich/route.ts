@@ -25,6 +25,16 @@ import { fetchLiveRentals, RentCastError } from "@/lib/live/rentcast";
 import { ScraperApiError } from "@/lib/live/scraperapi";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
+/**
+ * Reading a protected listing page takes seconds, not milliseconds, and
+ * a batch is a whole concurrency wave of them — well past the default
+ * serverless slice, which would kill the request mid-wave and look to a
+ * student like the lookup silently failing. 60s clears a wave with room
+ * to spare and is inside every Vercel plan's ceiling; raise it only if
+ * you also raise the batch size.
+ */
+export const maxDuration = 60;
+
 interface TargetInput {
   id?: unknown;
   address?: unknown;
@@ -170,6 +180,16 @@ export async function GET(request: Request) {
     attempted: batch.attempted,
     resolved: batch.resolved,
     resolveRate: `${Math.round((batch.resolved / batch.attempted) * 100)}%`,
+    /** How long it took — the answer to "how long will a page take".
+     *  msPerProperty is the honest per-read cost; a batch runs them
+     *  concurrency-many at a time, so a full 24-card page is roughly
+     *  msBatch × ceil(24 / batch size). */
+    msBatch: batch.ms,
+    msPerProperty: Math.round(
+      batch.records.reduce((sum, r) => sum + r.ms, 0) /
+        Math.max(1, batch.records.length)
+    ),
+    msSlowest: batch.records.reduce((max, r) => Math.max(max, r.ms), 0),
     /** What it cost. Null means ScraperAPI reported no credit header —
      *  read the real number off their dashboard instead. */
     creditsSpent: batch.creditsSpent,

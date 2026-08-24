@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { enrichTargets, targetsFor } from "./enrich";
+import {
+  DEFAULT_CONCURRENCY,
+  enrichTargets,
+  MAX_ENRICH_PER_REQUEST,
+  targetsFor,
+} from "./enrich";
 import { describeListing, extractListingText, listingSearchUrl } from "./scraperapi";
 import type { RentalListing } from "@/lib/mock/types";
 
@@ -213,5 +218,54 @@ describe("targetsFor", () => {
     ]).map((t) => t.id);
 
     expect(ids).toEqual(["live--jacksonville--1"]);
+  });
+});
+
+describe("batching and pacing", () => {
+  const many = Array.from({ length: 20 }, (_, i) => ({
+    id: `live--jacksonville--${i}`,
+    address: `${i} Main St`,
+    city: "Jacksonville",
+    stateCode: "FL",
+  }));
+
+  it("defaults to the vendor's trial concurrency, not a guess", () => {
+    // ScraperAPI caps concurrent threads by plan and answers 429 past
+    // it. Defaulting above the trial limit would make a first test fail
+    // for a reason that has nothing to do with the data.
+    expect(DEFAULT_CONCURRENCY).toBe(5);
+  });
+
+  it("never reads more than one batch per request", async () => {
+    const fetchMock = mockFetch(HTML.jsonLd);
+    vi.stubGlobal("fetch", fetchMock);
+    const batch = await enrichTargets(many);
+    expect(batch.attempted).toBe(MAX_ENRICH_PER_REQUEST);
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_ENRICH_PER_REQUEST);
+  });
+
+  it("holds concurrent reads to the limit", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        peak = Math.max(peak, ++inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight--;
+        return new Response(HTML.jsonLd);
+      })
+    );
+    await enrichTargets(many);
+    expect(peak).toBeLessThanOrEqual(DEFAULT_CONCURRENCY);
+  });
+
+  it("times every read so a page's duration can be predicted", async () => {
+    vi.stubGlobal("fetch", mockFetch(HTML.jsonLd));
+    const batch = await enrichTargets(many.slice(0, 3));
+    expect(batch.ms).toBeGreaterThanOrEqual(0);
+    for (const r of batch.records) {
+      expect(Number.isFinite(r.ms)).toBe(true);
+    }
   });
 });
