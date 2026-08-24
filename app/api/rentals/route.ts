@@ -19,10 +19,17 @@ import { NextResponse } from "next/server";
 import {
   fetchLiveRentals,
   fetchLiveRentalsByZip,
+  fetchRawRentals,
+  mapRentCastListing,
   RentCastError,
 } from "@/lib/live/rentcast";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
-import { describeShape } from "@/lib/live/shape";
+import {
+  amenityFields,
+  describeFields,
+  describeShape,
+  proseFields,
+} from "@/lib/live/shape";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
 /** Same shape for every failure, so the client can explain itself. */
@@ -85,17 +92,38 @@ export async function GET(request: Request) {
     );
   }
 
-  // Setup diagnostic: the feed's own field names (types only, no listing
-  // data) — the definitive answer to "does this payload carry amenities?"
+  // Setup diagnostic: the VENDOR's own field names and value types —
+  // never their values. This is the definitive answer to "does this
+  // payload carry descriptions or amenities?", and it has to read the
+  // RAW rows: describing our mapped row would only ever echo back our
+  // own field names, which cannot reveal a field the mapper ignores.
+  // Costs no vendor request when this market was already searched today
+  // — the probe shares the feed's Data-Cache entry.
   if (shape) {
     try {
-      const rows = await fetchLiveRentals(market);
+      const raw = await fetchRawRentals(market);
+      const fields = describeFields(raw);
+      const prose = proseFields(fields);
+      const amenity = amenityFields(fields);
+      const mapped = raw
+        .map((r) => mapRentCastListing(r, market))
+        .find((l) => l !== null);
       return NextResponse.json({
-        rows: rows.length,
-        mappedShape: describeShape(rows[0] ?? null),
-        note:
-          "featuresKnown:false means RentCast shipped no amenity or " +
-          "description field, so the Furnished filter disables itself.",
+        rows: raw.length,
+        /** Every field RentCast ships, unioned across all rows. */
+        vendorFields: fields,
+        /** Free-text fields long enough to mine ("furnished", …). */
+        proseFields: prose,
+        /** Fields whose name suggests amenity or description content. */
+        amenityFields: amenity,
+        verdict:
+          prose.length > 0 || amenity.length > 0
+            ? "This feed carries descriptive text — the Furnished filter " +
+              "can work on live rows. Pin the mapper to the fields listed."
+            : "No description or amenity field in any row. Furnished " +
+              "cannot be answered from this feed; the filter stays " +
+              "disabled on live results until a description source is added.",
+        mappedShape: describeShape(mapped ?? null),
       });
     } catch (error) {
       return failure(error);

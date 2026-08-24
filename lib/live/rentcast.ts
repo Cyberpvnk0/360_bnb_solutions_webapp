@@ -63,9 +63,10 @@ const PROPERTY_TYPE_MAP: Record<string, PropertyType> = {
 
 /**
  * One RentCast row → our RentalListing, or null when it can't be used
- * (no rent, no coordinates, or a type operators don't lease). Live rows
- * carry no feature tags yet — RentCast doesn't ship descriptions on this
- * endpoint — so keyword search matches address, market, and home type.
+ * (no rent, no coordinates, or a type operators don't lease). Feature
+ * tags are mined from whatever descriptive text the payload carries;
+ * when it carries none, `featuresKnown` is false and the UI disables
+ * feature filters rather than reporting a false zero.
  */
 export function mapRentCastListing(
   raw: RentCastListing,
@@ -248,6 +249,22 @@ export async function fetchLiveRentals(
     radius: String(MARKET_RADIUS_MILES),
   });
   return toSortedListings(rows, market);
+}
+
+/**
+ * The vendor's rows exactly as they arrive — for the setup diagnostic
+ * only, never for rendering. Shares a Data-Cache entry with
+ * fetchLiveRentals (identical URL and revalidate), so probing a market
+ * already searched today costs no extra vendor request.
+ */
+export async function fetchRawRentals(
+  market: Market
+): Promise<RentCastListing[]> {
+  return rcListings({
+    latitude: String(market.lat),
+    longitude: String(market.lon),
+    radius: String(MARKET_RADIUS_MILES),
+  });
 }
 
 /** Closest covered market to a point — equirectangular approximation is

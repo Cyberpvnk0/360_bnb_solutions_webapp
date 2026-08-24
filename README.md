@@ -49,6 +49,27 @@ midnight UTC. The ledger lives in server memory, so with several
 instances warm the true ceiling is a small multiple of the cap — move it
 to a shared store (Vercel KV) if you need it exact.
 
+#### Does this feed carry descriptions? (field probe)
+
+`GET /api/rentals?market=jacksonville&shape=1` reports the field names
+and value types RentCast actually ships — never their values — plus a
+plain verdict on whether anything in the payload can answer "is this
+unit furnished".
+
+It reads the RAW vendor rows and unions every field across ALL of them.
+Both details are load-bearing: describing our mapped row would only echo
+back our own field names and could never reveal a field the mapper
+ignores, and JSON feeds omit null fields per row, so a description
+carried by one listing in fifty is invisible in `rows[0]`. Either
+shortcut answers the question with a confident false no.
+
+Read `proseFields` (free text long enough to mine) and `amenityFields`
+(named like amenity data, whatever its length). Both empty means the
+Furnished filter cannot work on live rows and correctly disables itself.
+The probe shares the feed's Data-Cache entry, so probing a market already
+searched today costs no extra vendor request, and it never spends a
+daily-cap slot.
+
 ### Live STR comps (AirROI)
 
 Set `AIRROI_API_KEY` and the analyzer swaps its seeded comp set for live
