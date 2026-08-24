@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * The /deals Deal Finder: a Zillow-familiar, rentals-only nationwide
- * browser. Filter chips pinned on top, the street map on the LEFT
- * (Zillow's desktop arrangement), the listing card grid on the right.
- * Hover syncs card and price pill in both directions; clicking a pill
- * scrolls its card into view. Results paginate 24 at a time and the map
- * pins only the loaded page. Below lg a segmented toggle shows one pane
- * at a time.
+ * The /deals Deal Finder: a Zillow-familiar, rentals-only browser.
+ *
+ * Search-first, like every property portal: nothing is listed until a
+ * market or ZIP is named, so the page opens on an invitation rather than
+ * a random slice of 13,000 rentals. Filter chips pin on top, the street
+ * map sits LEFT (Zillow's desktop arrangement), the card grid right.
+ * Hover syncs card and price pill both ways; clicking a pill opens the
+ * listing. Results paginate 24 at a time. Below lg a segmented toggle
+ * shows one pane at a time.
  */
 
 import * as React from "react";
@@ -16,12 +18,12 @@ import {
   Bookmark,
   LayoutGrid,
   Map as MapIcon,
+  Search,
   SearchX,
 } from "lucide-react";
 import {
   getLiveRentals,
   getLiveRentalsByZip,
-  getRentalTotals,
   type LiveFailureReason,
 } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
@@ -53,6 +55,17 @@ import { RentalsMap, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 24;
+
+/** One-tap starts on the opening screen — the markets a coaching
+ *  student is most likely hunting first. */
+const STARTER_MARKETS = [
+  "jacksonville",
+  "tampa",
+  "austin",
+  "nashville",
+  "phoenix",
+  "charlotte",
+];
 
 type SortKey = "spread" | "newest" | "rent-asc" | "rent-desc";
 
@@ -128,12 +141,13 @@ function liveFailureLabel(reason: LiveFailureReason | null | undefined): string 
 }
 
 interface DealsExplorerProps {
-  rentals: RentalListing[];
   markets: Market[];
   states: string[];
+  /** Coverage figures for the opening invitation. */
+  totals: { rentals: number; markets: number };
 }
 
-export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) {
+export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   const [filters, setFilters] = React.useState<DealFilters>(DEFAULT_DEAL_FILTERS);
   const [sort, setSort] = React.useState<SortKey>("spread");
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
@@ -144,23 +158,8 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(null);
   const { lists } = useSession();
-  const [totals, setTotals] = React.useState<{
-    rentals: number;
-    markets: number;
-  } | null>(null);
-
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    getRentalTotals().then((t) => {
-      if (!cancelled) setTotals(t);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // ZIP mode: a 5-digit search hits the live feed directly (ZIP search
   // is live-only — the preview world has no honest ZIP inventory).
@@ -215,6 +214,8 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
 
   const [live, setLive] = React.useState<{
     slug: string;
+    /** False when these are the preview rows the feed fell back to. */
+    isLive: boolean;
     asOf?: string;
     remaining?: number;
     listings: RentalListing[];
@@ -232,16 +233,15 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     let cancelled = false;
     getLiveRentals(slug).then((result) => {
       if (cancelled) return;
-      setLive(
-        result.live
-          ? {
-              slug,
-              asOf: result.asOf,
-              remaining: result.remaining,
-              listings: result.listings,
-            }
-          : null
-      );
+      // Keep the rows either way: live inventory when the feed answers,
+      // the market's preview set when it can't.
+      setLive({
+        slug,
+        isLive: result.live,
+        asOf: result.asOf,
+        remaining: result.remaining,
+        listings: result.listings,
+      });
       setLiveReason(result.live ? null : (result.reason ?? "network"));
       setLiveChecked(slug);
     });
@@ -250,8 +250,10 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     };
   }, [liveTarget]);
 
+  const marketRows =
+    liveTarget && live?.slug === liveTarget.slug ? live.listings : null;
   const liveActive = Boolean(
-    liveTarget && live && live.slug === liveTarget.slug
+    liveTarget && live?.slug === liveTarget.slug && live.isLive
   );
   const liveChecking = Boolean(
     liveTarget && liveChecked !== liveTarget.slug
@@ -261,20 +263,17 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
   const rows = React.useMemo<Row[]>(() => {
     const bySlug = new Map(markets.map((m) => [m.slug, m]));
-    // A ZIP search is answered by the feed alone — when it can't answer,
-    // the grid stays empty and says why, never a nationwide dump.
-    // Market live mode swaps that market's preview rows for the feed's so
-    // real and seeded inventory never mix.
+    // Search-first: a ZIP is answered by the feed alone, a market by its
+    // live rows (or its preview set when the feed can't answer), a saved
+    // list by what's in it. With no search and no list, nothing shows.
     const source = zip
       ? zipActive
         ? zipResult!.listings
         : []
-      : liveActive
-        ? [
-            ...live!.listings,
-            ...rentals.filter((l) => l.marketSlug !== live!.slug),
-          ]
-        : rentals;
+      : (marketRows ??
+        (listFilter
+          ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
+          : []));
     return source.flatMap((listing) => {
       const market = bySlug.get(listing.marketSlug);
       if (!market) return [];
@@ -297,7 +296,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         },
       ];
     });
-  }, [rentals, markets, liveActive, live, zip, zipActive, zipResult]);
+  }, [markets, marketRows, zip, zipActive, zipResult, listFilter, lists]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -417,13 +416,18 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     else cardRefs.current.delete(key);
   };
 
-  const countLabel = zipActive
-    ? `${fmtNum(filtered.length)} live rentals in ZIP ${zip}`
-    : liveActive
-      ? `${fmtNum(filtered.length)} live rentals in ${liveTarget!.name}`
-      : `${fmtNum(filtered.length)} of ${fmtNum(
-          totals?.rentals ?? rentals.length
-        )} rentals`;
+  /** Nothing searched, no list open — the opening state. */
+  const idle = !zip && !liveTarget && !listFilter;
+
+  const countLabel = idle
+    ? `${fmtNum(totals.rentals)} rentals across ${fmtNum(totals.markets)} markets`
+    : zipActive
+      ? `${fmtNum(filtered.length)} live rentals in ZIP ${zip}`
+      : liveActive
+        ? `${fmtNum(filtered.length)} live rentals in ${liveTarget!.name}`
+        : listFilter && !liveTarget
+          ? `${fmtNum(filtered.length)} saved`
+          : `${fmtNum(filtered.length)} rentals in ${liveTarget?.name ?? "this area"}`;
 
   // Surface the day's remaining live searches only when it's getting
   // tight — a quiet heads-up, not a permanent counter.
@@ -620,7 +624,48 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
             mobilePane === "list" ? "flex" : "hidden lg:flex"
           )}
         >
-          {filtered.length === 0 ? (
+          {idle ? (
+            /* The opening invitation — a portal asks where before what. */
+            <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 py-16 text-center">
+              <span
+                aria-hidden
+                className="flex size-11 items-center justify-center rounded-full border border-border bg-secondary/60 text-gold"
+              >
+                <Search className="size-5" />
+              </span>
+              <h2 className="mt-4 font-display text-xl font-medium tracking-tight text-foreground">
+                Where are you hunting?
+              </h2>
+              <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
+                Search a city or ZIP to pull the rentals listed there right
+                now, each one scored against what short-term rentals actually
+                earn in that market.
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-1.5">
+                {STARTER_MARKETS.map((slug) => {
+                  const m = markets.find((x) => x.slug === slug);
+                  if (!m) return null;
+                  return (
+                    <button
+                      key={slug}
+                      type="button"
+                      onClick={() =>
+                        applyLocationQuery(`${m.name}, ${m.stateCode}`)
+                      }
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-gold/40 hover:bg-gold-fill/5 hover:text-foreground"
+                    >
+                      {m.name}, {m.stateCode}
+                    </button>
+                  );
+                })}
+              </div>
+              {lists.some((l) => l.listings.length > 0) ? (
+                <p className="mt-6 text-xs text-muted-foreground">
+                  Or open a saved list from the toolbar above.
+                </p>
+              ) : null}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="p-6">
               <EmptyState
                 icon={SearchX}

@@ -1,13 +1,15 @@
-import { getMarkets, getMarketStates, getRentals } from "@/lib/data";
+import { getMarkets, getMarketStates, getRentalTotals } from "@/lib/data";
 import { DealsExplorer } from "@/components/deals/deals-explorer";
 
 export const metadata = { title: "Deal Finder" };
 
 export default async function DealsPage() {
-  const [rentals, markets, states] = await Promise.all([
-    getRentals(),
+  // No inventory ships with the page — Deal Finder is search-first, so
+  // rentals load for the market or ZIP the user actually asks for.
+  const [markets, states, totals] = await Promise.all([
     getMarkets(),
     getMarketStates(),
+    getRentalTotals(),
   ]);
-  return <DealsExplorer rentals={rentals} markets={markets} states={states} />;
+  return <DealsExplorer markets={markets} states={states} totals={totals} />;
 }
