@@ -16,7 +16,9 @@ import * as React from "react";
 import {
   ArrowDownWideNarrow,
   Bookmark,
+  Info,
   LayoutGrid,
+  Loader2,
   Map as MapIcon,
   Search,
   SearchX,
@@ -39,6 +41,11 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { useSession } from "@/components/providers/session-provider";
+import {
+  enrichFailureLabel,
+  enrichListings,
+  type EnrichFailureReason,
+} from "@/lib/data/enrich";
 import {
   DealFilterChips,
   DEFAULT_DEAL_FILTERS,
@@ -259,6 +266,28 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     };
   }, [liveTarget]);
 
+  /* ---------------------------------------------------------------- */
+  /* Amenity enrichment                                                 */
+  /*                                                                    */
+  /* Live feeds carry no amenity data, so the flags behind Furnished are
+     read from each listing's own page. That costs money per property,
+     so it happens on demand and narrowly: only when a student actually
+     asks for a feature, only for rows on screen, and never twice for
+     the same row. Rows that can't be read stay unknown — the filter
+     already excludes unknown rather than calling it unfurnished.       */
+  /* ---------------------------------------------------------------- */
+
+  const [enriched, setEnriched] = React.useState<
+    Record<string, { features: string[]; featuresKnown: boolean }>
+  >({});
+  /** Ids we now have an answer for, hit or miss. Set only in the async
+   *  callback, so "checking" stays derived — no sync setState in an
+   *  effect, no ref read during render. */
+  const [answered, setAnswered] = React.useState<Record<string, true>>({});
+  const [enrichReason, setEnrichReason] =
+    React.useState<EnrichFailureReason | null>(null);
+  const requestedRef = React.useRef(new Set<string>());
+
   const marketRows =
     liveTarget && live?.slug === liveTarget.slug ? live.listings : null;
   const liveActive = Boolean(
@@ -283,9 +312,14 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         (listFilter
           ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
           : []));
-    return source.flatMap((listing) => {
-      const market = bySlug.get(listing.marketSlug);
+    return source.flatMap((raw) => {
+      const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
+      // A row we've read the page for carries real flags from here on.
+      const facts = enriched[raw.id];
+      const listing = facts
+        ? { ...raw, features: facts.features, featuresKnown: true }
+        : raw;
       return [
         {
           listing,
@@ -306,7 +340,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         },
       ];
     });
-  }, [markets, marketRows, zip, zipActive, zipResult, listFilter, lists]);
+  }, [markets, marketRows, zip, zipActive, zipResult, listFilter, lists, enriched]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -318,10 +352,17 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     listRef.current?.scrollTo({ top: 0 });
   };
 
-  // Live feeds may ship no amenity data; when none of the rows know
-  // their features, feature filters can't mean anything.
+  // Live feeds ship no amenity data, but an unread live row is a
+  // question we can answer rather than a dead end — so a feature filter
+  // stays usable while enrichment is available, and only greys out once
+  // the lookup itself has told us it can't help.
+  const readableRows = rows.some(
+    (r) => r.listing.featuresKnown !== true && r.listing.id.startsWith("live--")
+  );
   const featuresKnown =
-    rows.length === 0 || rows.some((r) => r.listing.featuresKnown !== false);
+    rows.length === 0 ||
+    rows.some((r) => r.listing.featuresKnown !== false) ||
+    (readableRows && enrichReason === null);
 
   const filtered = React.useMemo(() => {
     const by = SORTERS[sort];
@@ -340,6 +381,56 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     [filtered, visibleCount]
   );
   const remaining = Math.max(0, filtered.length - visibleCount);
+
+  /** One browsing session must not be able to spend the whole day's
+   *  amenity budget chasing a single filter through a long list. */
+  const SESSION_ENRICH_LIMIT = 96;
+
+  // Reading a listing page costs money, so it happens only once a
+  // student has actually asked a question that needs the answer.
+  const wantsFeatures =
+    filters.furnishedOnly || filters.keywords.length > 0;
+
+  const pending = React.useMemo(() => {
+    if (!wantsFeatures || enrichReason !== null) return [];
+    return visible
+      .map((r) => r.listing)
+      .filter((l) => l.featuresKnown !== true && l.id.startsWith("live--"));
+  }, [wantsFeatures, visible, enrichReason]);
+
+  /** Derived, never assigned in an effect: a row is "checking" until it
+   *  has an answer, and a miss counts as an answer. */
+  const enriching = pending.some((l) => !answered[l.id]);
+
+  React.useEffect(() => {
+    const allowance = SESSION_ENRICH_LIMIT - requestedRef.current.size;
+    if (allowance <= 0) return;
+    const todo = pending
+      .filter((l) => !requestedRef.current.has(l.id))
+      .slice(0, allowance);
+    if (todo.length === 0) return;
+    for (const l of todo) requestedRef.current.add(l.id);
+
+    let cancelled = false;
+    enrichListings(todo).then((result) => {
+      if (cancelled) return;
+      // Every id gets marked answered, hit or miss — otherwise a row we
+      // couldn't read would spin forever.
+      setAnswered((prev) => {
+        const next = { ...prev };
+        for (const l of todo) next[l.id] = true;
+        return next;
+      });
+      if (result.ok) {
+        setEnriched((prev) => ({ ...prev, ...result.facts }));
+      } else {
+        setEnrichReason(result.reason ?? "network");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pending]);
   // Targeted searches (a market or a ZIP) pin the ENTIRE result set —
   // the whole city, not just the page the list is showing — and frame
   // the searched area so a metro reads as a metro. Nationwide browsing
@@ -530,6 +621,20 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-3 pl-3">
+          {/* Amenity lookup — a feature filter that had to go read the
+              listings says so, and says when it couldn't. */}
+          {enriching ? (
+            <span className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
+              <Loader2 aria-hidden className="size-3.5 animate-spin" />
+              Reading listings…
+            </span>
+          ) : enrichReason ? (
+            <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
+              <Info aria-hidden className="size-3.5" />
+              {enrichFailureLabel(enrichReason)}
+            </span>
+          ) : null}
+
           {/* Provenance — students always know which inventory they see. */}
           {zipActive || liveActive ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
@@ -727,6 +832,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
                     hovered={r.listing.id === hoveredId}
                     onHoverChange={setHoveredId}
                     onOpen={openDetail}
+                    featureFilterActive={wantsFeatures}
                   />
                 ))}
               </div>

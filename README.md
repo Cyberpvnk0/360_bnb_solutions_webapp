@@ -70,6 +70,51 @@ The probe shares the feed's Data-Cache entry, so probing a market already
 searched today costs no extra vendor request, and it never spends a
 daily-cap slot.
 
+### Amenities on live rows (ScraperAPI)
+
+Rental feeds ship no amenity field, so on live results the Furnished
+filter has nothing to read. `SCRAPERAPI_KEY` fills that gap by reading
+each listing's own page — the same Zillow search URL the app already
+links to on every card.
+
+**Only flags are kept.** The fetched page is a local inside
+`describeListing` and is never returned, stored, cached in our layer,
+logged, or sent to a browser. What survives is a fact about the property
+("this unit is furnished"), not somebody else's sentence about it. The
+enriched listing carries no `description`, and `enrich.test.ts` asserts
+that no prose appears anywhere in the response, so a later refactor
+can't quietly start persisting it.
+
+Spending is bounded four ways: enrichment fires only when a student
+turns on a feature filter, only for rows on the visible page, never
+twice for the same row, and never past `SCRAPERAPI_DAILY_ENRICH_CAP`
+properties in a day. A browsing session is additionally capped at 96
+properties so one person can't drain the day's budget. Results cache for
+30 days, shared across every user.
+
+Rows that can't be read stay `featuresKnown: false` — the filter keeps
+showing them (absence of data is not evidence of absence) and the card
+says "Amenities not listed" so a student can tell "we couldn't check
+this" from "we checked and it's fine".
+
+#### Measuring it before you pay
+
+`GET /api/enrich?probe=jacksonville&n=25` runs a real batch against live
+addresses and reports the three numbers that decide whether this vendor
+is worth it:
+
+- `resolveRate` — the share of addresses that yielded readable text
+- `creditsPerProperty` — what a property actually costs, versus the
+  ~11 credits a protected page lists at
+- `renderedCount` — how often the cheap path failed and the expensive
+  JS-rendering retry was needed
+
+`strategies` shows where the text was found (`json-ld`, `embedded-state`,
+`meta-description`, `visible-text`) and `failures` shows what went wrong
+where it wasn't. No listing content appears in the response. If
+ScraperAPI reports no credit header, `creditsSpent` is null — read the
+real figure off their dashboard instead.
+
 ### Live STR comps (AirROI)
 
 Set `AIRROI_API_KEY` and the analyzer swaps its seeded comp set for live

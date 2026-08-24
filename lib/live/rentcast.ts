@@ -10,6 +10,7 @@
  * Docs: https://developers.rentcast.io — GET /v1/listings/rental/long-term
  */
 
+import { mineFeatures } from "@/lib/live/features";
 import { MARKETS } from "@/lib/mock/markets";
 import type {
   ListingContact,
@@ -115,44 +116,23 @@ export function mapRentCastListing(
   };
 }
 
-/** Feature words worth surfacing, and the phrases that imply them. */
-const FEATURE_PATTERNS: [string, RegExp][] = [
-  ["Furnished", /\bfully[- ]?furnished\b|\bfurnished\b/i],
-  ["Pet friendly", /\bpets?[- ]?(?:friendly|allowed|ok)\b|\bdogs? ok\b/i],
-  ["Private pool", /\b(?:private )?pool\b/i],
-  ["Waterfront", /\bwaterfront\b|\bwater ?front\b/i],
-  ["Ocean view", /\bocean ?view\b|\bbeach ?front\b/i],
-  ["Mountain view", /\bmountain ?view\b/i],
-  ["Hot tub", /\bhot ?tub\b|\bjacuzzi\b|\bspa\b/i],
-  ["Washer & dryer", /\bwasher\b.{0,12}\bdryer\b|\bw\/d\b|\blaundry in unit\b/i],
-  ["Garage", /\bgarage\b/i],
-  ["Balcony", /\bbalcony\b|\bpatio\b/i],
-  ["Fenced yard", /\bfenced\b.{0,10}\byard\b/i],
-  ["Renovated", /\brenovated\b|\bremodeled\b|\bupdated\b/i],
-  ["Gated community", /\bgated\b/i],
-  ["Near transit", /\bnear (?:transit|subway|metro)\b/i],
-];
-
 /**
- * Feature tags mined from whatever descriptive text the feed provides.
- * Returns null when the payload carries NO amenity or description field
- * at all — an empty tag list would otherwise read as "this rental has
- * none of these", which is a different claim from "we don't know".
+ * Feature tags mined from whatever descriptive text the feed provides,
+ * through the one shared miner — so "Furnished" means the same thing
+ * here as it does on a scraped page. Null when the payload carried no
+ * amenity or description field at all: an empty tag list would read as
+ * "this rental has none of these", a different and unearned claim.
  */
 export function featuresFromFeed(raw: RentCastListing): string[] | null {
   const listed = [raw.amenities, raw.features]
     .flatMap((v) => (Array.isArray(v) ? v : typeof v === "string" ? [v] : []))
     .filter((v): v is string => typeof v === "string");
-  const prose = [raw.description, raw.remarks, raw.publicRemarks].filter(
-    (v): v is string => typeof v === "string" && v.trim() !== ""
-  );
-  if (listed.length === 0 && prose.length === 0) return null;
-
-  const haystack = [...listed, ...prose].join(" \n ");
-  const found = FEATURE_PATTERNS.filter(([, re]) => re.test(haystack)).map(
-    ([label]) => label
-  );
-  return [...new Set(found)];
+  return mineFeatures([
+    ...listed,
+    raw.description,
+    raw.remarks,
+    raw.publicRemarks,
+  ]);
 }
 
 /** The feed's own agent/office, when it carries one — never invented:

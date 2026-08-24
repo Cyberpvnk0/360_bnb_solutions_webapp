@@ -80,3 +80,61 @@ export function commitLiveSearch(key: string, now = new Date()): QuotaCheck {
 export function resetLiveSearchLedger(): void {
   ledger = { day: "", keys: new Set() };
 }
+
+/* ------------------------------------------------------------------ */
+/* Enrichment: a ceiling on PROPERTIES, not areas                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The area cap above can't guard ScraperAPI: every address is its own
+ * billed call, so twenty-four properties in one already-counted market
+ * still cost twenty-four reads. This counts the thing that actually
+ * bills — properties read in a day.
+ *
+ * The default is deliberately cautious because the credits-per-property
+ * number is unknown until measured: a protected page is ~11 credits on
+ * the cheap path but several times that when it needs JS rendering, so
+ * 200 properties is somewhere between ~2k and ~15k credits a day. Raise
+ * SCRAPERAPI_DAILY_ENRICH_CAP once a probe run has told you which end of
+ * that range you're actually on.
+ */
+export const DEFAULT_DAILY_ENRICH_CAP = 200;
+
+export function enrichCap(): number {
+  const raw = Number(process.env.SCRAPERAPI_DAILY_ENRICH_CAP);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_DAILY_ENRICH_CAP;
+}
+
+let enriched: { day: string; count: number } = { day: "", count: 0 };
+
+export interface EnrichReservation {
+  /** How many of the requested properties may be read now. Partial
+   *  grants are normal near the ceiling — better to enrich eighteen of
+   *  a page than to refuse all twenty-four. */
+  granted: number;
+  remaining: number;
+  cap: number;
+}
+
+/** Claim budget for `wanted` properties, up to what today has left.
+ *  Counts attempts, including ones the Data Cache will serve free —
+ *  conservative by design. */
+export function reserveEnrichments(
+  wanted: number,
+  now = new Date()
+): EnrichReservation {
+  const cap = enrichCap();
+  const day = dayKey(now);
+  if (enriched.day !== day) enriched = { day, count: 0 };
+  const granted = Math.max(0, Math.min(wanted, cap - enriched.count));
+  enriched.count += granted;
+  return { granted, remaining: Math.max(0, cap - enriched.count), cap };
+}
+
+/** Tests only. */
+export function resetEnrichLedger(): void {
+  enriched = { day: "", count: 0 };
+}
+

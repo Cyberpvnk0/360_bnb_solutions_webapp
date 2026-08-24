@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_DAILY_ENRICH_CAP,
+  DEFAULT_DAILY_LIVE_SEARCH_CAP,
   checkLiveSearch,
   commitLiveSearch,
-  DEFAULT_DAILY_LIVE_SEARCH_CAP,
   dailyCap,
+  reserveEnrichments,
+  resetEnrichLedger,
   resetLiveSearchLedger,
 } from "./quota";
 
@@ -65,5 +68,39 @@ describe("daily live-search cap", () => {
     expect(dailyCap()).toBe(250);
     process.env.LIVE_SEARCH_DAILY_CAP = "not-a-number";
     expect(dailyCap()).toBe(50);
+  });
+});
+
+describe("reserveEnrichments", () => {
+  beforeEach(() => {
+    resetEnrichLedger();
+    delete process.env.SCRAPERAPI_DAILY_ENRICH_CAP;
+  });
+
+  it("counts properties, because that is what this vendor bills", () => {
+    process.env.SCRAPERAPI_DAILY_ENRICH_CAP = "50";
+    expect(reserveEnrichments(24).granted).toBe(24);
+    expect(reserveEnrichments(24).remaining).toBe(2);
+  });
+
+  it("grants a partial page rather than refusing the whole one", () => {
+    process.env.SCRAPERAPI_DAILY_ENRICH_CAP = "10";
+    reserveEnrichments(8);
+    // Eighteen enriched rows beat zero enriched rows.
+    expect(reserveEnrichments(24).granted).toBe(2);
+    expect(reserveEnrichments(1).granted).toBe(0);
+  });
+
+  it("resets on the UTC day boundary", () => {
+    process.env.SCRAPERAPI_DAILY_ENRICH_CAP = "5";
+    const today = new Date("2026-08-24T23:59:00Z");
+    const tomorrow = new Date("2026-08-25T00:01:00Z");
+    expect(reserveEnrichments(5, today).remaining).toBe(0);
+    expect(reserveEnrichments(5, tomorrow).granted).toBe(5);
+  });
+
+  it("falls back to the cautious default on a junk cap", () => {
+    process.env.SCRAPERAPI_DAILY_ENRICH_CAP = "not-a-number";
+    expect(reserveEnrichments(1).cap).toBe(DEFAULT_DAILY_ENRICH_CAP);
   });
 });

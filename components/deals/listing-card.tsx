@@ -28,11 +28,23 @@ interface ListingCardProps {
   /** True while the map's matching price pill is hovered. */
   hovered: boolean;
   onHoverChange: (id: string | null) => void;
+  /** True when a feature filter is on. A row kept because its amenities
+   *  are UNKNOWN then has to say so — otherwise sitting in a Furnished
+   *  list with no tag reads as "checked and fine". */
+  featureFilterActive?: boolean;
 }
 
 export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
   function ListingCard(
-    { listing: l, cushionPts, selected, hovered, onHoverChange, onOpen },
+    {
+      listing: l,
+      cushionPts,
+      selected,
+      hovered,
+      onHoverChange,
+      onOpen,
+      featureFilterActive = false,
+    },
     ref
   ) {
     const strong = cushionPts >= 8;
@@ -89,6 +101,14 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
 
           {/* Feature tags — Furnished reads gold: it can zero the
               furnishing budget, so it's the tag operators hunt. */}
+          {l.featuresKnown === false && featureFilterActive ? (
+            <div className="mt-2.5">
+              <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                Amenities not listed — shown just in case
+              </span>
+            </div>
+          ) : null}
+
           {l.features.length > 0 ? (
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               {l.features.slice(0, 3).map((feature) => (
