@@ -43,6 +43,12 @@ export interface RentCastListing {
   photos?: string[];
   listingAgent?: { name?: string; phone?: string; email?: string };
   listingOffice?: { name?: string; phone?: string; email?: string };
+  /** Amenity/description fields, when a plan or endpoint carries them. */
+  description?: string;
+  remarks?: string;
+  publicRemarks?: string;
+  amenities?: string[] | string;
+  features?: string[] | string;
 }
 
 /** RentCast types → ours. Anything unmapped (Land, Manufactured, …) is
@@ -76,6 +82,7 @@ export function mapRentCastListing(
   // No bedroom data → skip rather than invent; studios count as 1 bd.
   if (raw.bedrooms === undefined || raw.bedrooms === null) return null;
   const bedrooms = Math.min(5, Math.max(1, Math.round(raw.bedrooms)));
+  const mined = featuresFromFeed(raw);
 
   return {
     // The market slug rides inside the id so a server render can
@@ -95,11 +102,54 @@ export function mapRentCastListing(
     propertyType,
     rentMonthly: Math.round(raw.price),
     daysOnMarket: Math.max(0, Math.round(raw.daysOnMarket ?? 0)),
-    petFriendly: false,
-    features: [],
+    petFriendly: mined?.includes("Pet friendly") ?? false,
+    features: mined ?? [],
+    // False means the feed told us nothing about amenities — the UI
+    // disables feature filters rather than reporting a false zero.
+    featuresKnown: mined !== null,
     photoUrl: raw.photos?.[0],
     contact: contactFromFeed(raw),
   };
+}
+
+/** Feature words worth surfacing, and the phrases that imply them. */
+const FEATURE_PATTERNS: [string, RegExp][] = [
+  ["Furnished", /\bfully[- ]?furnished\b|\bfurnished\b/i],
+  ["Pet friendly", /\bpets?[- ]?(?:friendly|allowed|ok)\b|\bdogs? ok\b/i],
+  ["Private pool", /\b(?:private )?pool\b/i],
+  ["Waterfront", /\bwaterfront\b|\bwater ?front\b/i],
+  ["Ocean view", /\bocean ?view\b|\bbeach ?front\b/i],
+  ["Mountain view", /\bmountain ?view\b/i],
+  ["Hot tub", /\bhot ?tub\b|\bjacuzzi\b|\bspa\b/i],
+  ["Washer & dryer", /\bwasher\b.{0,12}\bdryer\b|\bw\/d\b|\blaundry in unit\b/i],
+  ["Garage", /\bgarage\b/i],
+  ["Balcony", /\bbalcony\b|\bpatio\b/i],
+  ["Fenced yard", /\bfenced\b.{0,10}\byard\b/i],
+  ["Renovated", /\brenovated\b|\bremodeled\b|\bupdated\b/i],
+  ["Gated community", /\bgated\b/i],
+  ["Near transit", /\bnear (?:transit|subway|metro)\b/i],
+];
+
+/**
+ * Feature tags mined from whatever descriptive text the feed provides.
+ * Returns null when the payload carries NO amenity or description field
+ * at all — an empty tag list would otherwise read as "this rental has
+ * none of these", which is a different claim from "we don't know".
+ */
+export function featuresFromFeed(raw: RentCastListing): string[] | null {
+  const listed = [raw.amenities, raw.features]
+    .flatMap((v) => (Array.isArray(v) ? v : typeof v === "string" ? [v] : []))
+    .filter((v): v is string => typeof v === "string");
+  const prose = [raw.description, raw.remarks, raw.publicRemarks].filter(
+    (v): v is string => typeof v === "string" && v.trim() !== ""
+  );
+  if (listed.length === 0 && prose.length === 0) return null;
+
+  const haystack = [...listed, ...prose].join(" \n ");
+  const found = FEATURE_PATTERNS.filter(([, re]) => re.test(haystack)).map(
+    ([label]) => label
+  );
+  return [...new Set(found)];
 }
 
 /** The feed's own agent/office, when it carries one — never invented:

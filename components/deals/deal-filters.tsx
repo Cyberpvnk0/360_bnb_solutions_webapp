@@ -612,10 +612,14 @@ export function DealFilterChips({
   filters,
   states,
   onChange,
+  featuresKnown = true,
 }: {
   filters: DealFilters;
   states: string[];
   onChange: (patch: Partial<DealFilters>) => void;
+  /** False when the current results carry no amenity data — the
+   *  Furnished toggle would report a false zero, so it turns off. */
+  featuresKnown?: boolean;
 }) {
   const [openPanel, setOpenPanel] = React.useState<string | null>(null);
 
@@ -659,19 +663,29 @@ export function DealFilterChips({
         <PricePanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
 
-      {/* The deal-maker gets a one-click toggle, not a panel. */}
+      {/* The deal-maker gets a one-click toggle, not a panel. When the
+          source ships no amenity data, it disables rather than filtering
+          everything away and implying nothing is furnished. */}
       <button
         type="button"
         aria-pressed={filters.furnishedOnly}
+        disabled={!featuresKnown}
+        title={
+          featuresKnown
+            ? undefined
+            : "This feed doesn't publish furnishing status — check the listing itself"
+        }
         onClick={() => onChange({ furnishedOnly: !filters.furnishedOnly })}
         className={cn(
           "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
-          filters.furnishedOnly
-            ? "border-gold/50 bg-gold-fill/10 text-gold"
-            : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+          !featuresKnown
+            ? "cursor-not-allowed border-border text-muted-foreground/50"
+            : filters.furnishedOnly
+              ? "border-gold/50 bg-gold-fill/10 text-gold"
+              : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
         )}
       >
-        {filters.furnishedOnly ? (
+        {filters.furnishedOnly && featuresKnown ? (
           <Check aria-hidden className="size-3.5" />
         ) : null}
         Furnished

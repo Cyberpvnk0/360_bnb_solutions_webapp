@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
-import { mapRentCastListing, type RentCastListing } from "./rentcast";
+import {
+  featuresFromFeed,
+  mapRentCastListing,
+  type RentCastListing,
+} from "./rentcast";
 
 /** Shaped like RentCast's documented /listings/rental/long-term rows. */
 const JAX: RentCastListing = {
@@ -84,6 +88,51 @@ describe("rentcast mapper", () => {
     });
     // A real address with a made-up phone number would be worse than none.
     expect(mapRentCastListing(JAX, market)?.contact).toBeUndefined();
+  });
+
+  it("mines amenity tags from whatever descriptive text the feed sends", () => {
+    expect(
+      featuresFromFeed({
+        ...JAX,
+        description:
+          "Fully furnished 3BR with a private pool, washer and dryer in " +
+          "unit, and a fenced yard. Pets allowed.",
+      })
+    ).toEqual(
+      expect.arrayContaining([
+        "Furnished",
+        "Pet friendly",
+        "Private pool",
+        "Washer & dryer",
+        "Fenced yard",
+      ])
+    );
+    // An amenities array works the same way.
+    expect(
+      featuresFromFeed({ ...JAX, amenities: ["Garage", "Hot tub"] })
+    ).toEqual(["Hot tub", "Garage"].sort((a, b) => a.localeCompare(b)).length
+      ? expect.arrayContaining(["Garage", "Hot tub"])
+      : []);
+  });
+
+  it("distinguishes 'no amenities' from 'no amenity data'", () => {
+    // Text present but nothing matched → known, and genuinely empty.
+    const known = featuresFromFeed({ ...JAX, description: "Available now." });
+    expect(known).toEqual([]);
+    // No text field at all → unknown, which the UI must not read as zero.
+    expect(featuresFromFeed(JAX)).toBeNull();
+
+    const blind = mapRentCastListing(JAX, market);
+    expect(blind?.features).toEqual([]);
+    expect(blind?.featuresKnown).toBe(false);
+
+    const seeing = mapRentCastListing(
+      { ...JAX, description: "Furnished loft" },
+      market
+    );
+    expect(seeing?.features).toEqual(["Furnished"]);
+    expect(seeing?.featuresKnown).toBe(true);
+    expect(seeing?.petFriendly).toBe(false);
   });
 
   it("rejects rows the product can't stand behind", () => {

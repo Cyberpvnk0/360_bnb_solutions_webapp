@@ -212,6 +212,9 @@ export interface RentalListing {
   /** Zillow-style keyword tags ("Furnished", "Waterfront", …). Terrain-aware,
    *  seeded per listing; "Pet friendly" appears here iff petFriendly. */
   features: string[];
+  /** False when the source carries no amenity data at all, so an empty
+   *  `features` means "unknown" rather than "has none". */
+  featuresKnown?: boolean;
 }
 
 /* ------------------------------------------------------------------ */

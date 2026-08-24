@@ -22,6 +22,7 @@ import {
   RentCastError,
 } from "@/lib/live/rentcast";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
+import { describeShape } from "@/lib/live/shape";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
 /** Same shape for every failure, so the client can explain itself. */
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("market");
   const zip = searchParams.get("zip");
+  const shape = searchParams.get("shape");
 
   if (zip !== null) {
     if (!/^\d{5}$/.test(zip)) {
@@ -81,6 +83,23 @@ export async function GET(request: Request) {
       { live: false, reason: "unknown-market", status: null },
       { status: 404 }
     );
+  }
+
+  // Setup diagnostic: the feed's own field names (types only, no listing
+  // data) — the definitive answer to "does this payload carry amenities?"
+  if (shape) {
+    try {
+      const rows = await fetchLiveRentals(market);
+      return NextResponse.json({
+        rows: rows.length,
+        mappedShape: describeShape(rows[0] ?? null),
+        note:
+          "featuresKnown:false means RentCast shipped no amenity or " +
+          "description field, so the Furnished filter disables itself.",
+      });
+    } catch (error) {
+      return failure(error);
+    }
   }
 
   const gate = checkLiveSearch(`market:${market.slug}`);

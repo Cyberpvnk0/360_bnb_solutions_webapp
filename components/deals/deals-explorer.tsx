@@ -112,7 +112,15 @@ function matchesFilters(row: Row, f: DealFilters): boolean {
   if (f.bedsMin > 0 && l.bedrooms < f.bedsMin) return false;
   if (f.bathsMin > 0 && l.bathrooms < f.bathsMin) return false;
   if (!f.types.includes(l.propertyType)) return false;
-  if (f.furnishedOnly && !l.features.includes("Furnished")) return false;
+  // A listing whose amenities are unknown is never excluded by a feature
+  // filter — absence of data is not evidence of absence.
+  if (
+    f.furnishedOnly &&
+    l.featuresKnown !== false &&
+    !l.features.includes("Furnished")
+  ) {
+    return false;
+  }
   // Every keyword must land somewhere in the listing (Zillow semantics).
   for (const kw of f.keywords) {
     if (!row.keywordHaystack.includes(normalizeKeyword(kw))) return false;
@@ -308,6 +316,11 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     listRef.current?.scrollTo({ top: 0 });
   };
 
+  // Live feeds may ship no amenity data; when none of the rows know
+  // their features, feature filters can't mean anything.
+  const featuresKnown =
+    rows.length === 0 || rows.some((r) => r.listing.featuresKnown !== false);
+
   const filtered = React.useMemo(() => {
     const by = SORTERS[sort];
     return rows
@@ -465,6 +478,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         <DealFilterChips
           filters={filters}
           states={states}
+          featuresKnown={featuresKnown}
           onChange={(patch) => {
             if ("query" in patch) setZip(null);
             applyFilters(patch);

@@ -292,6 +292,7 @@ export function rentalsFor(market: Market): RentalListing[] {
       listings.push({
         ...base,
         features: featuresFor(id, market.terrain, base.petFriendly),
+        featuresKnown: true,
         contact: contactFor(id),
       });
     }
