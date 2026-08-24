@@ -13,7 +13,7 @@ import Link from "next/link";
 import { ArrowUpRight, TriangleAlert } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
-import { PropertyThumb } from "@/components/analyze/property-thumb";
+import { PropertyImage } from "./property-image";
 import { Button } from "@/components/ui/button";
 import { TYPE_LABEL } from "./deal-filters";
 import { cn } from "@/lib/utils";
@@ -56,11 +56,9 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
         )}
       >
         <div className="relative">
-          <PropertyThumb
-            seed={l.id}
-            className="h-28 w-full rounded-none border-0 border-b border-border"
-            // A live listing is real — only its photo is pending.
-            label={l.id.startsWith("live--") ? "No photo" : "Preview"}
+          <PropertyImage
+            listing={l}
+            className="h-28 w-full border-b border-border"
           />
           {l.daysOnMarket < 5 ? (
             <span className="absolute left-3 top-3 rounded-full border border-gold/50 bg-gold-fill/10 px-2 py-0.5 text-[10px] font-medium text-gold">

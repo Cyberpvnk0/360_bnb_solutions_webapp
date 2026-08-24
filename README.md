@@ -49,6 +49,17 @@ midnight UTC. The ledger lives in server memory, so with several
 instances warm the true ceiling is a small multiple of the cap — move it
 to a shared store (Vercel KV) if you need it exact.
 
+### Listing photos (optional)
+
+Listing cards and the property panel show, in order: the feed's own
+photo if it carries one, then Google Street View of the address, then
+the seeded sketch tagged for what it is. Street View needs
+`GOOGLE_MAPS_API_KEY`; it stays server-side behind `/api/street-view`,
+which probes Google's free metadata endpoint before making any billed
+image request and caches each address for 30 days. Preview inventory
+never shows curb imagery — those addresses are invented, so dressing
+them in a photo of a real building would be a lie.
+
 ## Map of the codebase
 
 | Path | What lives there |

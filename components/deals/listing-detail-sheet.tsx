@@ -21,7 +21,7 @@ import { benchmark2brInputs } from "@/lib/mock/markets";
 import { BEDROOM_ADR_FACTOR } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
-import { PropertyThumb } from "@/components/analyze/property-thumb";
+import { PropertyImage } from "./property-image";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,7 +95,6 @@ export function ListingDetailSheet({
   const cushionPts = projection
     ? Math.round(projection.marginOfSafety * 100)
     : 0;
-  const isLive = listing?.id.startsWith("live--") ?? false;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -105,10 +104,9 @@ export function ListingDetailSheet({
       >
         {listing && market && projection ? (
           <>
-            <PropertyThumb
-              seed={listing.id}
-              className="h-40 w-full shrink-0 rounded-none border-0 border-b border-border"
-              label={isLive ? "No photo" : "Preview"}
+            <PropertyImage
+              listing={listing}
+              className="h-40 w-full shrink-0 border-b border-border"
             />
 
             <SheetHeader className="gap-1 border-b border-border px-5 py-4">

@@ -34,6 +34,8 @@ export interface RentCastListing {
   status?: string;
   daysOnMarket?: number;
   listedDate?: string;
+  /** Some plans/feeds carry imagery; take it when it's there. */
+  photos?: string[];
 }
 
 /** RentCast types → ours. Anything unmapped (Land, Manufactured, …) is
@@ -85,6 +87,7 @@ export function mapRentCastListing(
     daysOnMarket: Math.max(0, Math.round(raw.daysOnMarket ?? 0)),
     petFriendly: false,
     features: [],
+    photoUrl: raw.photos?.[0],
   };
 }
 

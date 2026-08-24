@@ -183,6 +183,9 @@ export interface RentalListing {
   /** Days since the listing went up (0 = today). */
   daysOnMarket: number;
   petFriendly: boolean;
+  /** A real listing photo when the feed carries one. Absent for preview
+   *  inventory and for feeds (like RentCast) that ship no imagery. */
+  photoUrl?: string;
   /** Zillow-style keyword tags ("Furnished", "Waterfront", …). Terrain-aware,
    *  seeded per listing; "Pet friendly" appears here iff petFriendly. */
   features: string[];
