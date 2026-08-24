@@ -67,11 +67,15 @@ export function CompsExplorer({
   analysisId,
   address,
   marketCenter,
+  live = false,
 }: {
   comps: StrComp[];
   analysisId: string;
   address: string;
   marketCenter: { lat: number; lon: number } | null;
+  /** True when these came from the live STR feed rather than the
+   *  seeded preview set — the reader deserves to know which. */
+  live?: boolean;
 }) {
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
@@ -93,7 +97,16 @@ export function CompsExplorer({
             The projection above is computed from these listings, nothing else.
           </p>
         </div>
-        <MetricLabel className="hidden shrink-0 sm:block">STR comps</MetricLabel>
+        {live ? (
+          <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3 py-1 text-[11px] font-medium text-gold sm:flex">
+            <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+            Live comps
+          </span>
+        ) : (
+          <MetricLabel className="hidden shrink-0 sm:block">
+            Preview comps
+          </MetricLabel>
+        )}
       </div>
 
       <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px]">

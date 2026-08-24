@@ -49,6 +49,27 @@ midnight UTC. The ledger lives in server memory, so with several
 instances warm the true ceiling is a small multiple of the cap — move it
 to a shared store (Vercel KV) if you need it exact.
 
+### Live STR comps (AirROI)
+
+Set `AIRROI_API_KEY` and the analyzer swaps its seeded comp set for live
+short-term rentals near the address — which moves every derived figure
+on the page, since ADR, occupancy, the revenue range and breakeven all
+come from that one array. The header says which set is on screen
+("Live comps" vs "Preview comps"), and the page falls back to seeded
+comps whenever the feed is missing, capped, unreachable, or returns
+fewer than four nearby rentals (too thin to underwrite on).
+
+AirROI bills per call, so comps cache for a day, market analytics for a
+week, and both share the `LIVE_SEARCH_DAILY_CAP` ledger with the rental
+feed. Failed calls spend nothing.
+
+**Pinning the field names:** the mapper accepts several plausible
+spellings per figure because the payload shape hasn't been observed
+yet. With a real key set, `GET /api/str?lat=30.33&lon=-81.66&shape=comps`
+returns the vendor's own key names (types only, no listing data) — use
+it to lock `pick*()` in `lib/live/airroi.ts` to reality, then delete the
+unused aliases and their tests.
+
 ### Listing photos (optional)
 
 Listing cards and the property panel show, in order: the feed's own

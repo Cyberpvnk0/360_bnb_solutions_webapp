@@ -86,9 +86,12 @@ function OutputTile({
 export function AnalyzeResult({
   analysis,
   marketCenter,
+  liveComps = false,
 }: {
   analysis: Analysis;
   marketCenter: { lat: number; lon: number } | null;
+  /** True when the comp set came from the live STR feed. */
+  liveComps?: boolean;
 }) {
   const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
   const [inputs, setInputs] = React.useState<DealInputs>(analysis.defaults);
@@ -415,6 +418,7 @@ export function AnalyzeResult({
           analysisId={analysis.id}
           address={analysis.address}
           marketCenter={marketCenter}
+          live={liveComps}
         />
         <LtrCompsTable comps={analysis.ltrComps} />
       </div>
