@@ -38,7 +38,9 @@ export type LiveFailureReason =
   | "http"
   | "network"
   | "bad-zip"
-  | "unknown-market";
+  | "unknown-market"
+  /** This app's own daily ceiling on distinct live searches. */
+  | "daily-cap";
 
 export interface LiveRentalsResult {
   /** True when the rows are today's actual inventory (RentCast). */
@@ -49,6 +51,9 @@ export interface LiveRentalsResult {
   center?: { lat: number; lon: number } | null;
   reason?: LiveFailureReason;
   status?: number | null;
+  /** Distinct live searches left today, and the ceiling itself. */
+  remaining?: number;
+  cap?: number;
   listings: RentalListing[];
 }
 
@@ -79,7 +84,11 @@ export async function getLiveRentals(
       registerLiveListings(data.listings);
       return data;
     }
-    return preview(data?.reason ?? "network", data?.status);
+    return {
+      ...preview(data?.reason ?? "network", data?.status),
+      cap: data?.cap,
+      remaining: data?.remaining,
+    };
   } catch {
     return preview("network");
   }
@@ -111,6 +120,8 @@ export async function getLiveRentalsByZip(
       live: false,
       reason: data?.reason ?? "network",
       status: data?.status ?? null,
+      cap: data?.cap,
+      remaining: data?.remaining,
       listings: [],
     };
   } catch {

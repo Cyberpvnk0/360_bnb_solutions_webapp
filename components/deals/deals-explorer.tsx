@@ -109,6 +109,8 @@ function liveFailureLabel(reason: LiveFailureReason | null | undefined): string 
       return "Live feed key rejected";
     case "quota":
       return "Live feed quota reached";
+    case "daily-cap":
+      return "Daily live-search limit reached";
     case "http":
     case "network":
       return "Live feed unreachable";
@@ -157,6 +159,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     asOf?: string;
     reason?: LiveFailureReason;
     center?: { lat: number; lon: number } | null;
+    remaining?: number;
     listings: RentalListing[];
   } | null>(null);
 
@@ -171,6 +174,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         asOf: result.asOf,
         reason: result.reason,
         center: result.center,
+        remaining: result.remaining,
         listings: result.listings,
       });
     });
@@ -200,6 +204,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   const [live, setLive] = React.useState<{
     slug: string;
     asOf?: string;
+    remaining?: number;
     listings: RentalListing[];
   } | null>(null);
   const [liveReason, setLiveReason] = React.useState<LiveFailureReason | null>(
@@ -217,7 +222,12 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
       if (cancelled) return;
       setLive(
         result.live
-          ? { slug, asOf: result.asOf, listings: result.listings }
+          ? {
+              slug,
+              asOf: result.asOf,
+              remaining: result.remaining,
+              listings: result.listings,
+            }
           : null
       );
       setLiveReason(result.live ? null : (result.reason ?? "network"));
@@ -375,6 +385,16 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
       : `${fmtNum(filtered.length)} of ${fmtNum(
           totals?.rentals ?? rentals.length
         )} rentals`;
+
+  // Surface the day's remaining live searches only when it's getting
+  // tight — a quiet heads-up, not a permanent counter.
+  const remainingToday = zipActive
+    ? zipResult?.remaining
+    : liveActive
+      ? live?.remaining
+      : undefined;
+  const showRemaining =
+    typeof remainingToday === "number" && remainingToday <= 10;
 
   const asOfIso = zipActive ? zipResult?.asOf : liveActive ? live?.asOf : null;
   const liveAsOfLabel = asOfIso
@@ -544,9 +564,11 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
                   zipFailed
                     ? zipResult?.reason === "auth"
                       ? "The rental feed rejected the API key. Check RENTCAST_API_KEY, then search again — ZIP search reads live inventory only."
-                      : zipResult?.reason === "quota"
-                        ? "This month's live-feed requests are used up. Market searches still browse the preview inventory."
-                        : "ZIP search reads live inventory only, and the feed didn't answer. Search a market by name to browse the preview set."
+                      : zipResult?.reason === "daily-cap"
+                        ? "This app pulls a limited number of new areas live each day so the data bill stays predictable. It resets at midnight UTC, and areas already searched today still load instantly."
+                        : zipResult?.reason === "quota"
+                          ? "This month's live-feed requests are used up. Market searches still browse the preview inventory."
+                          : "ZIP search reads live inventory only, and the feed didn't answer. Search a market by name to browse the preview set."
                       : zipActive
                         ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
                         : filters.query

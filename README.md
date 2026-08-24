@@ -41,6 +41,14 @@ sees it) and responses cache for 24 hours per market, so the free
 50-requests/month tier comfortably covers daily browsing of a handful of
 markets — one request per market per day, shared by every user.
 
+A daily cap (`LIVE_SEARCH_DAILY_CAP`, default 50) bounds the bill: the
+first search of a market or ZIP each day spends a slot, repeats ride the
+cache for free, and failed requests spend nothing. Past the cap, new
+areas fall back to preview inventory and say so; the count resets at
+midnight UTC. The ledger lives in server memory, so with several
+instances warm the true ceiling is a small multiple of the cap — move it
+to a shared store (Vercel KV) if you need it exact.
+
 ## Map of the codebase
 
 | Path | What lives there |
