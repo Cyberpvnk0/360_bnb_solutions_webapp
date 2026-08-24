@@ -131,6 +131,65 @@ function featuresFor(
 }
 
 /* ------------------------------------------------------------------ */
+/* Descriptions — the text keyword search reads                        */
+/* ------------------------------------------------------------------ */
+
+const OPENERS = [
+  "Available now",
+  "Just listed",
+  "Move-in ready",
+  "Newly available",
+  "Now leasing",
+];
+const CLOSERS = [
+  "Schedule a tour today.",
+  "Call to arrange a showing.",
+  "Applications are open.",
+  "Won't last long at this price.",
+  "Flexible lease terms considered.",
+];
+
+/**
+ * A listing's prose, generated from the tags it already carries so the
+ * description and the feature chips can never contradict each other.
+ * This is what keyword search reads — the same field a real feed's
+ * description drops into, which is why the search behaves identically
+ * once live descriptions land.
+ */
+function descriptionFor(
+  id: string,
+  bedrooms: number,
+  bathrooms: number,
+  propertyType: PropertyType,
+  submarket: string,
+  city: string,
+  features: string[]
+): string {
+  const rng = new Rng(hashStr(`desc|${id}`));
+  const unit = `${bedrooms} bed, ${bathrooms} bath ${propertyType}`;
+  const rest = features.filter((f) => f !== "Furnished");
+  const furnished = features.includes("Furnished");
+
+  const parts = [
+    `${rng.pick(OPENERS)}: ${furnished ? "fully furnished " : ""}${unit} in ${submarket}, ${city}.`,
+  ];
+  if (rest.length > 0) {
+    const list =
+      rest.length === 1
+        ? rest[0].toLowerCase()
+        : `${rest.slice(0, -1).join(", ").toLowerCase()} and ${rest[rest.length - 1].toLowerCase()}`;
+    parts.push(`Highlights include ${list}.`);
+  }
+  if (furnished) {
+    parts.push(
+      "Turnkey and fully furnished — bring your bags and nothing else."
+    );
+  }
+  parts.push(rng.pick(CLOSERS));
+  return parts.join(" ");
+}
+
+/* ------------------------------------------------------------------ */
 /* Contacts — who to call about the unit                               */
 /* ------------------------------------------------------------------ */
 
@@ -289,10 +348,20 @@ export function rentalsFor(market: Market): RentalListing[] {
         daysOnMarket: rng.int(0, 45),
         petFriendly: rng.chance(0.45),
       };
+      const features = featuresFor(id, market.terrain, base.petFriendly);
       listings.push({
         ...base,
-        features: featuresFor(id, market.terrain, base.petFriendly),
+        features,
         featuresKnown: true,
+        description: descriptionFor(
+          id,
+          bedrooms,
+          bathrooms,
+          propertyType,
+          sub.name,
+          market.name,
+          features
+        ),
         contact: contactFor(id),
       });
     }

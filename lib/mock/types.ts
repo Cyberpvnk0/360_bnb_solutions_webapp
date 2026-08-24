@@ -215,6 +215,9 @@ export interface RentalListing {
   /** False when the source carries no amenity data at all, so an empty
    *  `features` means "unknown" rather than "has none". */
   featuresKnown?: boolean;
+  /** The listing's own words. Keyword search reads this the way Zillow
+   *  searches descriptions; feature tags are derived from it. */
+  description?: string;
 }
 
 /* ------------------------------------------------------------------ */

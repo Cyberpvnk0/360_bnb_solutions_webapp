@@ -241,6 +241,15 @@ export function ListingDetailDialog({
               </p>
             ) : null}
 
+            {listing.description ? (
+              <div className="border-b border-border px-5 py-4">
+                <MetricLabel>From the listing</MetricLabel>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {listing.description}
+                </p>
+              </div>
+            ) : null}
+
             <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
               {listing.features.length > 0 ? (
                 <div>

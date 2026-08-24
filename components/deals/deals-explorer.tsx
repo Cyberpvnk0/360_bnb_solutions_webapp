@@ -83,8 +83,9 @@ interface Row {
   cushionPts: number;
   /** Lowercased market-name/state haystack for the Location search. */
   haystack: string;
-  /** Punctuation-blind haystack for the Keywords filter: features,
-   *  address, market, and home type, all through normalizeKeyword. */
+  /** Punctuation-blind haystack for the Keywords filter: the listing's
+   *  DESCRIPTION plus its features, address, market and home type — the
+   *  same surface Zillow's keyword search reads. */
   keywordHaystack: string;
 }
 
@@ -299,6 +300,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
               market.stateCode,
               TYPE_LABEL[listing.propertyType],
               ...listing.features,
+              listing.description ?? "",
             ].join(" ")
           ),
         },

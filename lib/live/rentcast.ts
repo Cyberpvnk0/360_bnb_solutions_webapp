@@ -107,6 +107,8 @@ export function mapRentCastListing(
     // False means the feed told us nothing about amenities — the UI
     // disables feature filters rather than reporting a false zero.
     featuresKnown: mined !== null,
+    description:
+      raw.description ?? raw.remarks ?? raw.publicRemarks ?? undefined,
     photoUrl: raw.photos?.[0],
     contact: contactFromFeed(raw),
   };

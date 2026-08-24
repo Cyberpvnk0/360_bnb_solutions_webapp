@@ -548,8 +548,9 @@ function KeywordsPanel({
             className="mt-1.5 h-8"
           />
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Listings must match every keyword. Spelling is forgiving —
-            &ldquo;water front&rdquo; finds Waterfront.
+            Searches each listing&apos;s description and tags. Every keyword
+            must match, and spelling is forgiving — &ldquo;water
+            front&rdquo; finds Waterfront.
           </p>
         </div>
         <div>

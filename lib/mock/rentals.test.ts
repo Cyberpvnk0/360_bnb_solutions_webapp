@@ -163,6 +163,18 @@ describe("rentals", () => {
     }
   });
 
+  it("every listing carries description text that agrees with its tags", () => {
+    for (const l of allRentals().slice(0, 400)) {
+      expect(l.description).toBeTruthy();
+      // The prose and the chips come from one source, so a furnished
+      // listing always says so in words — which is what keyword search
+      // reads, exactly like searching a real listing description.
+      const saysFurnished = /furnished/i.test(l.description!);
+      expect(saysFurnished).toBe(l.features.includes("Furnished"));
+      expect(l.description).toContain(l.submarketName!);
+    }
+  });
+
   it("feature tags respect the market's terrain — no waterfront in the desert", () => {
     for (const m of MARKETS) {
       const allowed = new Set<string>([
