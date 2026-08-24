@@ -29,6 +29,7 @@ import type {
   Deal,
   Landlord,
   PipelineStage,
+  RentalListing,
   SessionUser,
 } from "@/lib/mock/types";
 
@@ -60,6 +61,9 @@ interface SessionContextValue {
   landlords: Landlord[];
   activity: ActivityEvent[];
   watchedMarketSlugs: string[];
+  /** Deal Finder shortlist — rentals kept aside while hunting, before
+   *  any of them are worth spending a pull on. */
+  shortlist: RentalListing[];
 
   /** Spend one pull. Returns false (and opens nothing) if none remain. */
   consumePull: () => boolean;
@@ -73,6 +77,8 @@ interface SessionContextValue {
   updateLandlord: (id: string, patch: Partial<Landlord>) => void;
   linkLandlordToDeal: (landlordId: string, dealId: string) => void;
   toggleWatchMarket: (slug: string) => void;
+  toggleShortlist: (listing: RentalListing) => void;
+  isShortlisted: (listingId: string) => boolean;
 
   /** Demo-only: preview the product as another tier. */
   setTier: (tier: TierId) => void;
@@ -99,6 +105,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [landlords, setLandlords] = React.useState<Landlord[]>([]);
   const [activity, setActivity] = React.useState<ActivityEvent[]>([]);
+  const [shortlist, setShortlist] = React.useState<RentalListing[]>([]);
   const [upgrade, setUpgrade] = React.useState<UpgradeState>({
     open: false,
     reason: "generic",
@@ -276,6 +283,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const toggleShortlist = React.useCallback((listing: RentalListing) => {
+    setShortlist((prev) =>
+      prev.some((l) => l.id === listing.id)
+        ? prev.filter((l) => l.id !== listing.id)
+        : [listing, ...prev]
+    );
+  }, []);
+
+  const isShortlisted = React.useCallback(
+    (listingId: string) => shortlist.some((l) => l.id === listingId),
+    [shortlist]
+  );
+
   const setTier = React.useCallback((tierId: TierId) => {
     setUser((prev) => {
       if (!prev) return prev;
@@ -327,6 +347,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     landlords,
     activity,
     watchedMarketSlugs: user?.watchedMarketSlugs ?? [],
+    shortlist,
     consumePull,
     saveDeal,
     isAnalysisSaved,
@@ -336,6 +357,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     updateLandlord,
     linkLandlordToDeal,
     toggleWatchMarket,
+    toggleShortlist,
+    isShortlisted,
     setTier,
     upgradeTo,
     upgrade,

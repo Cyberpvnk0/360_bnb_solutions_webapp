@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 
 interface ListingCardProps {
   listing: RentalListing;
+  /** Opens the detail panel — the whole card is the target. */
+  onOpen: (id: string) => void;
   /** Whole points of cushion (occupancy − breakeven) from lib/mock/rentals. */
   cushionPts: number;
   selected: boolean;
@@ -30,7 +32,7 @@ interface ListingCardProps {
 
 export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
   function ListingCard(
-    { listing: l, cushionPts, selected, hovered, onHoverChange },
+    { listing: l, cushionPts, selected, hovered, onHoverChange, onOpen },
     ref
   ) {
     const strong = cushionPts >= 8;
@@ -43,8 +45,9 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
         ref={ref}
         onMouseEnter={() => onHoverChange(l.id)}
         onMouseLeave={() => onHoverChange(null)}
+        onClick={() => onOpen(l.id)}
         className={cn(
-          "overflow-hidden rounded-lg border bg-card transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:elev-raised",
+          "cursor-pointer overflow-hidden rounded-lg border bg-card transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:elev-raised",
           selected
             ? "border-gold/60"
             : hovered
@@ -132,7 +135,10 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             {Math.abs(cushionPts)} pts
           </span>
 
-          <span className="flex items-center gap-1.5">
+          <span
+            className="flex items-center gap-1.5"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Button size="sm" asChild>
               <Link href={`/analyze?address=${l.analysisId}`}>
                 Run the numbers

@@ -11,7 +11,13 @@
  */
 
 import * as React from "react";
-import { LayoutGrid, Map as MapIcon, ArrowDownWideNarrow, SearchX } from "lucide-react";
+import {
+  ArrowDownWideNarrow,
+  Bookmark,
+  LayoutGrid,
+  Map as MapIcon,
+  SearchX,
+} from "lucide-react";
 import {
   getLiveRentals,
   getLiveRentalsByZip,
@@ -30,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/primitives/empty-state";
+import { useSession } from "@/components/providers/session-provider";
 import {
   DealFilterChips,
   DEFAULT_DEAL_FILTERS,
@@ -40,6 +47,7 @@ import {
   type DealFilters,
 } from "./deal-filters";
 import { MarketSearchBox } from "./market-search";
+import { ListingDetailSheet } from "./listing-detail-sheet";
 import { ListingCard } from "./listing-card";
 import { RentalsMap, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
@@ -132,6 +140,9 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [mobilePane, setMobilePane] = React.useState<"list" | "map">("list");
+  const [detailId, setDetailId] = React.useState<string | null>(null);
+  const [savedOnly, setSavedOnly] = React.useState(false);
+  const { shortlist, isShortlisted } = useSession();
   const [totals, setTotals] = React.useState<{
     rentals: number;
     markets: number;
@@ -299,8 +310,11 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
 
   const filtered = React.useMemo(() => {
     const by = SORTERS[sort];
-    return rows.filter((r) => matchesFilters(r, filters)).sort(by);
-  }, [rows, filters, sort]);
+    return rows
+      .filter((r) => matchesFilters(r, filters))
+      .filter((r) => !savedOnly || isShortlisted(r.listing.id))
+      .sort(by);
+  }, [rows, filters, sort, savedOnly, isShortlisted]);
 
   const visible = React.useMemo(
     () => filtered.slice(0, visibleCount),
@@ -340,11 +354,13 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     return null;
   }, [zipActive, zipResult, zip, liveTarget]);
 
-  const hasActiveFilters = !isDefaultDealFilters(filters) || zip !== null;
+  const hasActiveFilters =
+    !isDefaultDealFilters(filters) || zip !== null || savedOnly;
   const resetFilters = () => {
     setFilters(DEFAULT_DEAL_FILTERS);
     setZip(null);
     setZipResult(null);
+    setSavedOnly(false);
     resetPaging();
   };
 
@@ -362,16 +378,34 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     resetPaging();
   };
 
-  /** Pill click: select + scroll the card into view. */
+  /** Pill click: select the listing, open its panel, and line the card
+   *  up behind it so closing the panel lands you in the right place. */
   const selectFromMap = React.useCallback((id: string) => {
     setSelectedId(id);
-    setMobilePane("list");
+    setDetailId(id);
     requestAnimationFrame(() => {
       cardRefs.current
         .get(id)
         ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
   }, []);
+
+  const openDetail = React.useCallback((id: string) => {
+    setSelectedId(id);
+    setDetailId(id);
+  }, []);
+
+  const detailRow = React.useMemo(
+    () => (detailId ? rows.find((r) => r.listing.id === detailId) : undefined),
+    [detailId, rows]
+  );
+  const detailMarket = React.useMemo(
+    () =>
+      detailRow
+        ? (markets.find((m) => m.slug === detailRow.listing.marketSlug) ?? null)
+        : null,
+    [detailRow, markets]
+  );
 
   const setRef = (key: string) => (el: HTMLDivElement | null) => {
     if (el) cardRefs.current.set(key, el);
@@ -430,6 +464,27 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           }}
         />
 
+        {shortlist.length > 0 ? (
+          <button
+            type="button"
+            aria-pressed={savedOnly}
+            onClick={() => {
+              setSavedOnly((v) => !v);
+              resetPaging();
+            }}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
+              savedOnly
+                ? "border-gold/50 bg-gold-fill/10 text-gold"
+                : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+            )}
+          >
+            <Bookmark aria-hidden className="size-3.5" />
+            Shortlist
+            <span className="tabular">{shortlist.length}</span>
+          </button>
+        ) : null}
+
         {hasActiveFilters ? (
           <Button
             variant="ghost"
@@ -452,6 +507,11 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
               {liveAsOfLabel ? (
                 <span className="font-normal text-muted-foreground">
                   as of {liveAsOfLabel}
+                </span>
+              ) : null}
+              {showRemaining ? (
+                <span className="font-normal text-muted-foreground">
+                  · {remainingToday} left today
                 </span>
               ) : null}
             </span>
@@ -594,6 +654,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
                     selected={r.listing.id === selectedId}
                     hovered={r.listing.id === hoveredId}
                     onHoverChange={setHoveredId}
+                    onOpen={openDetail}
                   />
                 ))}
               </div>
@@ -612,6 +673,15 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           )}
         </div>
       </div>
+
+      <ListingDetailSheet
+        listing={detailRow?.listing ?? null}
+        market={detailMarket}
+        open={detailId !== null}
+        onOpenChange={(next) => {
+          if (!next) setDetailId(null);
+        }}
+      />
     </div>
   );
 }
