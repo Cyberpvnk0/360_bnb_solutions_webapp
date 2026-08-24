@@ -23,10 +23,12 @@ import {
   getLandlords,
   getSessionUser,
 } from "@/lib/data";
+import { MOCK_TODAY } from "@/lib/mock/seed";
 import type {
   ActivityEvent,
   Analysis,
   Deal,
+  DealList,
   Landlord,
   PipelineStage,
   RentalListing,
@@ -61,9 +63,9 @@ interface SessionContextValue {
   landlords: Landlord[];
   activity: ActivityEvent[];
   watchedMarketSlugs: string[];
-  /** Deal Finder shortlist — rentals kept aside while hunting, before
-   *  any of them are worth spending a pull on. */
-  shortlist: RentalListing[];
+  /** Deal Finder lists — named collections of rentals kept aside while
+   *  hunting, before any of them are worth spending a pull on. */
+  lists: DealList[];
 
   /** Spend one pull. Returns false (and opens nothing) if none remain. */
   consumePull: () => boolean;
@@ -77,8 +79,15 @@ interface SessionContextValue {
   updateLandlord: (id: string, patch: Partial<Landlord>) => void;
   linkLandlordToDeal: (landlordId: string, dealId: string) => void;
   toggleWatchMarket: (slug: string) => void;
-  toggleShortlist: (listing: RentalListing) => void;
-  isShortlisted: (listingId: string) => boolean;
+  createList: (name: string) => DealList;
+  renameList: (listId: string, name: string) => void;
+  deleteList: (listId: string) => void;
+  /** Add or remove one rental from one list. */
+  toggleListMembership: (listId: string, listing: RentalListing) => void;
+  /** Which lists hold this rental. */
+  listsWithListing: (listingId: string) => string[];
+  /** Saved to any list at all. */
+  isSaved: (listingId: string) => boolean;
 
   /** Demo-only: preview the product as another tier. */
   setTier: (tier: TierId) => void;
@@ -105,7 +114,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [landlords, setLandlords] = React.useState<Landlord[]>([]);
   const [activity, setActivity] = React.useState<ActivityEvent[]>([]);
-  const [shortlist, setShortlist] = React.useState<RentalListing[]>([]);
+  // Everyone starts with one list so "Add to list" is one click, not two.
+  const [lists, setLists] = React.useState<DealList[]>([
+    {
+      id: "list-default",
+      name: "My shortlist",
+      createdAt: MOCK_TODAY,
+      listings: [],
+    },
+  ]);
   const [upgrade, setUpgrade] = React.useState<UpgradeState>({
     open: false,
     reason: "generic",
@@ -283,17 +300,59 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const toggleShortlist = React.useCallback((listing: RentalListing) => {
-    setShortlist((prev) =>
-      prev.some((l) => l.id === listing.id)
-        ? prev.filter((l) => l.id !== listing.id)
-        : [listing, ...prev]
+  const createList = React.useCallback((name: string) => {
+    const created: DealList = {
+      id: nextId("list"),
+      name: name.trim() || "Untitled list",
+      createdAt: MOCK_TODAY,
+      listings: [],
+    };
+    setLists((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const renameList = React.useCallback((listId: string, name: string) => {
+    setLists((prev) =>
+      prev.map((l) =>
+        l.id === listId ? { ...l, name: name.trim() || l.name } : l
+      )
     );
   }, []);
 
-  const isShortlisted = React.useCallback(
-    (listingId: string) => shortlist.some((l) => l.id === listingId),
-    [shortlist]
+  const deleteList = React.useCallback((listId: string) => {
+    setLists((prev) => prev.filter((l) => l.id !== listId));
+  }, []);
+
+  const toggleListMembership = React.useCallback(
+    (listId: string, listing: RentalListing) => {
+      setLists((prev) =>
+        prev.map((l) => {
+          if (l.id !== listId) return l;
+          const has = l.listings.some((x) => x.id === listing.id);
+          return {
+            ...l,
+            listings: has
+              ? l.listings.filter((x) => x.id !== listing.id)
+              : [listing, ...l.listings],
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const listsWithListing = React.useCallback(
+    (listingId: string) =>
+      lists
+        .filter((l) => l.listings.some((x) => x.id === listingId))
+        .map((l) => l.id),
+    [lists]
+  );
+
+  const isSaved = React.useCallback(
+    (listingId: string) =>
+      lists.some((l) => l.listings.some((x) => x.id === listingId)),
+    [lists]
   );
 
   const setTier = React.useCallback((tierId: TierId) => {
@@ -347,7 +406,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     landlords,
     activity,
     watchedMarketSlugs: user?.watchedMarketSlugs ?? [],
-    shortlist,
+    lists,
     consumePull,
     saveDeal,
     isAnalysisSaved,
@@ -357,8 +416,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     updateLandlord,
     linkLandlordToDeal,
     toggleWatchMarket,
-    toggleShortlist,
-    isShortlisted,
+    createList,
+    renameList,
+    deleteList,
+    toggleListMembership,
+    listsWithListing,
+    isSaved,
     setTier,
     upgradeTo,
     upgrade,

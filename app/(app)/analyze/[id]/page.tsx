@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAnalysis, getMarket } from "@/lib/data";
+import { resolveLiveAnalysis } from "@/lib/live/resolve";
 import { AnalyzeResult } from "@/components/analyze/analyze-result";
 
 export default async function AnalyzeResultPage({
@@ -8,7 +9,7 @@ export default async function AnalyzeResultPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const analysis = await getAnalysis(id);
+  const analysis = (await getAnalysis(id)) ?? (await resolveLiveAnalysis(id));
   if (!analysis) notFound();
   const market = await getMarket(analysis.marketSlug);
   return (

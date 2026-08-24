@@ -47,7 +47,7 @@ import {
   type DealFilters,
 } from "./deal-filters";
 import { MarketSearchBox } from "./market-search";
-import { ListingDetailSheet } from "./listing-detail-sheet";
+import { ListingDetailDialog } from "./listing-detail-dialog";
 import { ListingCard } from "./listing-card";
 import { RentalsMap, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
@@ -141,8 +141,9 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [mobilePane, setMobilePane] = React.useState<"list" | "map">("list");
   const [detailId, setDetailId] = React.useState<string | null>(null);
-  const [savedOnly, setSavedOnly] = React.useState(false);
-  const { shortlist, isShortlisted } = useSession();
+  /** null = every listing; a list id = only that list's saved rentals. */
+  const [listFilter, setListFilter] = React.useState<string | null>(null);
+  const { lists } = useSession();
   const [totals, setTotals] = React.useState<{
     rentals: number;
     markets: number;
@@ -312,9 +313,13 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
     const by = SORTERS[sort];
     return rows
       .filter((r) => matchesFilters(r, filters))
-      .filter((r) => !savedOnly || isShortlisted(r.listing.id))
+      .filter((r) => {
+        if (!listFilter) return true;
+        const list = lists.find((l) => l.id === listFilter);
+        return Boolean(list?.listings.some((x) => x.id === r.listing.id));
+      })
       .sort(by);
-  }, [rows, filters, sort, savedOnly, isShortlisted]);
+  }, [rows, filters, sort, listFilter, lists]);
 
   const visible = React.useMemo(
     () => filtered.slice(0, visibleCount),
@@ -355,12 +360,12 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
   }, [zipActive, zipResult, zip, liveTarget]);
 
   const hasActiveFilters =
-    !isDefaultDealFilters(filters) || zip !== null || savedOnly;
+    !isDefaultDealFilters(filters) || zip !== null || listFilter !== null;
   const resetFilters = () => {
     setFilters(DEFAULT_DEAL_FILTERS);
     setZip(null);
     setZipResult(null);
-    setSavedOnly(false);
+    setListFilter(null);
     resetPaging();
   };
 
@@ -464,26 +469,32 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
           }}
         />
 
-        {shortlist.length > 0 ? (
-          <button
-            type="button"
-            aria-pressed={savedOnly}
-            onClick={() => {
-              setSavedOnly((v) => !v);
-              resetPaging();
-            }}
-            className={cn(
-              "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
-              savedOnly
-                ? "border-gold/50 bg-gold-fill/10 text-gold"
-                : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-            )}
-          >
-            <Bookmark aria-hidden className="size-3.5" />
-            Shortlist
-            <span className="tabular">{shortlist.length}</span>
-          </button>
-        ) : null}
+        {lists
+          .filter((l) => l.listings.length > 0)
+          .map((l) => {
+            const on = listFilter === l.id;
+            return (
+              <button
+                key={l.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  setListFilter(on ? null : l.id);
+                  resetPaging();
+                }}
+                className={cn(
+                  "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
+                  on
+                    ? "border-gold/50 bg-gold-fill/10 text-gold"
+                    : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                )}
+              >
+                <Bookmark aria-hidden className="size-3.5" />
+                <span className="max-w-28 truncate">{l.name}</span>
+                <span className="tabular">{l.listings.length}</span>
+              </button>
+            );
+          })}
 
         {hasActiveFilters ? (
           <Button
@@ -674,7 +685,7 @@ export function DealsExplorer({ rentals, markets, states }: DealsExplorerProps) 
         </div>
       </div>
 
-      <ListingDetailSheet
+      <ListingDetailDialog
         listing={detailRow?.listing ?? null}
         market={detailMarket}
         open={detailId !== null}

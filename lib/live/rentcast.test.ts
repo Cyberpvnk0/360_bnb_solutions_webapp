@@ -28,8 +28,10 @@ describe("rentcast mapper", () => {
     const l = mapRentCastListing(JAX, market);
     expect(l).not.toBeNull();
     expect(l).toMatchObject({
-      id: `live--${JAX.id}`,
-      analysisId: `r--live--${JAX.id}`,
+      // The market slug rides in the id so a server render can resolve
+      // this listing back from the cached feed.
+      id: `live--jacksonville--${JAX.id}`,
+      analysisId: `r--live--jacksonville--${JAX.id}`,
       address: "1054 Riverside Ave",
       city: "Jacksonville",
       stateCode: "FL",
@@ -58,6 +60,30 @@ describe("rentcast mapper", () => {
     expect(
       mapRentCastListing({ ...JAX, propertyType: "Manufactured" }, market)
     ).toBeNull();
+  });
+
+  it("carries the feed's own contact, and invents none when absent", () => {
+    const withAgent = mapRentCastListing(
+      {
+        ...JAX,
+        listingAgent: {
+          name: "Dana Whitfield",
+          phone: "(904) 555-0142",
+          email: "dana@example.com",
+        },
+        listingOffice: { name: "Riverside Realty" },
+      },
+      market
+    );
+    expect(withAgent?.contact).toEqual({
+      name: "Dana Whitfield",
+      company: "Riverside Realty",
+      phone: "(904) 555-0142",
+      email: "dana@example.com",
+      role: "Listing agent",
+    });
+    // A real address with a made-up phone number would be worse than none.
+    expect(mapRentCastListing(JAX, market)?.contact).toBeUndefined();
   });
 
   it("rejects rows the product can't stand behind", () => {

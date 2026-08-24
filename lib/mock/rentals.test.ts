@@ -149,6 +149,20 @@ describe("rentals", () => {
     }
   });
 
+  it("every preview listing carries a reachable-looking, clearly fake contact", () => {
+    for (const l of allRentals()) {
+      const c = l.contact!;
+      expect(c).toBeDefined();
+      expect(c.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z']+$/);
+      // 555-01xx and example.com are reserved for fiction — a demo must
+      // never ring a real person or mail a real inbox.
+      expect(c.phone).toMatch(/^\(\d{3}\) 555-01\d{2}$/);
+      expect(c.email!.endsWith("example.com")).toBe(true);
+      expect(["Property manager", "Owner"]).toContain(c.role);
+      if (c.role === "Property manager") expect(c.company).toBeTruthy();
+    }
+  });
+
   it("feature tags respect the market's terrain — no waterfront in the desert", () => {
     for (const m of MARKETS) {
       const allowed = new Set<string>([

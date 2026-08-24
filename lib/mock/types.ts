@@ -151,6 +151,27 @@ export interface Analysis {
 /* Rental listings (Deal Finder)                                       */
 /* ------------------------------------------------------------------ */
 
+/** Who to call about a rental — the listing agent, the management
+ *  company, or the owner. Preview inventory carries reserved 555-01xx
+ *  numbers and example.com addresses; live rows carry the feed's own. */
+export interface ListingContact {
+  name: string;
+  company?: string;
+  phone?: string;
+  email?: string;
+  /** What this contact is, in the words the panel shows. */
+  role: "Listing agent" | "Property manager" | "Owner";
+}
+
+/** A named collection of saved rentals — how a hunter organizes a
+ *  browsing session into candidates worth a call. */
+export interface DealList {
+  id: string;
+  name: string;
+  createdAt: string;
+  listings: RentalListing[];
+}
+
 /**
  * One long-term rental listing in the Deal Finder browser — rentals only,
  * never for-sale. Lean by design: generated lazily per market. Handing a
@@ -183,6 +204,8 @@ export interface RentalListing {
   /** Days since the listing went up (0 = today). */
   daysOnMarket: number;
   petFriendly: boolean;
+  /** Who to contact about this unit. */
+  contact?: ListingContact;
   /** A real listing photo when the feed carries one. Absent for preview
    *  inventory and for feeds (like RentCast) that ship no imagery. */
   photoUrl?: string;

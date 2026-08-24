@@ -11,7 +11,12 @@
  */
 
 import { MARKETS } from "@/lib/mock/markets";
-import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
+import type {
+  ListingContact,
+  Market,
+  PropertyType,
+  RentalListing,
+} from "@/lib/mock/types";
 
 const BASE = "https://api.rentcast.io/v1";
 /** One day — quota-frugal and plenty fresh for lease hunting. */
@@ -36,6 +41,8 @@ export interface RentCastListing {
   listedDate?: string;
   /** Some plans/feeds carry imagery; take it when it's there. */
   photos?: string[];
+  listingAgent?: { name?: string; phone?: string; email?: string };
+  listingOffice?: { name?: string; phone?: string; email?: string };
 }
 
 /** RentCast types → ours. Anything unmapped (Land, Manufactured, …) is
@@ -71,8 +78,11 @@ export function mapRentCastListing(
   const bedrooms = Math.min(5, Math.max(1, Math.round(raw.bedrooms)));
 
   return {
-    id: `live--${raw.id}`,
-    analysisId: `r--live--${raw.id}`,
+    // The market slug rides inside the id so a server render can
+    // re-resolve this listing from the cached feed — that's what makes
+    // "Run the numbers" work on a live row after a page navigation.
+    id: `live--${market.slug}--${raw.id}`,
+    analysisId: `r--live--${market.slug}--${raw.id}`,
     address: raw.addressLine1 ?? raw.formattedAddress ?? "Address on file",
     city: raw.city ?? market.name,
     stateCode: raw.state ?? market.stateCode,
@@ -88,6 +98,23 @@ export function mapRentCastListing(
     petFriendly: false,
     features: [],
     photoUrl: raw.photos?.[0],
+    contact: contactFromFeed(raw),
+  };
+}
+
+/** The feed's own agent/office, when it carries one — never invented:
+ *  a made-up phone number on a real address would be worse than none. */
+function contactFromFeed(raw: RentCastListing): ListingContact | undefined {
+  const agent = raw.listingAgent;
+  const office = raw.listingOffice;
+  const name = agent?.name ?? office?.name;
+  if (!name) return undefined;
+  return {
+    name,
+    company: agent?.name ? office?.name : undefined,
+    phone: agent?.phone ?? office?.phone,
+    email: agent?.email ?? office?.email,
+    role: "Listing agent",
   };
 }
 

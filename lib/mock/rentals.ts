@@ -22,6 +22,7 @@ import { benchmark2brInputs, MARKETS } from "./markets";
 import { hashStr, Rng, roundTo } from "./seed";
 import { submarketsFor } from "./submarkets";
 import type {
+  ListingContact,
   Market,
   MarketTerrain,
   PropertyType,
@@ -129,6 +130,64 @@ function featuresFor(
   return features;
 }
 
+/* ------------------------------------------------------------------ */
+/* Contacts — who to call about the unit                               */
+/* ------------------------------------------------------------------ */
+
+const MGMT_PREFIX = [
+  "Anchor", "Beacon", "Cornerstone", "Dunehill", "Evergreen", "Foxglove",
+  "Granite", "Harborview", "Ironwood", "Juniper", "Keystone", "Lakeshore",
+  "Meridian", "Northgate", "Oakfield", "Pinecrest", "Quarry", "Redstone",
+  "Summit", "Trailhead", "Vantage", "Westbrook",
+];
+const MGMT_SUFFIX = [
+  "Property Group", "Residential", "Rentals", "Property Management",
+  "Realty", "Leasing Co", "Holdings", "Management",
+];
+const FIRST = [
+  "Alan", "Bianca", "Carmen", "Devon", "Elena", "Franklin", "Grace",
+  "Hector", "Imani", "Jonah", "Kelsey", "Luis", "Marisol", "Nadia",
+  "Omar", "Priya", "Quinn", "Rosa", "Simone", "Terrence", "Uma", "Victor",
+];
+const LAST = [
+  "Alvarez", "Bishop", "Castellano", "Dunbar", "Eriksen", "Farrow",
+  "Gallagher", "Hollis", "Ibarra", "Jennings", "Kowalski", "Lindqvist",
+  "Marchetti", "Novak", "Okafor", "Pemberton", "Reyes", "Sandoval",
+  "Thibodeaux", "Vance", "Whitfield", "Yates",
+];
+
+/**
+ * A seeded contact for preview inventory. Numbers use the 555-01xx range
+ * and addresses the example.com domain — both reserved for fiction, so a
+ * demo can never ring a real person. Live rows carry the feed's own
+ * agent or office instead.
+ */
+function contactFor(id: string): ListingContact {
+  const rng = new Rng(hashStr(`contact|${id}`));
+  const first = rng.pick(FIRST);
+  const last = rng.pick(LAST);
+  const managed = rng.chance(0.72);
+  const company = managed
+    ? `${rng.pick(MGMT_PREFIX)} ${rng.pick(MGMT_SUFFIX)}`
+    : undefined;
+  const domain = company
+    ? `${company.toLowerCase().replace(/[^a-z0-9]+/g, "")}.example.com`
+    : "example.com";
+  return {
+    name: `${first} ${last}`,
+    company,
+    phone: `(${rng.pick(AREA_CODES)}) 555-01${String(rng.int(0, 99)).padStart(2, "0")}`,
+    email: `${first.toLowerCase()}.${last.toLowerCase()}@${domain}`,
+    role: managed ? "Property manager" : "Owner",
+  };
+}
+
+/** Plausible US area codes for preview contacts. */
+const AREA_CODES = [
+  "205", "212", "303", "305", "312", "404", "407", "512", "602", "615",
+  "702", "704", "813", "817", "904", "919",
+];
+
 /** Same shape as the analyses generator: 1–3 baths in half steps. */
 function bathsFor(bedrooms: number, rng: Rng): number {
   if (bedrooms <= 1) return 1;
@@ -233,6 +292,7 @@ export function rentalsFor(market: Market): RentalListing[] {
       listings.push({
         ...base,
         features: featuresFor(id, market.terrain, base.petFriendly),
+        contact: contactFor(id),
       });
     }
   }
