@@ -70,62 +70,47 @@ The probe shares the feed's Data-Cache entry, so probing a market already
 searched today costs no extra vendor request, and it never spends a
 daily-cap slot.
 
-### Amenities on live rows (ScraperAPI)
+### Furnished rentals (Redfin, via ScraperAPI)
 
-Rental feeds ship no amenity field, so on live results the Furnished
-filter has nothing to read. `SCRAPERAPI_KEY` fills that gap by reading
-each listing's own page — the same Zillow search URL the app already
-links to on every card.
+Turning on **Furnished** with a market searched swaps the result set for
+Redfin's own furnished-filtered search, reached through ScraperAPI's
+Redfin structured endpoint. The toolbar says **Furnished · via Redfin**
+so a student always knows which inventory they're looking at.
 
-**Only flags are kept.** The fetched page is a local inside
-`describeListing` and is never returned, stored, cached in our layer,
-logged, or sent to a browser. What survives is a fact about the property
-("this unit is furnished"), not somebody else's sentence about it. The
-enriched listing carries no `description`, and `enrich.test.ts` asserts
-that no prose appears anywhere in the response, so a later refactor
-can't quietly start persisting it.
+**Why this and not description mining.** Redfin ships a Furnished filter
+in its own search, so every row that comes back is furnished because
+*Redfin* says so. The earlier approach — scrape a listing page, mine the
+word out of the prose — was tried against Zillow and measured: the
+standard tier was served an anti-bot interstitial on 8 of 8 addresses,
+and mining those block screens tagged three listings "Pet friendly" and
+"Renovated" off the site's own SEO footer. A filter answered at the
+source beats a guess about a paragraph, and it costs one request per
+market instead of one per property.
 
-Spending is bounded four ways: enrichment fires only when a student
-turns on a feature filter, only for rows on the visible page, never
-twice for the same row, and never past `SCRAPERAPI_DAILY_ENRICH_CAP`
-properties in a day. A browsing session is additionally capped at 96
-properties so one person can't drain the day's budget. Results cache for
-30 days, shared across every user.
+`REDFIN_MAX_PAGES` (default 4) bounds it: Redfin paginates at ~41 rows
+and hands back next-page links, so a Jacksonville furnished search is
+three pages, ~84 listings, about 30 credits, cached a day and shared by
+every user.
 
-Rows that can't be read stay `featuresKnown: false` — the filter keeps
-showing them (absence of data is not evidence of absence) and the card
-says "Amenities not listed" so a student can tell "we couldn't check
-this" from "we checked and it's fine".
+Redfin's search rows carry no coordinates, so addresses are geocoded —
+US Census first (free, keyless, US-only), Google only as a fallback and
+only when that key already exists, cached 30 days. A listing that can't
+be placed is dropped rather than pinned at the city centre.
 
-#### Measuring it before you pay
+Redfin keys cities by an opaque numeric id that can't be derived from a
+name, so only markets in `REDFIN_CITY_ID` can be searched. Everywhere
+else the filter says "Furnished search isn't wired up for this market
+yet" and leaves the rows unfiltered with each card marked "Amenities not
+listed" — never a guess, and never another city's rentals.
 
-**What the first live runs established.** RentCast ships no description
-or amenity field in any of 500 rows, so enrichment is the only route to
-the Furnished filter. ScraperAPI's standard tier was served Zillow's
-anti-bot interstitial on 8 of 8 addresses — a real HTTP 200, full of
-real words, in ~210ms for 1 credit, because we never asked for a bypass.
-Mining those block screens tagged three listings "Pet friendly" and
-"Renovated" off Zillow's own SEO footer. Both holes are closed: a
-challenge page is a refusal rather than a source, loose body text is no
-longer read at all, and requests start at the `premium` tier.
+#### The description miner (kept, not wired)
 
-`GET /api/enrich?probe=jacksonville&n=25` runs a real batch against live
-addresses and reports the numbers that decide whether this vendor is
-worth it:
-
-- `resolveRate` — the share of addresses that yielded readable text
-- `creditsPerProperty` — what a property actually costs, versus the
-  ~11 credits a protected page lists at
-- `blockedCount` — how many were refused at every tier we tried
-- `tiers` — which tier finally answered, the real cost driver
-- `reachedDetail` — how many got past the search page to the listing's
-  own page, where the description actually lives
-
-`strategies` shows where the text was found (`json-ld`, `embedded-state`,
-`meta-description`, `visible-text`) and `failures` shows what went wrong
-where it wasn't. No listing content appears in the response. If
-ScraperAPI reports no credit header, `creditsSpent` is null — read the
-real figure off their dashboard instead.
+`/api/enrich` and `lib/live/scraperapi` still exist and are still
+tested — a page-level description reader with boilerplate rejection,
+address-matched two-hop, and tier escalation. Nothing in the UI calls it
+any more: it never got past Zillow's bot defence, and Redfin answers the
+question it was built for. Keep it for a target that isn't defended, or
+delete it; either way it costs nothing while nothing calls it.
 
 ### Live STR comps (AirROI)
 

@@ -42,10 +42,10 @@ import {
 import { EmptyState } from "@/components/primitives/empty-state";
 import { useSession } from "@/components/providers/session-provider";
 import {
-  enrichFailureLabel,
-  enrichListings,
-  type EnrichFailureReason,
-} from "@/lib/data/enrich";
+  getRedfinFurnished,
+  redfinFailureLabel,
+  type RedfinFailureReason,
+} from "@/lib/data/redfin";
 import {
   DealFilterChips,
   DEFAULT_DEAL_FILTERS,
@@ -270,37 +270,32 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   }, [liveTarget]);
 
   /* ---------------------------------------------------------------- */
-  /* Amenity enrichment                                                 */
+  /* Furnished: answered by Redfin, not by reading prose               */
   /*                                                                    */
-  /* Live feeds carry no amenity data, so the flags behind Furnished are
-     read from each listing's own page. That costs money per property,
-     so it happens on demand and narrowly: only when a student actually
-     asks for a feature, only for rows on screen, and never twice for
-     the same row. Rows that can't be read stay unknown — the filter
-     already excludes unknown rather than calling it unfurnished.       */
+  /* Redfin ships a Furnished filter in its own search, so asking them
+     for furnished rentals returns units that are furnished because THEY
+     say so. That replaced an earlier attempt to mine the word out of
+     scraped listing text, which on a live run tagged listings off a
+     site's navigation footer. One request per market, cached a day.    */
   /* ---------------------------------------------------------------- */
 
-  const [enriched, setEnriched] = React.useState<
-    Record<string, { features: string[]; featuresKnown: boolean }>
-  >({});
-  /** Ids we now have an answer for, hit or miss. Set only in the async
-   *  callback, so "checking" stays derived — no sync setState in an
-   *  effect, no ref read during render. */
-  const [answered, setAnswered] = React.useState<Record<string, true>>({});
-  const [enrichReason, setEnrichReason] =
-    React.useState<EnrichFailureReason | null>(null);
-  const requestedRef = React.useRef(new Set<string>());
-  /** Whether this page is gone — see the note in the enrichment effect.
-   *  Reset on mount as well as set on teardown: StrictMode mounts,
-   *  unmounts and remounts in development, and a flag that only ever
-   *  went true would leave every later wave bailing out. */
-  const unmountedRef = React.useRef(false);
-  React.useEffect(() => {
-    unmountedRef.current = false;
-    return () => {
-      unmountedRef.current = true;
-    };
-  }, []);
+  const [redfin, setRedfin] = React.useState<{
+    slug: string;
+    listings: RentalListing[];
+  } | null>(null);
+  const [redfinReason, setRedfinReason] =
+    React.useState<RedfinFailureReason | null>(null);
+  /** The market Redfin has answered for — "checking" is derived from
+   *  it, so nothing is assigned synchronously inside an effect. */
+  const [redfinChecked, setRedfinChecked] = React.useState<string | null>(null);
+
+  /** Furnished is only answerable for a single named market. */
+  const furnishedTarget =
+    filters.furnishedOnly && liveTarget ? liveTarget.slug : null;
+  /** True once Redfin has answered for the market we're asking about. */
+  const redfinActive = Boolean(
+    furnishedTarget && redfin?.slug === furnishedTarget
+  );
 
   const marketRows =
     liveTarget && live?.slug === liveTarget.slug ? live.listings : null;
@@ -318,22 +313,22 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     // Search-first: a ZIP is answered by the feed alone, a market by its
     // live rows (or its preview set when the feed can't answer), a saved
     // list by what's in it. With no search and no list, nothing shows.
-    const source = zip
-      ? zipActive
-        ? zipResult!.listings
-        : []
-      : (marketRows ??
-        (listFilter
-          ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
-          : []));
-    return source.flatMap((raw) => {
-      const market = bySlug.get(raw.marketSlug);
+    // Furnished swaps the source outright: Redfin answers that question
+    // at its own search, so the result set IS the furnished set rather
+    // than a general set we then guess our way through.
+    const source = redfinActive
+      ? redfin!.listings
+      : zip
+        ? zipActive
+          ? zipResult!.listings
+          : []
+        : (marketRows ??
+          (listFilter
+            ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
+            : []));
+    return source.flatMap((listing) => {
+      const market = bySlug.get(listing.marketSlug);
       if (!market) return [];
-      // A row we've read the page for carries real flags from here on.
-      const facts = enriched[raw.id];
-      const listing = facts
-        ? { ...raw, features: facts.features, featuresKnown: true }
-        : raw;
       return [
         {
           listing,
@@ -354,7 +349,17 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         },
       ];
     });
-  }, [markets, marketRows, zip, zipActive, zipResult, listFilter, lists, enriched]);
+  }, [
+    markets,
+    marketRows,
+    zip,
+    zipActive,
+    zipResult,
+    listFilter,
+    lists,
+    redfinActive,
+    redfin,
+  ]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -366,17 +371,14 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     listRef.current?.scrollTo({ top: 0 });
   };
 
-  // Live feeds ship no amenity data, but an unread live row is a
-  // question we can answer rather than a dead end — so a feature filter
-  // stays usable while enrichment is available, and only greys out once
-  // the lookup itself has told us it can't help.
-  const readableRows = rows.some(
-    (r) => r.listing.featuresKnown !== true && r.listing.id.startsWith("live--")
-  );
+  // The Furnished chip stays usable whenever something can answer it:
+  // rows that already know their amenities, or a market Redfin can be
+  // asked about. It only greys out once Redfin has said it can't help.
+  const canAskRedfin = Boolean(liveTarget) && redfinReason === null;
   const featuresKnown =
     rows.length === 0 ||
     rows.some((r) => r.listing.featuresKnown !== false) ||
-    (readableRows && enrichReason === null);
+    canAskRedfin;
 
   const filtered = React.useMemo(() => {
     const by = SORTERS[sort];
@@ -396,79 +398,29 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   );
   const remaining = Math.max(0, filtered.length - visibleCount);
 
-  /** One browsing session must not be able to spend the whole day's
-   *  amenity budget chasing a single filter through a long list. */
-  const SESSION_ENRICH_LIMIT = 96;
-  /** Properties per request — one concurrency wave, matching the
-   *  server's own batch ceiling. */
-  const ENRICH_BATCH = 8;
-
-  // Reading a listing page costs money, so it happens only once a
-  // student has actually asked a question that needs the answer.
-  const wantsFeatures =
-    filters.furnishedOnly || filters.keywords.length > 0;
-
-  const pending = React.useMemo(() => {
-    if (!wantsFeatures || enrichReason !== null) return [];
-    return visible
-      .map((r) => r.listing)
-      .filter((l) => l.featuresKnown !== true && l.id.startsWith("live--"));
-  }, [wantsFeatures, visible, enrichReason]);
-
-  /** Derived, never assigned in an effect: a row is "checking" until it
-   *  has an answer, and a miss counts as an answer. */
-  const enriching = pending.some((l) => !answered[l.id]);
-
+  // Asking Redfin costs a request, so it happens only once a student
+  // actually turns Furnished on, and only for a single named market.
   React.useEffect(() => {
-    const allowance = SESSION_ENRICH_LIMIT - requestedRef.current.size;
-    if (allowance <= 0) return;
-    const todo = pending
-      .filter((l) => !requestedRef.current.has(l.id))
-      .slice(0, allowance);
-    if (todo.length === 0) return;
-    for (const l of todo) requestedRef.current.add(l.id);
+    if (!furnishedTarget) return;
+    let cancelled = false;
+    getRedfinFurnished(furnishedTarget).then((result) => {
+      if (cancelled) return;
+      setRedfin(
+        result.live ? { slug: furnishedTarget, listings: result.listings } : null
+      );
+      setRedfinReason(result.live ? null : (result.reason ?? "network"));
+      setRedfinChecked(furnishedTarget);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [furnishedTarget]);
 
-    // Reading a protected listing page takes seconds, so a whole page of
-    // cards is several waves of work. Send it a wave at a time and merge
-    // each answer as it lands: cards fill in progressively instead of
-    // the list sitting frozen until the last one returns, and no single
-    // request ever approaches the function timeout.
-    //
-    // Deliberately NOT cancelled when this effect re-runs. Merging a
-    // wave changes `pending`, which restarts the effect — so a
-    // per-effect cancel would discard the next wave's answer while its
-    // ids stayed marked as requested, paying the vendor and binning the
-    // result. A fact about a listing is valid whenever it arrives; the
-    // only thing worth stopping for is an unmounted page.
-    void (async () => {
-      for (let i = 0; i < todo.length; i += ENRICH_BATCH) {
-        if (unmountedRef.current) return;
-        const wave = todo.slice(i, i + ENRICH_BATCH);
-        const result = await enrichListings(wave);
-        if (unmountedRef.current) return;
-        // Every id gets marked answered, hit or miss — otherwise a row
-        // we couldn't read would spin forever.
-        setAnswered((prev) => {
-          const next = { ...prev };
-          for (const l of wave) next[l.id] = true;
-          return next;
-        });
-        if (result.ok) {
-          setEnriched((prev) => ({ ...prev, ...result.facts }));
-        } else {
-          // A configuration or budget failure applies to every wave, so
-          // stop rather than burning the rest of the page on it.
-          setEnrichReason(result.reason ?? "network");
-          setAnswered((prev) => {
-            const next = { ...prev };
-            for (const l of todo) next[l.id] = true;
-            return next;
-          });
-          return;
-        }
-      }
-    })();
-  }, [pending]);
+  /** Derived, never assigned inside the effect. */
+  const redfinChecking = Boolean(
+    furnishedTarget && redfinChecked !== furnishedTarget
+  );
+
   // Targeted searches (a market or a ZIP) pin the ENTIRE result set —
   // the whole city, not just the page the list is showing — and frame
   // the searched area so a metro reads as a metro. Nationwide browsing
@@ -565,7 +517,9 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
 
   const countLabel = idle
     ? `${fmtNum(totals.rentals)} rentals across ${fmtNum(totals.markets)} markets`
-    : zipActive
+    : redfinActive
+      ? `${fmtNum(filtered.length)} furnished rentals in ${liveTarget!.name}`
+      : zipActive
       ? `${fmtNum(filtered.length)} live rentals in ZIP ${zip}`
       : liveActive
         ? `${fmtNum(filtered.length)} live rentals in ${liveTarget!.name}`
@@ -661,15 +615,20 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         <div className="ml-auto flex shrink-0 items-center gap-3 pl-3">
           {/* Amenity lookup — a feature filter that had to go read the
               listings says so, and says when it couldn't. */}
-          {enriching ? (
+          {redfinChecking ? (
             <span className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
               <Loader2 aria-hidden className="size-3.5 animate-spin" />
-              Reading listings…
+              Finding furnished rentals…
             </span>
-          ) : enrichReason ? (
+          ) : redfinActive ? (
+            <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
+              <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+              Furnished · via Redfin
+            </span>
+          ) : redfinReason ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
               <Info aria-hidden className="size-3.5" />
-              {enrichFailureLabel(enrichReason)}
+              {redfinFailureLabel(redfinReason)}
             </span>
           ) : null}
 
@@ -870,7 +829,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
                     hovered={r.listing.id === hoveredId}
                     onHoverChange={setHoveredId}
                     onOpen={openDetail}
-                    featureFilterActive={wantsFeatures}
+                    featureFilterActive={filters.furnishedOnly}
                   />
                 ))}
               </div>

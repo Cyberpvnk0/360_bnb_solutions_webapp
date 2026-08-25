@@ -14,6 +14,7 @@
 import { analysisForListing } from "@/lib/mock/analyses";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import type { Analysis } from "@/lib/mock/types";
+import { fetchRedfinRentals } from "./redfin";
 import { fetchLiveRentals } from "./rentcast";
 
 const LIVE_PREFIX = "r--live--";
@@ -33,8 +34,14 @@ export async function resolveLiveAnalysis(
   const market = MARKET_BY_SLUG.get(rest.slice(0, sep));
   if (!market) return null;
 
+  // Redfin rows carry an `rf-` feed id and come from a different feed;
+  // reading RentCast for one would simply never find it.
+  const fromRedfin = rest.slice(sep + 2).startsWith("rf-");
+
   try {
-    const listings = await fetchLiveRentals(market);
+    const listings = fromRedfin
+      ? (await fetchRedfinRentals(market, { furnished: true })).listings
+      : await fetchLiveRentals(market);
     const listing = listings.find((l) => l.analysisId === id);
     return listing ? analysisForListing(listing) : null;
   } catch {
