@@ -42,13 +42,37 @@ export function normalizeCity(name: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-/** Redfin guards its JSON with an XSSI prefix. */
-function parseGuardedJson(text: string): unknown {
-  const start = text.indexOf("{");
-  if (start < 0) return null;
+/**
+ * Parse JSON behind an XSSI guard.
+ *
+ * Redfin prefixes its internal JSON with `{}&&`. Reaching for the first
+ * `{` finds the guard's OWN empty object and hands JSON.parse the string
+ * `{}&&{"version":…}`, which throws — so the payload silently became
+ * null and every market resolved to "no confident match". The guard has
+ * to be stripped as a guard, not searched past.
+ */
+const XSSI_GUARDS = [
+  /^\{\}&&/,
+  /^\)\]\}'?,?\s*/,
+  /^for\s*\(\s*;\s*;\s*\)\s*;/,
+  /^while\s*\(1\)\s*;/,
+];
+
+export function parseGuardedJson(text: string): unknown {
+  let body = text.trim();
+  for (const guard of XSSI_GUARDS) body = body.replace(guard, "").trim();
   try {
-    return JSON.parse(text.slice(start));
+    return JSON.parse(body);
   } catch {
+    // An unrecognised guard: fall back to the first brace that yields
+    // valid JSON, rather than assuming the first brace is the payload.
+    for (let i = body.indexOf("{"); i >= 0; i = body.indexOf("{", i + 1)) {
+      try {
+        return JSON.parse(body.slice(i));
+      } catch {
+        continue;
+      }
+    }
     return null;
   }
 }
@@ -131,6 +155,68 @@ export function pickCandidate(
   return null;
 }
 
+/** Everything a failed resolution needs to explain itself. */
+export interface CityIdProbe {
+  cityId: number | null;
+  autocompleteUrl: string;
+  status: number | null;
+  parsed: boolean;
+  bytes: number;
+  /** First characters of the response, so an unrecognised XSSI guard or
+   *  a block page is visible rather than guessed at. */
+  head: string;
+  candidates: Candidate[];
+}
+
+/**
+ * Resolve, and report every step. Used by the setup probe so a null
+ * answer distinguishes "blocked", "shape changed" and "matched nothing".
+ */
+export async function probeCityId(market: Market): Promise<CityIdProbe> {
+  const autocompleteUrl = autocompleteFor(market);
+  const empty: CityIdProbe = {
+    cityId: null,
+    autocompleteUrl,
+    status: null,
+    parsed: false,
+    bytes: 0,
+    head: "",
+    candidates: [],
+  };
+  const key = process.env.SCRAPERAPI_KEY;
+  if (!key) return empty;
+
+  try {
+    const res = await fetch(
+      `${SCRAPER}?${new URLSearchParams({ api_key: key, url: autocompleteUrl })}`,
+      { next: { revalidate: CITY_ID_REVALIDATE_SECONDS } }
+    );
+    const text = await res.text();
+    const body = parseGuardedJson(text);
+    const candidates = extractCandidates(body);
+    return {
+      cityId: pickCandidate(candidates, market),
+      autocompleteUrl,
+      status: res.status,
+      parsed: body !== null,
+      bytes: text.length,
+      head: text.slice(0, 220),
+      candidates: candidates.slice(0, 12),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function autocompleteFor(market: Market): string {
+  return `${AUTOCOMPLETE}?${new URLSearchParams({
+    location: `${market.name}, ${market.stateCode}`,
+    start: "0",
+    count: "10",
+    v: "2",
+  })}`;
+}
+
 /** Resolved this run, so one market never resolves twice per instance. */
 const resolved = new Map<string, number | null>();
 
@@ -154,12 +240,7 @@ export async function cityIdFor(market: Market): Promise<number | null> {
   const key = process.env.SCRAPERAPI_KEY;
   if (!key) return null;
 
-  const target = `${AUTOCOMPLETE}?${new URLSearchParams({
-    location: `${market.name}, ${market.stateCode}`,
-    start: "0",
-    count: "10",
-    v: "2",
-  })}`;
+  const target = autocompleteFor(market);
 
   let id: number | null = null;
   try {

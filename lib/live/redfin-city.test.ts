@@ -4,6 +4,7 @@ import type { Market } from "@/lib/mock/types";
 import {
   extractCandidates,
   normalizeCity,
+  parseGuardedJson,
   pickCandidate,
 } from "./redfin-city";
 
@@ -78,5 +79,34 @@ describe("pickCandidate", () => {
 
   it("returns null on an empty list rather than guessing", () => {
     expect(pickCandidate([], market("Jacksonville", "FL"))).toBeNull();
+  });
+});
+
+describe("parseGuardedJson", () => {
+  it("strips Redfin's own XSSI guard", () => {
+    // `{}&&` is the exact reason every market resolved to null: reaching
+    // for the first brace finds the GUARD's empty object, and parsing
+    // "{}&&{…}" throws.
+    expect(parseGuardedJson('{}&&{"payload":{"n":1}}')).toEqual({
+      payload: { n: 1 },
+    });
+  });
+
+  it("handles the other common guards", () => {
+    expect(parseGuardedJson(')]}\'\n{"a":1}')).toEqual({ a: 1 });
+    expect(parseGuardedJson('for(;;);{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it("parses ordinary JSON untouched", () => {
+    expect(parseGuardedJson('{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it("recovers from a guard it has never seen", () => {
+    expect(parseGuardedJson('SOMETHING_NEW||{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it("returns null rather than throwing on rubbish", () => {
+    expect(parseGuardedJson("<html>blocked</html>")).toBeNull();
+    expect(parseGuardedJson("")).toBeNull();
   });
 });

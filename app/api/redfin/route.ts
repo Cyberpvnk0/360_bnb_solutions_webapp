@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import { fetchRedfinRentals, redfinRentalsUrlFor, RedfinError } from "@/lib/live/redfin";
-import { cityIdFor } from "@/lib/live/redfin-city";
+import { probeCityId } from "@/lib/live/redfin-city";
 import {
   amenityFields,
   arrayPaths,
@@ -62,7 +62,8 @@ export async function GET(request: Request) {
   // produces — cheap, and the answer worth pasting into the seeded map
   // so the lookup never has to run again.
   if (searchParams.get("resolve")) {
-    const cityId = await cityIdFor(market);
+    const probe = await probeCityId(market);
+    const { cityId } = probe;
     return NextResponse.json({
       market: market.slug,
       name: `${market.name}, ${market.stateCode}`,
@@ -71,10 +72,27 @@ export async function GET(request: Request) {
         cityId === null
           ? null
           : redfinRentalsUrlFor(market, cityId, { furnished: true }),
+      /** Every step, so a null answer says WHICH thing went wrong:
+       *  blocked, unparseable, or matched nothing. */
+      diagnostics: {
+        autocompleteUrl: probe.autocompleteUrl,
+        status: probe.status,
+        parsed: probe.parsed,
+        bytes: probe.bytes,
+        head: probe.head,
+        candidatesFound: probe.candidates.length,
+        candidates: probe.candidates,
+      },
       verdict:
-        cityId === null
-          ? "No confident match. The market stays unsearchable rather than showing another city's rentals."
-          : `Open searchUrl in a browser: it must be ${market.name}, ${market.stateCode}. If it is, add "${market.slug}: ${cityId}" to REDFIN_CITY_ID.`,
+        cityId !== null
+          ? `Open searchUrl in a browser: it must be ${market.name}, ${market.stateCode}. If it is, add "${market.slug}: ${cityId}" to REDFIN_CITY_ID.`
+          : probe.status === null
+            ? "The resolver never got a response — check SCRAPERAPI_KEY."
+            : !probe.parsed
+              ? "Response wasn't JSON. Read `head`: an unrecognised guard prefix, or a block page rather than a payload."
+              : probe.candidates.length === 0
+                ? "Parsed, but no rows looked like cities. The payload shape differs from what extractCandidates expects."
+                : "Rows came back but none matched this city AND state — see `candidates`.",
     });
   }
 
