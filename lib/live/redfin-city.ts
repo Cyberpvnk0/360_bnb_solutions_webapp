@@ -25,6 +25,25 @@ const SCRAPER = "https://api.scraperapi.com/";
 export const CITY_ID_REVALIDATE_SECONDS = 31_536_000;
 
 /**
+ * Request tiers for the autocomplete call.
+ *
+ * The structured Redfin endpoints handle bot protection internally,
+ * which is why the search and listing calls need nothing. This one goes
+ * through ScraperAPI's PLAIN endpoint, and redfin.com is a protected
+ * domain there: the standard tier answers with "Protected domains may
+ * require adding premium=true OR ultra_premium=true".
+ *
+ * Trying standard first costs nothing — ScraperAPI states plainly that
+ * a failed request is not charged — so the ladder starts cheap and only
+ * climbs when it has to.
+ */
+const TIERS: { name: string; params: Record<string, string> }[] = [
+  { name: "standard", params: {} },
+  { name: "premium", params: { premium: "true" } },
+  { name: "ultra", params: { ultra_premium: "true" } },
+];
+
+/**
  * Known ids, seeded from real URLs. A static entry costs nothing and is
  * always preferred; everything else resolves on first use.
  */
@@ -160,6 +179,9 @@ export interface CityIdProbe {
   cityId: number | null;
   autocompleteUrl: string;
   status: number | null;
+  /** Which tier finally answered, and which were attempted. */
+  tier?: string;
+  tiersTried?: string[];
   parsed: boolean;
   bytes: number;
   /** First characters of the response, so an unrecognised XSSI guard or
@@ -187,25 +209,59 @@ export async function probeCityId(market: Market): Promise<CityIdProbe> {
   if (!key) return empty;
 
   try {
-    const res = await fetch(
-      `${SCRAPER}?${new URLSearchParams({ api_key: key, url: autocompleteUrl })}`,
-      { next: { revalidate: CITY_ID_REVALIDATE_SECONDS } }
+    const { attempt, body, tried } = await fetchAutocomplete(
+      autocompleteUrl,
+      key
     );
-    const text = await res.text();
-    const body = parseGuardedJson(text);
     const candidates = extractCandidates(body);
     return {
       cityId: pickCandidate(candidates, market),
       autocompleteUrl,
-      status: res.status,
+      status: attempt.status,
+      tier: attempt.tier,
+      tiersTried: tried,
       parsed: body !== null,
-      bytes: text.length,
-      head: text.slice(0, 220),
+      bytes: attempt.text.length,
+      head: attempt.text.slice(0, 220),
       candidates: candidates.slice(0, 12),
     };
   } catch {
     return empty;
   }
+}
+
+interface Attempt {
+  tier: string;
+  status: number;
+  text: string;
+}
+
+/** Climb the tiers until one returns something that parses. Returns the
+ *  last attempt when none do, so the caller can report what happened. */
+async function fetchAutocomplete(
+  target: string,
+  key: string
+): Promise<{ attempt: Attempt; body: unknown; tried: string[] }> {
+  const tried: string[] = [];
+  let last: Attempt = { tier: "none", status: 0, text: "" };
+
+  for (const tier of TIERS) {
+    tried.push(tier.name);
+    const params = new URLSearchParams({
+      api_key: key,
+      url: target,
+      ...tier.params,
+    });
+    const res = await fetch(`${SCRAPER}?${params}`, {
+      next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
+    });
+    const text = await res.text();
+    last = { tier: tier.name, status: res.status, text };
+    if (!res.ok) continue;
+    const body = parseGuardedJson(text);
+    if (body !== null) return { attempt: last, body, tried };
+  }
+  return { attempt: last, body: null, tried };
 }
 
 function autocompleteFor(market: Market): string {
@@ -244,16 +300,8 @@ export async function cityIdFor(market: Market): Promise<number | null> {
 
   let id: number | null = null;
   try {
-    const res = await fetch(
-      `${SCRAPER}?${new URLSearchParams({ api_key: key, url: target })}`,
-      { next: { revalidate: CITY_ID_REVALIDATE_SECONDS } }
-    );
-    if (res.ok) {
-      id = pickCandidate(
-        extractCandidates(parseGuardedJson(await res.text())),
-        market
-      );
-    }
+    const { body } = await fetchAutocomplete(target, key);
+    id = pickCandidate(extractCandidates(body), market);
   } catch {
     // An unreachable resolver is an unwired market, not an error to
     // propagate: the search above it already knows how to say so.

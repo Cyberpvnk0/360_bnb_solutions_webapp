@@ -77,6 +77,8 @@ export async function GET(request: Request) {
       diagnostics: {
         autocompleteUrl: probe.autocompleteUrl,
         status: probe.status,
+        tier: probe.tier,
+        tiersTried: probe.tiersTried,
         parsed: probe.parsed,
         bytes: probe.bytes,
         head: probe.head,
@@ -89,7 +91,7 @@ export async function GET(request: Request) {
           : probe.status === null
             ? "The resolver never got a response — check SCRAPERAPI_KEY."
             : !probe.parsed
-              ? "Response wasn't JSON. Read `head`: an unrecognised guard prefix, or a block page rather than a payload."
+              ? "No tier returned parseable JSON. Read `head` and `tiersTried`: a plan that refuses premium shows a 403 here, a protected domain shows ScraperAPI's own advice."
               : probe.candidates.length === 0
                 ? "Parsed, but no rows looked like cities. The payload shape differs from what extractCandidates expects."
                 : "Rows came back but none matched this city AND state — see `candidates`.",
