@@ -211,6 +211,12 @@ export interface RentalListing {
   /** A real listing photo when the feed carries one. Absent for preview
    *  inventory and for feeds (like RentCast) that ship no imagery. */
   photoUrl?: string;
+  /** Every photo on the source listing, loaded on demand when the detail
+   *  panel opens — a search row carries at most a thumbnail. */
+  photos?: string[];
+  /** The listing's own page at the source, when there is one. Lets the
+   *  panel link to the real listing and fetch its full gallery. */
+  sourceUrl?: string;
   /** Zillow-style keyword tags ("Furnished", "Waterfront", …). Terrain-aware,
    *  seeded per listing; "Pet friendly" appears here iff petFriendly. */
   features: string[];

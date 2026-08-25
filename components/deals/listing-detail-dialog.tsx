@@ -30,7 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
-import { PropertyImage } from "./property-image";
+import { ListingGallery } from "./listing-gallery";
 import { cn } from "@/lib/utils";
 
 function Figure({
@@ -98,9 +98,9 @@ export function ListingDetailDialog({
       <DialogContent className="max-h-[88vh] gap-0 overflow-y-auto p-0 sm:max-w-2xl">
         {listing && market && projection ? (
           <>
-            <PropertyImage
+            <ListingGallery
               listing={listing}
-              className="h-44 w-full shrink-0 rounded-t-sm border-b border-border"
+              className="h-56 w-full shrink-0 rounded-t-sm border-b border-border"
             />
 
             <div className="border-b border-border px-5 py-4 pr-12">

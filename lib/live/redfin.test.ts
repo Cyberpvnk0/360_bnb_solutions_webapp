@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import {
   REDFIN_SEARCH_ENDPOINT,
+  addressKey,
+  harvestPhotos,
   nextPageUrls,
   extractListings,
   mapRedfinListing,
@@ -231,5 +233,67 @@ describe("nextPageUrls", () => {
   it("returns nothing on the last page", () => {
     expect(nextPageUrls({ listing: [] })).toEqual([]);
     expect(nextPageUrls(null)).toEqual([]);
+  });
+});
+
+describe("addressKey", () => {
+  it("matches the same building written two ways", () => {
+    // RentCast and Redfin write the same address differently; this is
+    // what decides they are the same building.
+    expect(addressKey("1204 Glencoe Street, Jacksonville, FL 32211")).toBe(
+      addressKey("1204 Glencoe St, Jacksonville, FL 32211")
+    );
+    expect(addressKey("4092 Barnes Rd S, Apt 902, Jacksonville, FL")).toBe(
+      addressKey("4092 Barnes Rd S #902, Jacksonville, FL")
+    );
+  });
+
+  it("keeps different buildings apart", () => {
+    // A loose key hangs one property's photo on another's card — wrong
+    // in a way that looks completely right.
+    expect(addressKey("1204 Glencoe St, Jacksonville, FL")).not.toBe(
+      addressKey("1206 Glencoe St, Jacksonville, FL")
+    );
+    expect(addressKey("1204 Glencoe St, Jacksonville, FL")).not.toBe(
+      addressKey("1204 Hubbard St, Jacksonville, FL")
+    );
+  });
+
+  it("keeps units in the same building apart", () => {
+    expect(addressKey("900 Main St Unit 1, Jacksonville, FL")).not.toBe(
+      addressKey("900 Main St Unit 2, Jacksonville, FL")
+    );
+  });
+
+  it("refuses to key an address it cannot parse", () => {
+    // No key means no match, which means no borrowed photo.
+    expect(addressKey("Address on file")).toBeNull();
+    expect(addressKey("")).toBeNull();
+  });
+});
+
+describe("harvestPhotos", () => {
+  it("finds image URLs wherever the payload keeps them", () => {
+    // Schema-independent on purpose: photo arrays get renamed, a JPEG
+    // link stays recognisable.
+    const body = {
+      media: { gallery: [{ src: "https://ssl.cdn-redfin.com/a.jpg" }] },
+      hero: "https://ssl.cdn-redfin.com/b.png",
+    };
+    expect(harvestPhotos(body)).toEqual([
+      "https://ssl.cdn-redfin.com/a.jpg",
+      "https://ssl.cdn-redfin.com/b.png",
+    ]);
+  });
+
+  it("ignores links that aren't images", () => {
+    expect(
+      harvestPhotos({ url: "https://www.redfin.com/FL/Jacksonville/home/1" })
+    ).toEqual([]);
+  });
+
+  it("returns each photo once", () => {
+    const dup = "https://ssl.cdn-redfin.com/a.jpg";
+    expect(harvestPhotos({ a: dup, b: dup })).toEqual([dup]);
   });
 });

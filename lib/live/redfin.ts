@@ -364,6 +364,13 @@ export function mapRedfinListing(
       // than zeroed, which would badge all eighty "New, listed today".
       daysOnMarket: pickNumber(raw, ["daysOnMarket", "dom"]),
       photoUrl: pickString(raw, PHOTO_KEYS),
+      // The listing's own page: what the panel links to, and where its
+      // full gallery is fetched from on demand.
+      sourceUrl: detail
+        ? detail.startsWith("http")
+          ? detail
+          : `https://www.redfin.com${detail.startsWith("/") ? "" : "/"}${detail}`
+        : undefined,
       petFriendly: features.includes("Pet friendly"),
       features,
       // A furnished-filtered search is a real amenity answer; the chips
@@ -371,6 +378,195 @@ export function mapRedfinListing(
       featuresKnown: opts.furnished,
     },
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Photo index: Redfin's pictures on another feed's rows               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Punctuation-blind, abbreviation-blind address key.
+ *
+ * Used to decide whether a Redfin row and a RentCast row are the SAME
+ * building. A loose match here hangs one property's photo on another's
+ * card — the kind of wrong that looks completely right, so the key is
+ * built from house number, street name and (where present) unit, and a
+ * row that can't produce one is never matched.
+ */
+export function addressKey(address: string): string | null {
+  const cleaned = address
+    .toLowerCase()
+    .replace(/[.,#]/g, " ")
+    .replace(/\b(street|st)\b/g, "st")
+    .replace(/\b(avenue|ave)\b/g, "ave")
+    .replace(/\b(road|rd)\b/g, "rd")
+    .replace(/\b(drive|dr)\b/g, "dr")
+    .replace(/\b(lane|ln)\b/g, "ln")
+    .replace(/\b(court|ct)\b/g, "ct")
+    .replace(/\b(boulevard|blvd)\b/g, "blvd")
+    .replace(/\b(terrace|ter)\b/g, "ter")
+    .replace(/\b(place|pl)\b/g, "pl")
+    .replace(/\b(apartment|apt|unit|ste|suite)\b/g, "unit")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const number = cleaned.match(/^\d+/)?.[0];
+  if (!number) return null;
+  // Everything up to the city: street plus any unit designator.
+  const street = cleaned
+    .slice(number.length)
+    .split(/\bjacksonville\b|\b[a-z]{2}\s+\d{5}\b/)[0]
+    // The unit NUMBER distinguishes units; the word in front of it does
+    // not, and "#902" strips to a bare number while "Apt 902" doesn't.
+    .replace(/\bunit\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (street.length < 3) return null;
+  return `${number} ${street}`;
+}
+
+/**
+ * Redfin's thumbnails for a market, keyed by address.
+ *
+ * RentCast ships no imagery at all, so its rows show a sketch. Redfin
+ * photographs the same city, and one already-cached market search hands
+ * back a picture for most of its rows — so where both list the same
+ * building, the row can borrow the photo.
+ *
+ * Bounded by the same page cap as any other search: this covers the
+ * listings Redfin returns, not every address in the metro, and the
+ * caller reports how many rows actually matched rather than implying
+ * full coverage.
+ */
+export async function fetchRedfinPhotoIndex(
+  market: Market
+): Promise<Map<string, string>> {
+  const index = new Map<string, string>();
+  if (!redfinCoversMarket(market)) return index;
+
+  const { raw } = await fetchRedfinRentals(market, { furnished: false });
+  for (const row of raw) {
+    const address = pickString(row, ADDRESS_KEYS);
+    const photo = pickString(row, PHOTO_KEYS);
+    if (!address || !photo) continue;
+    const key = addressKey(address);
+    if (key && !index.has(key)) index.set(key, photo);
+  }
+  return index;
+}
+
+/* ------------------------------------------------------------------ */
+/* One listing's full gallery                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Candidate paths for the per-listing endpoint.
+ *
+ * The search endpoint turned out to be versioned (`/search/v1`) and the
+ * unversioned path billed while returning nothing readable — so rather
+ * than guess once and pay for being wrong, this tries the plausible
+ * spellings and reports which answered. Pin the winner and delete the
+ * rest.
+ */
+export const REDFIN_LISTING_ENDPOINTS = [
+  "https://api.scraperapi.com/structured/redfin/forrent/v1",
+  "https://api.scraperapi.com/structured/redfin/for-rent/v1",
+  "https://api.scraperapi.com/structured/redfin/listing/v1",
+  "https://api.scraperapi.com/structured/redfin/property/v1",
+] as const;
+
+/** A month: a listing's photos don't change once it's posted. */
+export const LISTING_REVALIDATE_SECONDS = 2_592_000;
+
+/** Anything that looks like an image URL, wherever it sits.
+ *  Schema-independent on purpose: photo arrays get renamed, but a JPEG
+ *  link is recognisable whatever key holds it. */
+const IMAGE_URL = /^https?:\/\/[^\s"']+\.(?:jpe?g|png|webp|avif)(?:\?[^\s"']*)?$/i;
+const REDFIN_CDN = /(?:ssl\.cdn-redfin\.com|redfin\.com)\/[^\s"']+\.(?:jpe?g|png|webp)/i;
+
+export function harvestPhotos(
+  value: unknown,
+  depth = 0,
+  out: string[] = []
+): string[] {
+  if (depth > 8 || out.length >= 40) return out;
+  if (typeof value === "string") {
+    if (IMAGE_URL.test(value) || REDFIN_CDN.test(value)) {
+      if (!out.includes(value)) out.push(value);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) harvestPhotos(v, depth + 1, out);
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const v of Object.values(value as Row)) harvestPhotos(v, depth + 1, out);
+  }
+  return out;
+}
+
+export interface RedfinListingDetail {
+  photos: string[];
+  /** Which candidate path answered — pin it once known. */
+  endpoint: string | null;
+  credits: number | null;
+  /** Raw payload, for the shape probe only. */
+  body: unknown;
+}
+
+/**
+ * One listing's page, for its full gallery.
+ *
+ * Called only when a student opens a listing, never while browsing a
+ * list — a page of twenty-four cards must not become twenty-four billed
+ * requests. Cached a month per listing and shared by everyone.
+ */
+export async function fetchRedfinListing(
+  listingUrl: string
+): Promise<RedfinListingDetail> {
+  const key = process.env.SCRAPERAPI_KEY;
+  if (!key) throw new RedfinError("no-key");
+  if (!/^https:\/\/(?:www\.)?redfin\.com\//i.test(listingUrl)) {
+    // Only ever fetch Redfin's own pages: this URL arrives from the
+    // client, and an open fetcher would proxy anything asked of it.
+    throw new RedfinError("http", 400, "not a redfin.com listing URL");
+  }
+
+  let lastDetail = "";
+  for (const endpoint of REDFIN_LISTING_ENDPOINTS) {
+    const params = new URLSearchParams({ api_key: key, url: listingUrl });
+    let res: Response;
+    try {
+      res = await fetch(`${endpoint}?${params}`, {
+        next: { revalidate: LISTING_REVALIDATE_SECONDS },
+      });
+    } catch {
+      throw new RedfinError("network");
+    }
+
+    if (res.status === 401) throw new RedfinError("auth", 401);
+    if (res.status === 429) throw new RedfinError("quota", 429);
+    if (!res.ok) {
+      // A wrong path 404s; keep trying the others rather than give up.
+      lastDetail = (await res.text().catch(() => ""))
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 200);
+      continue;
+    }
+
+    const body: unknown = await res.json().catch(() => null);
+    return {
+      photos: harvestPhotos(body),
+      endpoint,
+      credits: creditsFrom(res),
+      body,
+    };
+  }
+
+  throw new RedfinError("http", 404, lastDetail || "no listing endpoint answered");
 }
 
 /* ------------------------------------------------------------------ */

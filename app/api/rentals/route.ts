@@ -30,7 +30,9 @@ import {
   describeShape,
   proseFields,
 } from "@/lib/live/shape";
+import { addressKey, fetchRedfinPhotoIndex } from "@/lib/live/redfin";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
+import type { Market, RentalListing } from "@/lib/mock/types";
 
 /** Same shape for every failure, so the client can explain itself. */
 function failure(error: unknown) {
@@ -44,6 +46,41 @@ function failure(error: unknown) {
     { live: false, reason: "network", status: null },
     { status: 502 }
   );
+}
+
+/**
+ * Borrow Redfin's photos for rows that have none.
+ *
+ * RentCast ships no imagery in any of its 500 fields, so its rows fall
+ * back to a sketch. Redfin photographs the same city and one cached
+ * market search carries a thumbnail for most of its rows, so where both
+ * list the same building the row can show a real picture.
+ *
+ * Best effort by design: a market Redfin doesn't cover, or a listing it
+ * doesn't carry, simply keeps its sketch. Never fails the search.
+ */
+async function withBorrowedPhotos(
+  listings: RentalListing[],
+  market: Market
+): Promise<{ listings: RentalListing[]; matched: number }> {
+  let index: Map<string, string>;
+  try {
+    index = await fetchRedfinPhotoIndex(market);
+  } catch {
+    return { listings, matched: 0 };
+  }
+  if (index.size === 0) return { listings, matched: 0 };
+
+  let matched = 0;
+  const out = listings.map((listing) => {
+    if (listing.photoUrl) return listing;
+    const key = addressKey(listing.address);
+    const photo = key ? index.get(key) : undefined;
+    if (!photo) return listing;
+    matched += 1;
+    return { ...listing, photoUrl: photo };
+  });
+  return { listings: out, matched };
 }
 
 export async function GET(request: Request) {
@@ -139,7 +176,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const listings = await fetchLiveRentals(market);
+    const raw = await fetchLiveRentals(market);
+    const { listings, matched } = await withBorrowedPhotos(raw, market);
     const spent = commitLiveSearch(`market:${market.slug}`);
     return NextResponse.json({
       live: true,
@@ -147,6 +185,9 @@ export async function GET(request: Request) {
       market: market.slug,
       center: { lat: market.lat, lon: market.lon },
       listings,
+      /** How many rows borrowed a Redfin photo — coverage, not a claim
+       *  that every listing has one. */
+      photosMatched: matched,
       remaining: spent.remaining,
       cap: spent.cap,
     });
