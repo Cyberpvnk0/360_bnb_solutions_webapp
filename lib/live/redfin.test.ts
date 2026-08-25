@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MARKET_BY_SLUG } from "@/lib/mock/markets";
+import { MARKET_BY_SLUG, MARKETS } from "@/lib/mock/markets";
+import { REDFIN_CITY_ID } from "./redfin-city";
 import {
   REDFIN_SEARCH_ENDPOINT,
   addressKey,
@@ -33,7 +34,12 @@ describe("redfinRentalsUrlFor", () => {
 
   it("knows which markets are seeded without going to ask", () => {
     expect(redfinCoversMarket(jax)).toBe(true);
-    expect(redfinCoversMarket(MARKET_BY_SLUG.get("tampa")!)).toBe(false);
+    // Chosen from the map rather than named, so seeding a market later
+    // can't quietly turn this into a test of nothing.
+    const unseeded = MARKETS.find(
+      (m) => REDFIN_CITY_ID[m.slug] === undefined
+    );
+    if (unseeded) expect(redfinCoversMarket(unseeded)).toBe(false);
   });
 });
 

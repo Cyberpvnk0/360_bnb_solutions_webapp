@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import {
+  REDFIN_CITY_ID,
   extractCandidates,
   normalizeCity,
   parseGuardedJson,
@@ -108,5 +109,34 @@ describe("parseGuardedJson", () => {
   it("returns null rather than throwing on rubbish", () => {
     expect(parseGuardedJson("<html>blocked</html>")).toBeNull();
     expect(parseGuardedJson("")).toBeNull();
+  });
+});
+
+describe("REDFIN_CITY_ID", () => {
+  it("only maps markets we actually have", () => {
+    // A slug that matches nothing is a silent dead entry: it can never
+    // be hit, and it hides the fact that a market is still unresolved.
+    const strays = Object.keys(REDFIN_CITY_ID).filter(
+      (slug) => !MARKET_BY_SLUG.has(slug)
+    );
+    expect(strays).toEqual([]);
+  });
+
+  it("never maps two markets to the same city", () => {
+    // Two slugs sharing an id means one of them searches the other's
+    // city — the exact failure this whole resolver exists to prevent.
+    const ids = Object.values(REDFIN_CITY_ID);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("holds the id confirmed against a real Redfin URL", () => {
+    expect(REDFIN_CITY_ID.jacksonville).toBe(8907);
+  });
+
+  it("carries every id as a positive integer", () => {
+    for (const [slug, id] of Object.entries(REDFIN_CITY_ID)) {
+      expect(Number.isInteger(id), slug).toBe(true);
+      expect(id, slug).toBeGreaterThan(0);
+    }
   });
 });
