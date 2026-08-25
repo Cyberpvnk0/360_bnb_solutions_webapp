@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import {
   REDFIN_SEARCH_ENDPOINT,
+  nextPageUrls,
   extractListings,
   mapRedfinListing,
+  priceOf,
   redfinCoversMarket,
   redfinRentalsUrl,
 } from "./redfin";
@@ -38,6 +40,8 @@ describe("extractListings", () => {
   const rows = [{ price: 1 }, { price: 2 }];
 
   it("finds the array wherever the response wraps it", () => {
+    // Pinned from the live response: the container is `listing`.
+    expect(extractListings({ listing: rows })).toHaveLength(2);
     expect(extractListings(rows)).toHaveLength(2);
     expect(extractListings({ homes: rows })).toHaveLength(2);
     expect(extractListings({ listings: rows })).toHaveLength(2);
@@ -50,93 +54,125 @@ describe("extractListings", () => {
   });
 });
 
-describe("mapRedfinListing", () => {
-  const row = {
-    address: "1204 Glencoe St",
-    city: "Jacksonville",
-    state: "FL",
-    price: 1850,
-    beds: 2,
-    baths: 1.5,
-    sqFt: 940,
-    latitude: 30.33,
-    longitude: -81.66,
-    propertyType: "Single Family",
-    url: "/FL/Jacksonville/1204-Glencoe-St-32211/home/12345",
-  };
+/** A row shaped like the live response: display strings, price wrapped
+ *  in an array of objects, and no coordinates anywhere. */
+const row = {
+  address: "1204 Glencoe St, Jacksonville, FL 32211",
+  number_beds: "2 beds",
+  number_baths: "1.5 baths",
+  sq_ft: "940 sq ft",
+  price: [{ value: "$1,850/mo" }],
+  key_facts: ["In-unit W/D", "Pool", "Pets OK"],
+  url: "/FL/Jacksonville/1204-Glencoe-St-32211/home/12345",
+  badge: [],
+  phone: "",
+};
 
-  it("maps a listing the app can render", () => {
-    const l = mapRedfinListing(row, jax, { furnished: true, index: 0 })!;
-    expect(l.address).toBe("1204 Glencoe St");
+const COORDS = { lat: 30.33, lon: -81.66 };
+
+function mapped(over: Record<string, unknown> = {}, furnished = true) {
+  const result = mapRedfinListing({ ...row, ...over }, jax, {
+    furnished,
+    index: 0,
+    coords: COORDS,
+  });
+  return result.ok ? result.listing : null;
+}
+
+describe("priceOf", () => {
+  it("digs the rent out of an array of objects", () => {
+    expect(priceOf(row)).toBe(1850);
+  });
+
+  it("reads a plain number or a formatted string too", () => {
+    expect(priceOf({ price: 1850 })).toBe(1850);
+    expect(priceOf({ price: "$1,850/mo" })).toBe(1850);
+  });
+
+  it("ignores small numbers that aren't rent", () => {
+    // "1 of 3" and bedroom counts live in the same objects as the price.
+    expect(priceOf({ price: [{ label: "1", unit: "3" }] })).toBeUndefined();
+  });
+
+  it("returns undefined rather than guessing", () => {
+    expect(priceOf({})).toBeUndefined();
+    expect(priceOf({ price: [] })).toBeUndefined();
+  });
+});
+
+describe("mapRedfinListing", () => {
+  it("reads Redfin's display strings as numbers", () => {
+    const l = mapped()!;
     expect(l.rentMonthly).toBe(1850);
     expect(l.bedrooms).toBe(2);
     expect(l.bathrooms).toBe(1.5);
-    expect(l.propertyType).toBe("house");
-    expect(l.marketSlug).toBe("jacksonville");
+    expect(l.sqft).toBe(940);
+    expect(l.address).toBe("1204 Glencoe St, Jacksonville, FL 32211");
   });
 
   it("tags Furnished ONLY from a furnished-filtered search", () => {
     // The one amenity claim in this codebase that isn't mined from
     // prose: Redfin applied the filter, so the tag is theirs.
-    const yes = mapRedfinListing(row, jax, { furnished: true, index: 0 })!;
-    expect(yes.features).toEqual(["Furnished"]);
-    expect(yes.featuresKnown).toBe(true);
+    expect(mapped()!.features).toContain("Furnished");
+    expect(mapped()!.featuresKnown).toBe(true);
 
-    // An unfiltered search says nothing about amenities — unknown, not
-    // "has none", so a feature filter can't wrongly exclude it.
-    const no = mapRedfinListing(row, jax, { furnished: false, index: 0 })!;
-    expect(no.features).toEqual([]);
-    expect(no.featuresKnown).toBe(false);
+    const unfiltered = mapped({}, false)!;
+    expect(unfiltered.features).not.toContain("Furnished");
+    expect(unfiltered.featuresKnown).toBe(false);
   });
 
-  it("reads money and numbers however they are formatted", () => {
-    const messy = { ...row, price: "$1,850/mo", beds: "2", sqFt: "940" };
-    const l = mapRedfinListing(messy, jax, { furnished: true, index: 0 })!;
-    expect(l.rentMonthly).toBe(1850);
-    expect(l.bedrooms).toBe(2);
-    expect(l.sqft).toBe(940);
+  it("mines the key_facts chips through the one shared miner", () => {
+    const l = mapped()!;
+    expect(l.features).toEqual(
+      expect.arrayContaining(["Washer & dryer", "Private pool", "Pet friendly"])
+    );
+    expect(l.petFriendly).toBe(true);
   });
 
-  it("reads nested coordinates and addresses", () => {
-    const nested = {
-      "streetLine": "1204 Glencoe St",
-      price: 1850,
-      latLong: { latitude: 30.33, longitude: -81.66 },
-    };
-    const l = mapRedfinListing(nested, jax, { furnished: true, index: 1 })!;
-    expect(l.lat).toBeCloseTo(30.33);
-    expect(l.lon).toBeCloseTo(-81.66);
+  it("applies the miner's negations to chips as well", () => {
+    const l = mapped({ key_facts: ["No pets", "Street parking only"] })!;
+    expect(l.features).not.toContain("Pet friendly");
+    expect(l.features).not.toContain("Garage");
   });
 
-  it("drops a row rather than invent what it lacks", () => {
-    for (const missing of ["price", "latitude", "address"] as const) {
-      const broken: Record<string, unknown> = { ...row };
-      delete broken[missing];
-      expect(
-        mapRedfinListing(broken, jax, { furnished: true, index: 0 }),
-        missing
-      ).toBeNull();
-    }
+  it("skips a row with no coordinates rather than pinning the city centre", () => {
+    // Redfin's search rows carry no lat/lon. A pin on the wrong street
+    // is a lie a student would drive to.
+    const result = mapRedfinListing(row, jax, { furnished: true, index: 0 });
+    expect(result).toEqual({ ok: false, skip: "no-coordinates" });
+  });
+
+  it("names why each unusable row was dropped", () => {
+    const noPrice = mapRedfinListing({ ...row, price: [] }, jax, {
+      furnished: true,
+      index: 0,
+      coords: COORDS,
+    });
+    expect(noPrice).toEqual({ ok: false, skip: "no-price" });
+
+    const noAddress = mapRedfinListing(
+      { ...row, address: undefined },
+      jax,
+      { furnished: true, index: 0, coords: COORDS }
+    );
+    expect(noAddress).toEqual({ ok: false, skip: "no-address" });
   });
 
   it("clamps bedrooms into the range the calculator models", () => {
-    const studio = mapRedfinListing({ ...row, beds: 0 }, jax, { furnished: true, index: 0 })!;
-    expect(studio.bedrooms).toBe(1);
-    const mansion = mapRedfinListing({ ...row, beds: 9 }, jax, { furnished: true, index: 0 })!;
-    expect(mansion.bedrooms).toBe(5);
+    expect(mapped({ number_beds: "Studio" })!.bedrooms).toBe(1);
+    expect(mapped({ number_beds: "9 beds" })!.bedrooms).toBe(5);
   });
 
   it("gives every row a stable, market-scoped id", () => {
-    const a = mapRedfinListing(row, jax, { furnished: true, index: 0 })!;
-    const b = mapRedfinListing(row, jax, { furnished: true, index: 0 })!;
+    const a = mapped()!;
+    const b = mapped()!;
     expect(a.id).toBe(b.id);
     expect(a.id.startsWith("live--jacksonville--rf-")).toBe(true);
     expect(a.analysisId).toBe(`r--${a.id}`);
   });
 
   it("never carries a description — Redfin's tag replaces the prose", () => {
-    const l = mapRedfinListing(row, jax, { furnished: true, index: 0 })!;
-    expect(l.description).toBeUndefined();
+    expect(mapped()!.description).toBeUndefined();
   });
 });
 
@@ -148,5 +184,28 @@ describe("the endpoint itself", () => {
     expect(REDFIN_SEARCH_ENDPOINT).toBe(
       "https://api.scraperapi.com/structured/redfin/search/v1"
     );
+  });
+});
+
+describe("nextPageUrls", () => {
+  it("reads the links a search hands back", () => {
+    // Redfin paginates at ~41 rows. Reading only page one shows a third
+    // of a market and reads as a narrower search than the one that ran.
+    expect(
+      nextPageUrls({
+        next_pages: [
+          "/city/8907/FL/Jacksonville/rentals/filter/is-furnished/page-2",
+          "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/is-furnished/page-3",
+        ],
+      })
+    ).toEqual([
+      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/is-furnished/page-2",
+      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/is-furnished/page-3",
+    ]);
+  });
+
+  it("returns nothing on the last page", () => {
+    expect(nextPageUrls({ listing: [] })).toEqual([]);
+    expect(nextPageUrls(null)).toEqual([]);
   });
 });

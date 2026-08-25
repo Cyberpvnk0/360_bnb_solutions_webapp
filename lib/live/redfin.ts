@@ -19,6 +19,8 @@
  * delete the aliases that never fire.
  */
 
+import { mineFeatures } from "@/lib/live/features";
+import { geocodeAll } from "@/lib/live/geocode";
 import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
 /**
@@ -30,8 +32,36 @@ import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 export const REDFIN_SEARCH_ENDPOINT =
   "https://api.scraperapi.com/structured/redfin/search/v1";
 
-/** A day: rental inventory turns over, and this is one call per market. */
+/** A day: rental inventory turns over, and this is one call per page. */
 export const REDFIN_REVALIDATE_SECONDS = 86_400;
+
+/**
+ * Pages to follow.
+ *
+ * Redfin paginates at ~41 rows and hands back the next page URLs, so
+ * reading only the first page silently shows a third of a market and
+ * looks like the search was narrower than it was. Each page is its own
+ * billed request, so this is capped and tunable.
+ */
+export const DEFAULT_MAX_PAGES = 4;
+
+function maxPages(): number {
+  const raw = Number(process.env.REDFIN_MAX_PAGES);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.min(10, Math.floor(raw))
+    : DEFAULT_MAX_PAGES;
+}
+
+/** The next-page links a search response hands back, absolute. */
+export function nextPageUrls(body: unknown): string[] {
+  const raw = (body as { next_pages?: unknown })?.next_pages;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((u): u is string => typeof u === "string" && u.trim() !== "")
+    .map((u) =>
+      u.startsWith("http") ? u : `https://www.redfin.com${u.startsWith("/") ? "" : "/"}${u}`
+    );
+}
 
 /**
  * Redfin addresses a city by a numeric id in its URL path, which cannot
@@ -116,29 +146,59 @@ function pickNumber(row: Row, keys: readonly string[]): number | undefined {
   return undefined;
 }
 
+/**
+ * Rent, wherever the row buries it.
+ *
+ * Redfin's search rows wrap price in an array of objects rather than a
+ * scalar, so this digs one level in and takes the first plausible
+ * monthly figure it finds.
+ */
+export function priceOf(row: Row): number | undefined {
+  const direct = pickNumber(row, ["price", "rentPrice", "rent", "monthlyRent"]);
+  if (direct !== undefined) return direct;
+
+  const wrapped = row.price;
+  const candidates: unknown[] = Array.isArray(wrapped) ? wrapped : [wrapped];
+  for (const entry of candidates) {
+    if (typeof entry === "number" && entry > 0) return entry;
+    if (typeof entry === "string") {
+      const n = Number(entry.replace(/[^0-9.]/g, ""));
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    if (entry && typeof entry === "object") {
+      for (const value of Object.values(entry as Row)) {
+        if (typeof value === "number" && value > 0) return value;
+        if (typeof value === "string") {
+          const n = Number(value.replace(/[^0-9.]/g, ""));
+          // A monthly rent, not a bedroom count or a "1" from "1 of 3".
+          if (Number.isFinite(n) && n >= 200) return n;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 function pickString(row: Row, keys: readonly string[]): string | undefined {
   const raw = pick(row, keys);
   return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : undefined;
 }
 
-const ADDRESS_KEYS = [
-  "address",
-  "streetLine",
-  "streetAddress",
-  "addressLine1",
-  "fullAddress",
-  "location.streetLine",
-] as const;
-const CITY_KEYS = ["city", "location.city", "addressCity"] as const;
-const STATE_KEYS = ["state", "stateCode", "location.state"] as const;
-const PRICE_KEYS = ["price", "rentPrice", "rent", "monthlyRent", "listPrice"] as const;
-const BEDS_KEYS = ["beds", "bedrooms", "numBeds"] as const;
-const BATHS_KEYS = ["baths", "bathrooms", "numBaths"] as const;
-const SQFT_KEYS = ["sqFt", "squareFeet", "squareFootage", "size"] as const;
-const LAT_KEYS = ["latitude", "lat", "latLong.latitude", "location.latitude"] as const;
-const LON_KEYS = ["longitude", "lng", "lon", "latLong.longitude", "location.longitude"] as const;
-const URL_KEYS = ["url", "listingUrl", "propertyUrl", "detailUrl", "link"] as const;
-const TYPE_KEYS = ["propertyType", "homeType", "type"] as const;
+/* Pinned to a live response. Redfin's search rows carry display
+ * STRINGS ("2 beds", "1.5 baths", "940 sq ft"), a price wrapped in an
+ * array of objects, and — notably — no coordinates at all. */
+const ADDRESS_KEYS = ["address", "streetLine", "streetAddress"] as const;
+const CITY_KEYS = ["city", "location.city"] as const;
+const STATE_KEYS = ["state", "stateCode"] as const;
+const BEDS_KEYS = ["number_beds", "beds", "bedrooms"] as const;
+const BATHS_KEYS = ["number_baths", "baths", "bathrooms"] as const;
+const SQFT_KEYS = ["sq_ft", "sqFt", "squareFeet"] as const;
+const LAT_KEYS = ["latitude", "lat", "latLong.latitude"] as const;
+const LON_KEYS = ["longitude", "lng", "lon", "latLong.longitude"] as const;
+const URL_KEYS = ["url", "listingUrl", "detailUrl"] as const;
+const TYPE_KEYS = ["propertyType", "homeType"] as const;
+/** Short display chips beside a listing — a second amenity signal. */
+const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
 
 const TYPE_MAP: Record<string, PropertyType> = {
   "single family": "house",
@@ -162,6 +222,8 @@ function propertyTypeOf(row: Row): PropertyType {
 
 /** Containers a search response might wrap its listings in. */
 const ARRAY_KEYS = [
+  // Pinned from a live response: the container is singular.
+  "listing",
   "homes",
   "listings",
   "results",
@@ -196,26 +258,67 @@ export function extractListings(body: unknown): Row[] {
  * tag is theirs. An unfiltered search leaves amenities unknown rather
  * than claiming the unit has none.
  */
+/** Why a row couldn't be used — counted so a zero result explains
+ *  itself instead of looking like an empty market. */
+export type SkipReason = "no-price" | "no-address" | "no-coordinates";
+
+export type MapResult =
+  | { ok: true; listing: RentalListing }
+  | { ok: false; skip: SkipReason };
+
+/**
+ * One Redfin row → our RentalListing.
+ *
+ * `furnished` is the caller's assertion that this row came from a
+ * furnished-FILTERED search. That is the only amenity claim in the
+ * codebase not mined from text: Redfin applied the filter, so the tag is
+ * theirs. An unfiltered search leaves amenities unknown rather than
+ * claiming the unit has none.
+ *
+ * Coordinates are NOT in Redfin's search rows, so they must be supplied
+ * by the caller (a geocoder). Without them the row is skipped rather
+ * than pinned at the city centre — a map pin on the wrong street is a
+ * lie a student would act on.
+ */
 export function mapRedfinListing(
   raw: Row,
   market: Market,
-  opts: { furnished: boolean; index: number }
-): RentalListing | null {
-  const rentMonthly = pickNumber(raw, PRICE_KEYS);
-  if (!rentMonthly || rentMonthly <= 0) return null;
-
-  const lat = pickNumber(raw, LAT_KEYS);
-  const lon = pickNumber(raw, LON_KEYS);
-  if (lat === undefined || lon === undefined) return null;
+  opts: {
+    furnished: boolean;
+    index: number;
+    coords?: { lat: number; lon: number };
+  }
+): MapResult {
+  const rentMonthly = priceOf(raw);
+  if (!rentMonthly || rentMonthly <= 0) return { ok: false, skip: "no-price" };
 
   const address = pickString(raw, ADDRESS_KEYS);
-  if (!address) return null;
+  if (!address) return { ok: false, skip: "no-address" };
 
+  const lat = pickNumber(raw, LAT_KEYS) ?? opts.coords?.lat;
+  const lon = pickNumber(raw, LON_KEYS) ?? opts.coords?.lon;
+  if (lat === undefined || lon === undefined) {
+    return { ok: false, skip: "no-coordinates" };
+  }
+
+  // "2 beds" / "1.5 baths" / "940 sq ft" — display strings, not numbers.
   const rawBeds = pickNumber(raw, BEDS_KEYS);
-  // Studios read as 0 and are a legitimate 1-bedroom for our maths.
   const bedrooms = Math.min(5, Math.max(1, Math.round(rawBeds ?? 1)));
   const bathrooms = pickNumber(raw, BATHS_KEYS) ?? 1;
   const detail = pickString(raw, URL_KEYS);
+
+  // The short chips beside a listing are a second amenity signal, read
+  // through the one shared miner so "Furnished" means the same thing
+  // here as everywhere else — negations included.
+  const factsRaw = pick(raw, FACTS_KEYS);
+  const facts = Array.isArray(factsRaw)
+    ? factsRaw.filter((f): f is string => typeof f === "string")
+    : [];
+  const minedFacts = mineFeatures(facts) ?? [];
+
+  const features = opts.furnished
+    ? [...new Set(["Furnished", ...minedFacts])]
+    : minedFacts;
 
   // Stable within a market's feed so React keys and saved lists hold.
   const key = detail
@@ -223,24 +326,31 @@ export function mapRedfinListing(
     : `${opts.index}`;
 
   return {
-    id: `live--${market.slug}--rf-${key}`,
-    analysisId: `r--live--${market.slug}--rf-${key}`,
-    address,
-    city: pickString(raw, CITY_KEYS) ?? market.name,
-    stateCode: pickString(raw, STATE_KEYS) ?? market.stateCode,
-    marketSlug: market.slug,
-    lat,
-    lon,
-    bedrooms,
-    bathrooms,
-    sqft: Math.round(pickNumber(raw, SQFT_KEYS) ?? 0),
-    propertyType: propertyTypeOf(raw),
-    rentMonthly: Math.round(rentMonthly),
-    daysOnMarket: Math.max(0, Math.round(pickNumber(raw, ["daysOnMarket", "dom"]) ?? 0)),
-    petFriendly: false,
-    features: opts.furnished ? ["Furnished"] : [],
-    // Only a furnished-filtered search tells us anything about amenities.
-    featuresKnown: opts.furnished,
+    ok: true,
+    listing: {
+      id: `live--${market.slug}--rf-${key}`,
+      analysisId: `r--live--${market.slug}--rf-${key}`,
+      address,
+      city: pickString(raw, CITY_KEYS) ?? market.name,
+      stateCode: pickString(raw, STATE_KEYS) ?? market.stateCode,
+      marketSlug: market.slug,
+      lat,
+      lon,
+      bedrooms,
+      bathrooms,
+      sqft: Math.round(pickNumber(raw, SQFT_KEYS) ?? 0),
+      propertyType: propertyTypeOf(raw),
+      rentMonthly: Math.round(rentMonthly),
+      daysOnMarket: Math.max(
+        0,
+        Math.round(pickNumber(raw, ["daysOnMarket", "dom"]) ?? 0)
+      ),
+      petFriendly: features.includes("Pet friendly"),
+      features,
+      // A furnished-filtered search is a real amenity answer; the chips
+      // alone are not enough to claim we know the full picture.
+      featuresKnown: opts.furnished,
+    },
   };
 }
 
@@ -252,6 +362,13 @@ export interface RedfinFetch {
   listings: RentalListing[];
   /** Rows our extractor found, for the shape probe only. */
   raw: Row[];
+  /** Why unusable rows were dropped, by reason. */
+  skipped: Record<string, number>;
+  /** Which geocoder placed the rows we kept. */
+  geocodedBy: Record<string, number>;
+  /** How many pages were read, and whether more were left. */
+  pages: number;
+  morePages: boolean;
   /** The WHOLE parsed response. A probe that only ever sees the rows we
    *  already extracted cannot explain an extraction that found none. */
   body: unknown;
@@ -274,18 +391,20 @@ function creditsFrom(res: Response): number | null {
  * Rentals for one market, optionally only the furnished ones.
  * One request per market per day, shared by every user.
  */
-export async function fetchRedfinRentals(
-  market: Market,
-  opts: { furnished?: boolean } = {}
-): Promise<RedfinFetch> {
+/** One page of results, exactly as the vendor returns it. */
+async function fetchPage(pageUrl: string): Promise<{
+  body: unknown;
+  rows: Row[];
+  parsed: boolean;
+  bytes: number;
+  credits: number | null;
+}> {
   const key = process.env.SCRAPERAPI_KEY;
   if (!key) throw new RedfinError("no-key");
-  const searchUrl = redfinRentalsUrl(market, opts);
-  if (!searchUrl) throw new RedfinError("no-city");
 
   // Exactly the parameters ScraperAPI's own snippet sends. Extras that
   // "shouldn't hurt" are how a working request quietly stops working.
-  const params = new URLSearchParams({ api_key: key, url: searchUrl });
+  const params = new URLSearchParams({ api_key: key, url: pageUrl });
 
   let res: Response;
   try {
@@ -316,20 +435,101 @@ export async function fetchRedfinRentals(
   } catch {
     parsed = false;
   }
-  const raw = extractListings(body);
+  return {
+    body,
+    rows: extractListings(body),
+    parsed,
+    bytes: text.length,
+    credits: creditsFrom(res),
+  };
+}
+
+/**
+ * Every page of rentals for one market, optionally furnished only.
+ *
+ * Follows Redfin's own next-page links up to the cap: the first page is
+ * about 41 rows, so stopping there shows a third of a market and reads
+ * as a narrower search than the one that ran.
+ */
+export async function fetchRedfinRentals(
+  market: Market,
+  opts: { furnished?: boolean } = {}
+): Promise<RedfinFetch> {
+  const searchUrl = redfinRentalsUrl(market, opts);
+  if (!searchUrl) throw new RedfinError("no-city");
+
+  const limit = maxPages();
+  const seen = new Set<string>([searchUrl]);
+  const queue = [searchUrl];
+  const raw: Row[] = [];
+  let body: unknown = null;
+  let parsed = true;
+  let bytes = 0;
+  let credits: number | null = null;
+  let pages = 0;
+
+  while (queue.length > 0 && pages < limit) {
+    const pageUrl = queue.shift()!;
+    const page = await fetchPage(pageUrl);
+    pages += 1;
+    raw.push(...page.rows);
+    bytes += page.bytes;
+    if (page.credits !== null) credits = (credits ?? 0) + page.credits;
+    // Diagnostics describe the FIRST page; later ones share its shape.
+    if (pages === 1) {
+      body = page.body;
+      parsed = page.parsed;
+    }
+    for (const next of nextPageUrls(page.body)) {
+      if (!seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
   const furnished = Boolean(opts.furnished);
-  const listings = raw
-    .map((row, index) => mapRedfinListing(row, market, { furnished, index }))
-    .filter((l): l is RentalListing => l !== null)
-    .sort((a, b) => a.rentMonthly - b.rentMonthly);
+  const skipped: Record<string, number> = {};
+  const geocodedBy: Record<string, number> = {};
+  const listings: RentalListing[] = [];
+
+  // Redfin's search rows carry no coordinates, so every address is
+  // placed before it can be shown. Cached 30 days per address, so a
+  // market costs this once and every student after that rides it free.
+  const points = await geocodeAll(
+    raw.map((row) => {
+      const line = pickString(row, ADDRESS_KEYS) ?? "";
+      // Census wants a complete one-line address; Redfin's already
+      // carries city and state, but a bare street needs help.
+      return /,/.test(line) ? line : `${line}, ${market.name}, ${market.stateCode}`;
+    })
+  );
+
+  raw.forEach((row, index) => {
+    const found = points[index];
+    if (found?.source) {
+      geocodedBy[found.source] = (geocodedBy[found.source] ?? 0) + 1;
+    }
+    const result = mapRedfinListing(row, market, {
+      furnished,
+      index,
+      coords: found?.point ?? undefined,
+    });
+    if (result.ok) listings.push(result.listing);
+    else skipped[result.skip] = (skipped[result.skip] ?? 0) + 1;
+  });
+  listings.sort((a, b) => a.rentMonthly - b.rentMonthly);
 
   return {
     listings,
     raw,
+    skipped,
+    geocodedBy,
+    pages,
+    morePages: queue.length > 0,
     body,
     parsed,
-    bytes: text.length,
-    credits: creditsFrom(res),
+    bytes,
+    credits,
     searchUrl,
   };
 }

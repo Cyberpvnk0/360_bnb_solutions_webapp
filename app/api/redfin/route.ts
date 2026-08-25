@@ -61,14 +61,26 @@ export async function GET(request: Request) {
   // aliases in lib/live/redfin can be pinned and the rest deleted.
   if (shape) {
     try {
-      const { raw, listings, body, parsed, bytes, credits, searchUrl } =
-        await fetchRedfinRentals(market, { furnished });
+      const {
+        raw,
+        listings,
+        skipped,
+        geocodedBy,
+        pages,
+        morePages,
+        body,
+        parsed,
+        bytes,
+        credits,
+        searchUrl,
+      } = await fetchRedfinRentals(market, { furnished });
       const fields = describeFields(raw);
       // Describe the WHOLE response, not just the rows we managed to
       // extract: when extraction finds nothing, the rows are empty and
       // describing them explains nothing at all.
       const found = arrayPaths(body);
-      const shapeOfBody = describeFields([body], 4);
+      // Deep enough to see inside the objects Redfin wraps its price in.
+      const shapeOfBody = describeFields([body], 7);
       return NextResponse.json({
         searchUrl,
         parsed,
@@ -76,6 +88,15 @@ export async function GET(request: Request) {
         credits,
         rowsReturned: raw.length,
         rowsMapped: listings.length,
+        /** Why unusable rows were dropped — a zero result that explains
+         *  itself instead of looking like an empty market. */
+        skipped,
+        /** Pages followed, and whether the cap cut the market short. */
+        pages,
+        morePages,
+        /** Which geocoder placed the rows we kept. Redfin ships no
+         *  coordinates, so this is the real gate on how many show. */
+        geocodedBy,
         /** Every array in the payload, by path and length — the answer
          *  to "where are the listings?" without knowing the schema. */
         arrays: found,
