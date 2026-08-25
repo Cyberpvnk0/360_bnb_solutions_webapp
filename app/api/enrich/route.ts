@@ -168,7 +168,9 @@ export async function GET(request: Request) {
     if (r.strategy) strategies[r.strategy] = (strategies[r.strategy] ?? 0) + 1;
     if (r.failure) failures[r.failure] = (failures[r.failure] ?? 0) + 1;
   }
-  const rendered = batch.records.filter((r) => r.rendered).length;
+  const blocked = batch.records.filter((r) => r.blocked).length;
+  const tiers: Record<string, number> = {};
+  for (const r of batch.records) tiers[r.tier] = (tiers[r.tier] ?? 0) + 1;
   // Where the pipeline actually got to, and what it was looking at —
   // the difference between "extraction is wrong" and "we never reached
   // the page that has the description".
@@ -204,8 +206,10 @@ export async function GET(request: Request) {
       batch.creditsSpent !== null
         ? Math.round((batch.creditsSpent / batch.attempted) * 10) / 10
         : null,
-    /** How often the cheap path failed and we paid for JS rendering. */
-    renderedCount: rendered,
+    /** How many were refused by the site at every tier we tried, and
+     *  which tier finally answered for the rest. */
+    blockedCount: blocked,
+    tiers,
     /** Where the text was found, and what went wrong where it wasn't. */
     strategies,
     failures,

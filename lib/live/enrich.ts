@@ -60,7 +60,10 @@ export interface EnrichmentRecord {
   strategy: string | null;
   textLength: number;
   credits: number | null;
-  rendered: boolean;
+  /** Which request tier answered — the cost driver. */
+  tier: string;
+  /** True when every tier was served an anti-bot interstitial. */
+  blocked: boolean;
   /** Did the search page lead us to the listing's own page? */
   reachedDetail: boolean;
   /** Structural read of the page — never its content. */
@@ -134,7 +137,8 @@ export async function enrichTargets(
         strategy: facts.strategy,
         textLength: facts.textLength,
         credits: facts.credits,
-        rendered: facts.rendered,
+        tier: facts.tier,
+        blocked: facts.blocked,
         reachedDetail: facts.reachedDetail,
         signals: facts.signals,
         failure: null,
@@ -148,7 +152,8 @@ export async function enrichTargets(
         strategy: null,
         textLength: 0,
         credits: null,
-        rendered: false,
+        tier: "premium",
+        blocked: false,
         reachedDetail: false,
         signals: null,
         failure:

@@ -99,15 +99,27 @@ this" from "we checked and it's fine".
 
 #### Measuring it before you pay
 
+**What the first live runs established.** RentCast ships no description
+or amenity field in any of 500 rows, so enrichment is the only route to
+the Furnished filter. ScraperAPI's standard tier was served Zillow's
+anti-bot interstitial on 8 of 8 addresses — a real HTTP 200, full of
+real words, in ~210ms for 1 credit, because we never asked for a bypass.
+Mining those block screens tagged three listings "Pet friendly" and
+"Renovated" off Zillow's own SEO footer. Both holes are closed: a
+challenge page is a refusal rather than a source, loose body text is no
+longer read at all, and requests start at the `premium` tier.
+
 `GET /api/enrich?probe=jacksonville&n=25` runs a real batch against live
-addresses and reports the three numbers that decide whether this vendor
-is worth it:
+addresses and reports the numbers that decide whether this vendor is
+worth it:
 
 - `resolveRate` — the share of addresses that yielded readable text
 - `creditsPerProperty` — what a property actually costs, versus the
   ~11 credits a protected page lists at
-- `renderedCount` — how often the cheap path failed and the expensive
-  JS-rendering retry was needed
+- `blockedCount` — how many were refused at every tier we tried
+- `tiers` — which tier finally answered, the real cost driver
+- `reachedDetail` — how many got past the search page to the listing's
+  own page, where the description actually lives
 
 `strategies` shows where the text was found (`json-ld`, `embedded-state`,
 `meta-description`, `visible-text`) and `failures` shows what went wrong

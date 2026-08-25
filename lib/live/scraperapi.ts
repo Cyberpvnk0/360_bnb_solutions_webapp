@@ -27,10 +27,45 @@ const BASE = "https://api.scraperapi.com/";
  *  availability does, and that comes from RentCast, not from here. */
 export const ENRICH_REVALIDATE_SECONDS = 2_592_000;
 
-/** Escalate to JS rendering when the cheap fetch yields no text.
- *  Set SCRAPERAPI_ALLOW_RENDER=0 to hard-cap spend at the cheap path. */
-function renderAllowed(): boolean {
-  return process.env.SCRAPERAPI_ALLOW_RENDER !== "0";
+/**
+ * Request tiers, cheapest first.
+ *
+ * A live run settled which of these is realistic: the standard tier was
+ * served Zillow's anti-bot interstitial on 8 of 8 addresses, in ~210ms,
+ * for 1 credit — the vendor never attempted a bypass because we never
+ * asked for one. Starting there just spends a credit to be told no, so
+ * the ladder starts at `premium`.
+ */
+export type ScrapeTier = "standard" | "premium" | "ultra";
+
+const TIER_PARAMS: Record<ScrapeTier, Record<string, string>> = {
+  standard: {},
+  premium: { premium: "true" },
+  // Last resort: heaviest proxies AND JS rendering, since Zillow builds
+  // the description client-side.
+  ultra: { ultra_premium: "true", render: "true" },
+};
+
+const TIER_ORDER: ScrapeTier[] = ["standard", "premium", "ultra"];
+
+/** Where the ladder starts. Standard is pointless on a protected
+ *  target; override with SCRAPERAPI_TIER if a cheaper one ever works. */
+function startTier(): ScrapeTier {
+  const raw = process.env.SCRAPERAPI_TIER as ScrapeTier | undefined;
+  return raw && TIER_ORDER.includes(raw) ? raw : "premium";
+}
+
+/** How far the ladder may climb. `ultra` is many times the price of
+ *  `premium`, so SCRAPERAPI_MAX_TIER is the spend ceiling. */
+function maxTier(): ScrapeTier {
+  const raw = process.env.SCRAPERAPI_MAX_TIER as ScrapeTier | undefined;
+  return raw && TIER_ORDER.includes(raw) ? raw : "ultra";
+}
+
+function tiersToTry(): ScrapeTier[] {
+  const from = TIER_ORDER.indexOf(startTier());
+  const to = TIER_ORDER.indexOf(maxTier());
+  return to < from ? [TIER_ORDER[from]] : TIER_ORDER.slice(from, to + 1);
 }
 
 /** Why an enrichment attempt failed, in words the diagnostics can show. */
@@ -134,17 +169,6 @@ function fromMetaTags(doc: string): string | null {
   return found.length > 0 ? found.join(" \n ") : null;
 }
 
-function fromVisibleText(doc: string): string | null {
-  const text = doc
-    .replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  // Enough to be a page, capped so a mine never walks a megabyte.
-  return text.length > 200 ? text.slice(0, 20_000) : null;
-}
-
 /**
  * Templated text a portal serves about ANY address, as opposed to what
  * the lister wrote about this unit.
@@ -180,12 +204,22 @@ export function looksLikeBoilerplate(text: string): boolean {
   return BOILERPLATE_MARKERS.some((re) => re.test(text));
 }
 
-/** Cheapest and most precise first; the last is a blunt fallback. */
+/**
+ * Precise strategies only — each reads a field the page declares AS the
+ * description.
+ *
+ * There used to be a "visible-text" fallback that stripped tags off the
+ * whole document. A live run proved why that cannot stay: on a 686KB
+ * Zillow page it mined the navigation and the SEO footer, and three
+ * listings came back tagged "Pet friendly" and "Renovated" purely
+ * because the page links to "Pet friendly apartments in Jacksonville".
+ * A confident wrong tag is the one outcome worse than no tag, so a page
+ * whose description we cannot locate precisely reports nothing found.
+ */
 const STRATEGIES: [string, (doc: string) => string | null][] = [
   ["json-ld", fromJsonLd],
   ["embedded-state", fromEmbeddedState],
   ["meta-description", fromMetaTags],
-  ["visible-text", fromVisibleText],
 ];
 
 /** Which strategy found readable prose, and how much — never the prose. */
@@ -220,6 +254,21 @@ export function extractListingText(
     }
   }
   return null;
+}
+
+/**
+ * An anti-bot interstitial rather than the page we asked for.
+ *
+ * Entities matter: a served challenge says "Press &amp; Hold", and a
+ * pattern that only knows "&" reads it as an ordinary page. A challenge
+ * arrives as a real HTTP 200 full of real words, so nothing downstream
+ * can tell it apart — this test is the only thing standing between a
+ * block screen and a listing tagged from its markup.
+ */
+export function isChallenge(doc: string): boolean {
+  return /press\s*(?:&(?:amp;)?|and)\s*hold|px-captcha|perimeterx|captcha-delivery|(?:are|confirm) you (?:are )?a? ?human|verify you are (?:a )?human|unusual traffic/i.test(
+    doc
+  );
 }
 
 /** Punctuation-blind form, for comparing an address to a URL slug. */
@@ -289,12 +338,7 @@ export function pageSignals(doc: string): PageSignals {
     hasNextData: /id=["']__NEXT_DATA__["']/i.test(doc),
     hasApollo: /hdpApolloPreloadedData/i.test(doc),
     hasJsonLd: /application\/ld\+json/i.test(doc),
-    // Entities matter here: a served challenge says "Press &amp; Hold",
-    // and a pattern that only knows "&" would call it a normal page.
-    looksLikeChallenge:
-      /press\s*(?:&(?:amp;)?|and)\s*hold|px-captcha|perimeterx|captcha-delivery|(?:are|confirm) you (?:are )?a? ?human|verify you are (?:a )?human|unusual traffic/i.test(
-        doc
-      ),
+    looksLikeChallenge: isChallenge(doc),
     boilerplate: anyText !== null && looksLikeBoilerplate(anyText),
   };
 }
@@ -315,14 +359,14 @@ function creditsFrom(res: Response): number | null {
 interface FetchOutcome {
   doc: string;
   credits: number | null;
-  rendered: boolean;
+  tier: ScrapeTier;
 }
 
 /** One ScraperAPI call. The document it returns is a local everywhere it
  *  is used — see the module rule. */
 async function scrape(
   targetUrl: string,
-  render: boolean
+  tier: ScrapeTier
 ): Promise<FetchOutcome> {
   const key = process.env.SCRAPERAPI_KEY;
   if (!key) throw new ScraperApiError("no-key");
@@ -331,8 +375,8 @@ async function scrape(
     api_key: key,
     url: targetUrl,
     country_code: "us",
+    ...TIER_PARAMS[tier],
   });
-  if (render) params.set("render", "true");
 
   let res: Response;
   try {
@@ -355,7 +399,34 @@ async function scrape(
     throw new ScraperApiError("http", res.status);
   }
 
-  return { doc: await res.text(), credits: creditsFrom(res), rendered: render };
+  return { doc: await res.text(), credits: creditsFrom(res), tier };
+}
+
+/**
+ * Fetch a page, climbing the tier ladder until one comes back that is
+ * not an anti-bot interstitial.
+ *
+ * A challenge page is a FAILURE, never a source. It is a real HTTP 200
+ * full of real words, and mining it is how a listing ends up tagged
+ * from a block screen's markup. Returns null when every tier was
+ * challenged — the caller then reports the row unknown.
+ */
+async function readPage(url: string): Promise<{
+  outcome: FetchOutcome;
+  spent: number;
+  challenged: boolean;
+}> {
+  let spent = 0;
+  let last: FetchOutcome | null = null;
+  for (const tier of tiersToTry()) {
+    const attempt = await scrape(url, tier);
+    spent += attempt.credits ?? 0;
+    last = attempt;
+    if (!isChallenge(attempt.doc)) {
+      return { outcome: attempt, spent, challenged: false };
+    }
+  }
+  return { outcome: last!, spent, challenged: true };
 }
 
 /* ------------------------------------------------------------------ */
@@ -373,7 +444,11 @@ export interface ListingFacts {
   strategy: string | null;
   textLength: number;
   credits: number | null;
-  rendered: boolean;
+  /** Which request tier finally answered — the cost driver. */
+  tier: ScrapeTier;
+  /** True when every tier was served an anti-bot interstitial. The row
+   *  is unknown because we were refused, not because it said nothing. */
+  blocked: boolean;
   /** Whether the search page led us to this listing's own page. */
   reachedDetail: boolean;
   /** Structural read of the last page fetched — how an extraction that
@@ -387,7 +462,8 @@ const UNKNOWN: ListingFacts = {
   strategy: null,
   textLength: 0,
   credits: null,
-  rendered: false,
+  tier: "premium",
+  blocked: false,
   reachedDetail: false,
   signals: null,
 };
@@ -410,14 +486,28 @@ export async function describeListing(
   stateCode: string
 ): Promise<ListingFacts> {
   let spent = 0;
-  let rendered = false;
   let reachedDetail = false;
+  let tier: ScrapeTier = startTier();
 
-  // Hop 1 — the search page. Cheap, and usually NOT where the prose is:
-  // what it reliably carries is a link to the listing's own page.
-  const search = await scrape(listingSearchUrl(address, city, stateCode), false);
-  spent += search.credits ?? 0;
-  let doc = search.doc;
+  // Hop 1 — the search page. Not usually where the prose is; what it
+  // reliably carries is a link to the listing's own page.
+  const search = await readPage(listingSearchUrl(address, city, stateCode));
+  spent += search.spent;
+  tier = search.outcome.tier;
+  let doc = search.outcome.doc;
+
+  // A challenge is a dead end, not a document. Stop here rather than
+  // mine a block screen or follow links out of one.
+  if (search.challenged) {
+    return {
+      ...UNKNOWN,
+      credits: spent || null,
+      tier,
+      blocked: true,
+      signals: pageSignals(doc),
+    };
+  }
+
   let found = extractListingText(doc);
 
   // Hop 2 — the listing's own page, matched to our address so a
@@ -425,21 +515,22 @@ export async function describeListing(
   if (!found) {
     const detailUrl = detailUrlFor(doc, address);
     if (detailUrl) {
-      const detail = await scrape(detailUrl, false);
-      spent += detail.credits ?? 0;
-      doc = detail.doc;
-      reachedDetail = true;
-      found = extractListingText(doc);
-
-      // Zillow builds the description client-side, so rendering is the
-      // last resort — and only ever on the page that actually has it.
-      if (!found && renderAllowed()) {
-        const withJs = await scrape(detailUrl, true);
-        spent += withJs.credits ?? 0;
-        doc = withJs.doc;
-        rendered = true;
-        found = extractListingText(doc);
+      const detail = await readPage(detailUrl);
+      spent += detail.spent;
+      tier = detail.outcome.tier;
+      doc = detail.outcome.doc;
+      reachedDetail = !detail.challenged;
+      if (detail.challenged) {
+        return {
+          ...UNKNOWN,
+          credits: spent || null,
+          tier,
+          blocked: true,
+          reachedDetail: false,
+          signals: pageSignals(doc),
+        };
       }
+      found = extractListingText(doc);
     }
   }
 
@@ -449,7 +540,7 @@ export async function describeListing(
     return {
       ...UNKNOWN,
       credits: spent || null,
-      rendered,
+      tier,
       reachedDetail,
       signals,
     };
@@ -462,7 +553,8 @@ export async function describeListing(
     strategy: found.outcome.strategy,
     textLength: found.outcome.length,
     credits: spent || null,
-    rendered,
+    tier,
+    blocked: false,
     reachedDetail,
     signals,
   };

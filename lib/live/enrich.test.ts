@@ -18,6 +18,15 @@ import type { RentalListing } from "@/lib/mock/types";
 const SIGNATURE = "bring your bags and nothing else";
 const PROSE = `Fully furnished riverside townhome — ${SIGNATURE}. Hot tub on the patio.`;
 
+/** What the live probe was actually served, on 8 of 8 addresses: a
+ *  real HTTP 200, full of real words, that is not a listing. */
+const CHALLENGE =
+  '<html><body><div id="px-captcha">Press &amp; Hold to confirm you are a human</div></body></html>';
+
+const DETAIL_PAGE = `<html><head><script type="application/ld+json">
+  {"description":"${PROSE}"}
+</script></head><body>x</body></html>`;
+
 const HTML = {
   jsonLd: `<html><head><script type="application/ld+json">
     {"@type":"SingleFamilyResidence","description":"${PROSE}"}
@@ -30,13 +39,19 @@ const HTML = {
   empty: `<html><body><p>hi</p></body></html>`,
 };
 
-function mockFetch(body: string, init: { status?: number; headers?: Record<string, string> } = {}) {
-  return vi.fn(async () =>
-    new Response(body, {
+/** A fetch stub that records the URL it was called with, so a test can
+ *  assert which request TIER went out. */
+function mockFetch(
+  body: string,
+  init: { status?: number; headers?: Record<string, string> } = {}
+) {
+  return vi.fn(async (url: string | URL) => {
+    void url;
+    return new Response(body, {
       status: init.status ?? 200,
       headers: init.headers ?? {},
-    })
-  );
+    });
+  });
 }
 
 beforeEach(() => {
@@ -48,10 +63,13 @@ afterEach(() => {
 });
 
 describe("extractListingText", () => {
-  it("finds prose in each shape a listing page ships it in", () => {
+  it("finds prose in each shape a listing page DECLARES it in", () => {
     for (const [name, doc] of Object.entries(HTML)) {
       const found = extractListingText(doc);
-      if (name === "empty") {
+      // `bare` puts the words in the body with no description field, and
+      // `empty` has nothing at all. Both are nothing-found now: reading
+      // loose body text is what tagged live listings off page furniture.
+      if (name === "empty" || name === "bare") {
         expect(found, name).toBeNull();
         continue;
       }
@@ -68,9 +86,12 @@ describe("extractListingText", () => {
     expect(found?.text).toContain(SIGNATURE);
   });
 
-  it("prefers the precise strategy over the blunt one", () => {
+  it("reads only fields a page declares AS the description", () => {
     expect(extractListingText(HTML.jsonLd)?.outcome.strategy).toBe("json-ld");
-    expect(extractListingText(HTML.bare)?.outcome.strategy).toBe("visible-text");
+    // Prose sitting loose in the body is not a declared description.
+    // Mining it is exactly how three live listings got tagged from
+    // Zillow's SEO footer, so it must find nothing.
+    expect(extractListingText(HTML.bare)).toBeNull();
   });
 });
 
@@ -106,43 +127,50 @@ describe("describeListing", () => {
     expect(facts.features).toEqual([]);
   });
 
-  it("escalates to rendering only on the listing's own page", async () => {
-    // Rendering is the most expensive request there is, so it is never
-    // spent on a search page — only on the page that actually holds the
-    // description, and only after the cheap read of it came back empty.
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(SEARCH_PAGE))
-      .mockResolvedValueOnce(new Response(HTML.empty))
-      .mockResolvedValueOnce(new Response(HTML.jsonLd));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const facts = await describeListing("1204 Glencoe St", "Jacksonville", "FL");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain("render=true");
-    expect(String(fetchMock.mock.calls[1][0])).not.toContain("render=true");
-    expect(String(fetchMock.mock.calls[2][0])).toContain("render=true");
-    expect(facts.rendered).toBe(true);
-    expect(facts.reachedDetail).toBe(true);
-    expect(facts.featuresKnown).toBe(true);
-  });
-
-  it("never pays for rendering when the cheap path worked", async () => {
+  it("asks for a bypass tier rather than the standard one", async () => {
+    // Standard was served an interstitial on 8 of 8 live addresses:
+    // starting there spends a credit to be told no.
     const fetchMock = mockFetch(HTML.jsonLd);
     vi.stubGlobal("fetch", fetchMock);
     const facts = await describeListing("12 River Rd", "Jacksonville", "FL");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(facts.rendered).toBe(false);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("premium=true");
+    expect(facts.tier).toBe("premium");
+    expect(facts.blocked).toBe(false);
   });
 
-  it("respects SCRAPERAPI_ALLOW_RENDER=0 as a hard spend cap", async () => {
-    process.env.SCRAPERAPI_ALLOW_RENDER = "0";
-    const fetchMock = mockFetch(HTML.empty);
+  it("treats a challenge page as a refusal, never as a source", async () => {
+    // The live run's exact failure: mining a block screen tagged three
+    // listings off Zillow's own navigation markup.
+    vi.stubGlobal("fetch", mockFetch(CHALLENGE));
+    const facts = await describeListing("12 River Rd", "Jacksonville", "FL");
+    expect(facts.blocked).toBe(true);
+    expect(facts.featuresKnown).toBe(false);
+    expect(facts.features).toEqual([]);
+  });
+
+  it("climbs to the heavy tier only when the cheap one is refused", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(CHALLENGE))
+      .mockResolvedValueOnce(new Response(HTML.jsonLd));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const facts = await describeListing("12 River Rd", "Jacksonville", "FL");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("premium=true");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("ultra_premium=true");
+    expect(facts.tier).toBe("ultra");
+    expect(facts.featuresKnown).toBe(true);
+  });
+
+  it("respects SCRAPERAPI_MAX_TIER as a hard spend ceiling", async () => {
+    process.env.SCRAPERAPI_MAX_TIER = "premium";
+    const fetchMock = mockFetch(CHALLENGE);
     vi.stubGlobal("fetch", fetchMock);
     const facts = await describeListing("12 River Rd", "Jacksonville", "FL");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(facts.featuresKnown).toBe(false);
-    delete process.env.SCRAPERAPI_ALLOW_RENDER;
+    expect(facts.blocked).toBe(true);
+    delete process.env.SCRAPERAPI_MAX_TIER;
   });
 
   it("reads the address the app already links to", () => {
@@ -339,10 +367,6 @@ describe("detailUrlFor", () => {
 });
 
 describe("the two-hop", () => {
-  const DETAIL_PAGE = `<html><head><script type="application/ld+json">
-    {"description":"${PROSE}"}
-  </script></head><body>x</body></html>`;
-
   it("follows the search page to the listing's own page", async () => {
     const fetchMock = vi
       .fn()
@@ -358,6 +382,21 @@ describe("the two-hop", () => {
     expect(facts.features).toContain("Furnished");
     // Still no prose, two hops later.
     expect(JSON.stringify(facts)).not.toContain(SIGNATURE);
+  });
+
+  it("does not follow links out of a block screen", async () => {
+    // A challenged page can still contain markup that looks like detail
+    // links. Following them spends money chasing a refusal.
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      void url;
+      return new Response(CHALLENGE);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const facts = await describeListing("1204 Glencoe St", "Jacksonville", "FL");
+    // premium then ultra on hop one, and no hop two.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(facts.reachedDetail).toBe(false);
+    expect(facts.blocked).toBe(true);
   });
 
   it("skips the second hop when the search page already had the prose", async () => {

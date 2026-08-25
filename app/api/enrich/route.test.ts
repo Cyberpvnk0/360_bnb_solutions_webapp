@@ -103,7 +103,8 @@ describe("GET /api/enrich?probe", () => {
     stubVendors({ readable: () => true });
     const { body } = await probe(8);
     expect(body.strategies).toEqual({ "json-ld": 8 });
-    expect(body.renderedCount).toBe(0);
+    expect(body.blockedCount).toBe(0);
+    expect(body.tiers).toEqual({ premium: 8 });
   });
 
   it("carries no listing prose, only counts", async () => {
