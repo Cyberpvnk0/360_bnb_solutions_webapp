@@ -120,7 +120,9 @@ export function ListingDetailDialog({
               <p className="text-xs text-muted-foreground tabular">
                 {listing.bedrooms} bd · {listing.bathrooms} ba ·{" "}
                 {listing.sqft > 0 ? `${fmtNum(listing.sqft)} sqft · ` : ""}
-                {listing.daysOnMarket === 0
+                {listing.daysOnMarket === undefined
+                  ? "Listed date not published"
+                  : listing.daysOnMarket === 0
                   ? "listed today"
                   : `${listing.daysOnMarket} days on market`}
               </p>

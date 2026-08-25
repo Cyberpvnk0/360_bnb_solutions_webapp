@@ -98,7 +98,10 @@ interface Row {
 
 const SORTERS: Record<SortKey, (a: Row, b: Row) => number> = {
   spread: (a, b) => b.cushionPts - a.cushionPts,
-  newest: (a, b) => a.listing.daysOnMarket - b.listing.daysOnMarket,
+  // A listing whose age we don't know sorts last, never as the freshest.
+  newest: (a, b) =>
+    (a.listing.daysOnMarket ?? Number.POSITIVE_INFINITY) -
+    (b.listing.daysOnMarket ?? Number.POSITIVE_INFINITY),
   "rent-asc": (a, b) => a.listing.rentMonthly - b.listing.rentMonthly,
   "rent-desc": (a, b) => b.listing.rentMonthly - a.listing.rentMonthly,
 };

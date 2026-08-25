@@ -197,6 +197,8 @@ const LAT_KEYS = ["latitude", "lat", "latLong.latitude"] as const;
 const LON_KEYS = ["longitude", "lng", "lon", "latLong.longitude"] as const;
 const URL_KEYS = ["url", "listingUrl", "detailUrl"] as const;
 const TYPE_KEYS = ["propertyType", "homeType"] as const;
+/** Redfin ships a thumbnail on most rows — a real photo of the unit. */
+const PHOTO_KEYS = ["thumbnail_img_url", "thumbnailUrl", "photoUrl"] as const;
 /** Short display chips beside a listing — a second amenity signal. */
 const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
 
@@ -260,7 +262,11 @@ export function extractListings(body: unknown): Row[] {
  */
 /** Why a row couldn't be used — counted so a zero result explains
  *  itself instead of looking like an empty market. */
-export type SkipReason = "no-price" | "no-address" | "no-coordinates";
+export type SkipReason =
+  | "no-price"
+  | "no-address"
+  | "no-coordinates"
+  | "no-beds";
 
 export type MapResult =
   | { ok: true; listing: RentalListing }
@@ -302,8 +308,21 @@ export function mapRedfinListing(
   }
 
   // "2 beds" / "1.5 baths" / "940 sq ft" — display strings, not numbers.
+  const bedsText = pickString(raw, BEDS_KEYS) ?? "";
   const rawBeds = pickNumber(raw, BEDS_KEYS);
-  const bedrooms = Math.min(5, Math.max(1, Math.round(rawBeds ?? 1)));
+  // A studio genuinely has no bedroom count and counts as one unit of
+  // sleeping space; anything else without a number is a count we do not
+  // have, and defaulting it to 1 would understate real two- and
+  // three-bedroom units across a whole market.
+  const bedrooms =
+    rawBeds !== undefined
+      ? Math.min(5, Math.max(1, Math.round(rawBeds)))
+      : /studio/i.test(bedsText)
+        ? 1
+        : undefined;
+  if (bedrooms === undefined) return { ok: false, skip: "no-beds" };
+
+  // A floor, not a guess: every unit has at least one bathroom.
   const bathrooms = pickNumber(raw, BATHS_KEYS) ?? 1;
   const detail = pickString(raw, URL_KEYS);
 
@@ -341,10 +360,10 @@ export function mapRedfinListing(
       sqft: Math.round(pickNumber(raw, SQFT_KEYS) ?? 0),
       propertyType: propertyTypeOf(raw),
       rentMonthly: Math.round(rentMonthly),
-      daysOnMarket: Math.max(
-        0,
-        Math.round(pickNumber(raw, ["daysOnMarket", "dom"]) ?? 0)
-      ),
+      // Redfin's search rows carry no listing date. Left absent rather
+      // than zeroed, which would badge all eighty "New, listed today".
+      daysOnMarket: pickNumber(raw, ["daysOnMarket", "dom"]),
+      photoUrl: pickString(raw, PHOTO_KEYS),
       petFriendly: features.includes("Pet friendly"),
       features,
       // A furnished-filtered search is a real amenity answer; the chips

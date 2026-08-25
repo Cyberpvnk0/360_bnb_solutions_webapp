@@ -201,8 +201,10 @@ export interface RentalListing {
   propertyType: PropertyType;
   /** Asking rent, dollars per month. */
   rentMonthly: number;
-  /** Days since the listing went up (0 = today). */
-  daysOnMarket: number;
+  /** Days since the listing went up (0 = today). Absent when the source
+   *  doesn't carry it — Redfin's search rows don't, and defaulting to 0
+   *  would badge every one of them "New, listed today". */
+  daysOnMarket?: number;
   petFriendly: boolean;
   /** Who to contact about this unit. */
   contact?: ListingContact;

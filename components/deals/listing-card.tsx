@@ -72,7 +72,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             listing={l}
             className="h-28 w-full border-b border-border"
           />
-          {l.daysOnMarket < 5 ? (
+          {l.daysOnMarket !== undefined && l.daysOnMarket < 5 ? (
             <span className="absolute left-3 top-3 rounded-full border border-gold/50 bg-gold-fill/10 px-2 py-0.5 text-[10px] font-medium text-gold">
               New
             </span>

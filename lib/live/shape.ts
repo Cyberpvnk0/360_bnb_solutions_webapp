@@ -167,9 +167,13 @@ export const PROSE_MIN_LENGTH = 80;
 /** Fields holding free text long enough for a description miner to read. */
 export function proseFields(fields: Record<string, FieldReport>): string[] {
   return Object.entries(fields)
-    .filter(
-      ([, f]) => f.types.includes("string") && (f.maxLength ?? 0) >= PROSE_MIN_LENGTH
-    )
+    .filter(([path, f]) => {
+      if (!f.types.includes("string")) return false;
+      if ((f.maxLength ?? 0) < PROSE_MIN_LENGTH) return false;
+      // A long string is not necessarily text: URLs and image links
+      // clear the length bar and are not descriptions of anything.
+      return !/url|link|href|image|img|photo|thumbnail|src/i.test(path);
+    })
     .map(([path]) => path);
 }
 

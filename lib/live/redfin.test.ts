@@ -163,6 +163,30 @@ describe("mapRedfinListing", () => {
     expect(mapped({ number_beds: "9 beds" })!.bedrooms).toBe(5);
   });
 
+  it("skips a row whose bedroom count it cannot read", () => {
+    // Defaulting to 1 would quietly understate real two- and
+    // three-bedroom units across a whole market, and the cushion maths
+    // is built on bedroom count.
+    const result = mapRedfinListing({ ...row, number_beds: "— beds" }, jax, {
+      furnished: true,
+      index: 0,
+      coords: COORDS,
+    });
+    expect(result).toEqual({ ok: false, skip: "no-beds" });
+  });
+
+  it("leaves the listing date absent rather than claiming today", () => {
+    // Redfin's search rows carry no listing date. Zero would badge every
+    // one of eighty listings "New, listed today".
+    expect(mapped()!.daysOnMarket).toBeUndefined();
+  });
+
+  it("carries the real thumbnail when Redfin ships one", () => {
+    const l = mapped({ thumbnail_img_url: "https://ssl.cdn-redfin.com/x.jpg" })!;
+    expect(l.photoUrl).toBe("https://ssl.cdn-redfin.com/x.jpg");
+    expect(mapped({ thumbnail_img_url: undefined })!.photoUrl).toBeUndefined();
+  });
+
   it("gives every row a stable, market-scoped id", () => {
     const a = mapped()!;
     const b = mapped()!;

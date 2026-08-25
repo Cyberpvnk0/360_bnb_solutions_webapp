@@ -78,6 +78,14 @@ describe("proseFields / amenityFields", () => {
     expect(proseFields(fields)).toEqual(["description"]);
   });
 
+  it("does not call a long URL prose", () => {
+    // A thumbnail link clears the length bar and describes nothing.
+    const fields = describeFields([
+      { thumbnail_img_url: `https://ssl.cdn-redfin.com/${"a".repeat(90)}.jpg` },
+    ]);
+    expect(proseFields(fields)).toEqual([]);
+  });
+
   it("catches amenity fields by NAME even when the values are short", () => {
     // A three-word `amenities` array is as good as prose for answering
     // "is it furnished", and would fall under the length threshold.
