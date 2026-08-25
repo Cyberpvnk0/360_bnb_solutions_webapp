@@ -459,21 +459,10 @@ export async function fetchRedfinPhotoIndex(
 /* One listing's full gallery                                          */
 /* ------------------------------------------------------------------ */
 
-/**
- * Candidate paths for the per-listing endpoint.
- *
- * The search endpoint turned out to be versioned (`/search/v1`) and the
- * unversioned path billed while returning nothing readable — so rather
- * than guess once and pay for being wrong, this tries the plausible
- * spellings and reports which answered. Pin the winner and delete the
- * rest.
- */
-export const REDFIN_LISTING_ENDPOINTS = [
-  "https://api.scraperapi.com/structured/redfin/forrent/v1",
-  "https://api.scraperapi.com/structured/redfin/for-rent/v1",
-  "https://api.scraperapi.com/structured/redfin/listing/v1",
-  "https://api.scraperapi.com/structured/redfin/property/v1",
-] as const;
+/** Pinned against a live listing: 10 credits, and far more than photos —
+ *  a description, structured amenities, and deposit ranges. */
+export const REDFIN_LISTING_ENDPOINT =
+  "https://api.scraperapi.com/structured/redfin/forrent/v1";
 
 /** A month: a listing's photos don't change once it's posted. */
 export const LISTING_REVALIDATE_SECONDS = 2_592_000;
@@ -506,21 +495,68 @@ export function harvestPhotos(
   return out;
 }
 
+/** Where a listing page keeps its amenity labels. */
+const AMENITY_PATHS = [
+  ["amenities", "unit_amenities"],
+  ["amenities", "community_amenities"],
+  ["amenities", "standardized_amenities"],
+  ["amenities", "other_amenities"],
+] as const;
+
+/** Short factual labels — "In-unit washer & dryer", "Air conditioning" —
+ *  not prose. Deduped, order preserved. */
+export function harvestAmenities(body: unknown): string[] {
+  const out: string[] = [];
+  const add = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const v of value) {
+      const label = typeof v === "string" ? v.trim() : "";
+      if (label && !out.includes(label)) out.push(label);
+    }
+  };
+  const root = (body ?? {}) as Row;
+  for (const [group, key] of AMENITY_PATHS) {
+    const bucket = root[group];
+    if (bucket && typeof bucket === "object") add((bucket as Row)[key]);
+  }
+  // Floor plans carry their own unit-specific list.
+  const plans = root.floor_plans;
+  if (Array.isArray(plans)) {
+    for (const plan of plans) {
+      const unit = (plan as Row)?.unit_type as Row | undefined;
+      add(unit?.specific_amenities);
+    }
+  }
+  return out;
+}
+
 export interface RedfinListingDetail {
   photos: string[];
-  /** Which candidate path answered — pin it once known. */
-  endpoint: string | null;
+  /** Redfin's own amenity labels for this unit and its building. */
+  amenities: string[];
+  /** Our canonical tags, mined from those labels and the listing's
+   *  description through the one shared miner — so "Furnished" means
+   *  the same thing here as everywhere else, negations included. */
+  features: string[];
+  /** Security deposit, when the page publishes one — a real calculator
+   *  input the analyzer currently defaults to zero. */
+  depositMin?: number;
+  depositMax?: number;
   credits: number | null;
   /** Raw payload, for the shape probe only. */
   body: unknown;
 }
 
 /**
- * One listing's page, for its full gallery.
+ * One listing's page: its photos, its amenities, its deposit.
  *
  * Called only when a student opens a listing, never while browsing a
  * list — a page of twenty-four cards must not become twenty-four billed
  * requests. Cached a month per listing and shared by everyone.
+ *
+ * The payload also carries the listing's own description. It is mined
+ * for tags and goes no further: the product shows facts about a
+ * property, not somebody else's paragraph about it.
  */
 export async function fetchRedfinListing(
   listingUrl: string
@@ -533,40 +569,44 @@ export async function fetchRedfinListing(
     throw new RedfinError("http", 400, "not a redfin.com listing URL");
   }
 
-  let lastDetail = "";
-  for (const endpoint of REDFIN_LISTING_ENDPOINTS) {
-    const params = new URLSearchParams({ api_key: key, url: listingUrl });
-    let res: Response;
-    try {
-      res = await fetch(`${endpoint}?${params}`, {
-        next: { revalidate: LISTING_REVALIDATE_SECONDS },
-      });
-    } catch {
-      throw new RedfinError("network");
-    }
-
-    if (res.status === 401) throw new RedfinError("auth", 401);
-    if (res.status === 429) throw new RedfinError("quota", 429);
-    if (!res.ok) {
-      // A wrong path 404s; keep trying the others rather than give up.
-      lastDetail = (await res.text().catch(() => ""))
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 200);
-      continue;
-    }
-
-    const body: unknown = await res.json().catch(() => null);
-    return {
-      photos: harvestPhotos(body),
-      endpoint,
-      credits: creditsFrom(res),
-      body,
-    };
+  const params = new URLSearchParams({ api_key: key, url: listingUrl });
+  let res: Response;
+  try {
+    res = await fetch(`${REDFIN_LISTING_ENDPOINT}?${params}`, {
+      next: { revalidate: LISTING_REVALIDATE_SECONDS },
+    });
+  } catch {
+    throw new RedfinError("network");
   }
 
-  throw new RedfinError("http", 404, lastDetail || "no listing endpoint answered");
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => ""))
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+    if (res.status === 401) throw new RedfinError("auth", 401, detail);
+    if (res.status === 403) throw new RedfinError("forbidden", 403, detail);
+    if (res.status === 429) throw new RedfinError("quota", 429, detail);
+    throw new RedfinError("http", res.status, detail);
+  }
+
+  const body: unknown = await res.json().catch(() => null);
+  const root = (body ?? {}) as Row;
+  const amenities = harvestAmenities(body);
+  const fees = root.fees_and_policies as Row | undefined;
+  const num = (v: unknown) => (typeof v === "number" && v >= 0 ? v : undefined);
+
+  return {
+    photos: harvestPhotos(body),
+    amenities,
+    features:
+      mineFeatures([...amenities, pickString(root, ["description"])]) ?? [],
+    depositMin: num(fees?.deposit_fee_min),
+    depositMax: num(fees?.deposit_fee_max),
+    credits: creditsFrom(res),
+    body,
+  };
 }
 
 /* ------------------------------------------------------------------ */

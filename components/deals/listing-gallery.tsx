@@ -19,9 +19,18 @@ import { cn } from "@/lib/utils";
 export function ListingGallery({
   listing,
   className,
+  onDetail,
 }: {
   listing: RentalListing;
   className?: string;
+  /** The rest of what the listing's page carries — amenities and the
+   *  published deposit — handed up so the panel can show them without
+   *  a second billed request. */
+  onDetail?: (detail: {
+    amenities: string[];
+    depositMin?: number;
+    depositMax?: number;
+  }) => void;
 }) {
   const source = listing.sourceUrl;
   /** Photos we went and got; null until the fetch resolves. */
@@ -33,6 +42,13 @@ export function ListingGallery({
 
   // A different listing in the same slot resets during render, not in
   // an effect: a synchronous setState inside one cascades renders.
+  // Assigned in an effect, never during render: the callback identity
+  // must not restart the fetch.
+  const onDetailRef = React.useRef(onDetail);
+  React.useEffect(() => {
+    onDetailRef.current = onDetail;
+  }, [onDetail]);
+
   const [lastId, setLastId] = React.useState(listing.id);
   if (listing.id !== lastId) {
     setLastId(listing.id);
@@ -50,10 +66,25 @@ export function ListingGallery({
     let cancelled = false;
     fetch(`/api/redfin/listing?url=${encodeURIComponent(source)}`)
       .then((res) => res.json())
-      .then((data: { ok?: boolean; photos?: string[] }) => {
-        if (cancelled || !data?.ok || !Array.isArray(data.photos)) return;
-        setFetched(data.photos);
-      })
+      .then(
+        (data: {
+          ok?: boolean;
+          photos?: string[];
+          amenities?: string[];
+          depositMin?: number;
+          depositMax?: number;
+        }) => {
+          if (cancelled || !data?.ok) return;
+          if (Array.isArray(data.photos)) setFetched(data.photos);
+          if (Array.isArray(data.amenities) && data.amenities.length > 0) {
+            onDetailRef.current?.({
+              amenities: data.amenities,
+              depositMin: data.depositMin,
+              depositMax: data.depositMax,
+            });
+          }
+        }
+      )
       .catch(() => {
         // A gallery that won't load is not worth an error state: the
         // single card image below is already a correct answer.

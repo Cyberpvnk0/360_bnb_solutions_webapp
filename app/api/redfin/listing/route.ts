@@ -32,20 +32,31 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { photos, endpoint, credits, body } = await fetchRedfinListing(url);
+    const { photos, amenities, features, depositMin, depositMax, credits, body } =
+      await fetchRedfinListing(url);
     if (shape) {
       return NextResponse.json({
-        /** Which candidate path answered — pin it and delete the rest. */
-        endpoint,
         credits,
         photoCount: photos.length,
+        amenities,
+        features,
+        depositMin,
+        depositMax,
         arrays: arrayPaths(body),
         status: statusStrings(body),
         responseShape: describeFields([body], 6),
         samplePhotos: photos.slice(0, 3),
       });
     }
-    return NextResponse.json({ ok: true, photos, credits });
+    return NextResponse.json({
+      ok: true,
+      photos,
+      amenities,
+      features,
+      depositMin,
+      depositMax,
+      credits,
+    });
   } catch (error) {
     if (error instanceof RedfinError) {
       return NextResponse.json(
