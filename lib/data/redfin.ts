@@ -63,7 +63,7 @@ export async function getRedfinFurnished(
 export function redfinFailureLabel(reason?: RedfinFailureReason): string {
   switch (reason) {
     case "no-city":
-      return "Furnished search isn't wired up for this market yet";
+      return "Couldn't identify this city on Redfin";
     case "no-key":
       return "Furnished search isn't configured";
     case "auth":

@@ -97,11 +97,27 @@ US Census first (free, keyless, US-only), Google only as a fallback and
 only when that key already exists, cached 30 days. A listing that can't
 be placed is dropped rather than pinned at the city centre.
 
-Redfin keys cities by an opaque numeric id that can't be derived from a
-name, so only markets in `REDFIN_CITY_ID` can be searched. Everywhere
-else the filter says "Furnished search isn't wired up for this market
-yet" and leaves the rows unfiltered with each card marked "Amenities not
-listed" — never a guess, and never another city's rentals.
+#### City ids
+
+Redfin keys cities by an opaque number in the URL path that can't be
+derived from a name, so a market has to be matched to one before it can
+be searched. Seeded ids in `REDFIN_CITY_ID` are used first; anything
+else resolves once against Redfin's own location autocomplete and is
+then cached for a year.
+
+Resolution is **verified, not fuzzy**. Jacksonville FL, Jacksonville NC
+and Jackson MS are one loose match apart, so a candidate is accepted
+only when the city name matches whole (seeing through "St."/"Saint" and
+hyphens) *and* the state appears as its own token — "MI" must not match
+"Miami". No confident match means no search: the filter says "Couldn't
+identify this city on Redfin", rows stay unfiltered, and each card is
+marked "Amenities not listed". Showing another metro's rentals under
+this market's name would be far worse than showing none.
+
+`GET /api/redfin?market=<slug>&resolve=1` reports the id a market
+resolves to and the URL it produces. Open that URL, confirm it's the
+right city, and paste the pair into `REDFIN_CITY_ID` so the lookup never
+runs again.
 
 #### The description miner (kept, not wired)
 

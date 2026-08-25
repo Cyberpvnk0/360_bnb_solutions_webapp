@@ -21,6 +21,7 @@
 
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
+import { cityIdFor, REDFIN_CITY_ID } from "@/lib/live/redfin-city";
 import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
 /**
@@ -64,33 +65,38 @@ export function nextPageUrls(body: unknown): string[] {
 }
 
 /**
- * Redfin addresses a city by a numeric id in its URL path, which cannot
- * be derived from a name. Seeded from real URLs; unmapped markets simply
- * have no Redfin search until their id is added, which the caller
- * reports honestly rather than guessing a wrong city.
+ * A Redfin rentals search URL for a KNOWN city id, optionally narrowed
+ * to furnished units. Mirrors the real URL shape:
+ *   /city/8907/FL/Jacksonville/rentals/filter/is-furnished
  */
-export const REDFIN_CITY_ID: Record<string, number> = {
-  jacksonville: 8907,
-};
-
-export function redfinCoversMarket(market: Market): boolean {
-  return REDFIN_CITY_ID[market.slug] !== undefined;
+export function redfinRentalsUrlFor(
+  market: Market,
+  cityId: number,
+  opts: { furnished?: boolean } = {}
+): string {
+  const city = market.name.trim().replace(/\s+/g, "-");
+  const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}/rentals`;
+  return opts.furnished ? `${base}/filter/is-furnished` : base;
 }
 
 /**
- * A Redfin rentals search URL, optionally narrowed to furnished units.
- * Mirrors the real URL shape:
- *   /city/8907/FL/Jacksonville/rentals/filter/is-furnished
+ * The same URL, resolving the market's city id first — from the seeded
+ * map when we have it, otherwise from Redfin's own autocomplete, and
+ * null when we can't be sure. Null is a real answer: searching a city we
+ * merely hope is right would show another metro's rentals under this
+ * market's name.
  */
-export function redfinRentalsUrl(
+export async function redfinRentalsUrl(
   market: Market,
   opts: { furnished?: boolean } = {}
-): string | null {
-  const id = REDFIN_CITY_ID[market.slug];
-  if (id === undefined) return null;
-  const city = market.name.trim().replace(/\s+/g, "-");
-  const base = `https://www.redfin.com/city/${id}/${market.stateCode}/${city}/rentals`;
-  return opts.furnished ? `${base}/filter/is-furnished` : base;
+): Promise<string | null> {
+  const cityId = await cityIdFor(market);
+  return cityId === null ? null : redfinRentalsUrlFor(market, cityId, opts);
+}
+
+/** Whether this market has a Redfin city id without going and asking. */
+export function redfinCoversMarket(market: Market): boolean {
+  return REDFIN_CITY_ID[market.slug] !== undefined;
 }
 
 /** Why a Redfin fetch failed, in words the UI can show. */
@@ -442,7 +448,9 @@ export async function fetchRedfinPhotoIndex(
   market: Market
 ): Promise<Map<string, string>> {
   const index = new Map<string, string>();
-  if (!redfinCoversMarket(market)) return index;
+  // Resolve rather than consult the seeded map: a market whose id we can
+  // find still deserves its photos.
+  if ((await cityIdFor(market)) === null) return index;
 
   const { raw } = await fetchRedfinRentals(market, { furnished: false });
   for (const row of raw) {
@@ -710,7 +718,7 @@ export async function fetchRedfinRentals(
   market: Market,
   opts: { furnished?: boolean } = {}
 ): Promise<RedfinFetch> {
-  const searchUrl = redfinRentalsUrl(market, opts);
+  const searchUrl = await redfinRentalsUrl(market, opts);
   if (!searchUrl) throw new RedfinError("no-city");
 
   const limit = maxPages();

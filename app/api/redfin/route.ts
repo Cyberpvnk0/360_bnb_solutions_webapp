@@ -14,7 +14,8 @@
 
 import { NextResponse } from "next/server";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
-import { fetchRedfinRentals, RedfinError } from "@/lib/live/redfin";
+import { fetchRedfinRentals, redfinRentalsUrlFor, RedfinError } from "@/lib/live/redfin";
+import { cityIdFor } from "@/lib/live/redfin-city";
 import {
   amenityFields,
   arrayPaths,
@@ -56,6 +57,26 @@ export async function GET(request: Request) {
   }
   const furnished = searchParams.get("furnished") === "1";
   const shape = searchParams.get("shape");
+
+  // Resolver check: which city id this market lands on, and the URL it
+  // produces — cheap, and the answer worth pasting into the seeded map
+  // so the lookup never has to run again.
+  if (searchParams.get("resolve")) {
+    const cityId = await cityIdFor(market);
+    return NextResponse.json({
+      market: market.slug,
+      name: `${market.name}, ${market.stateCode}`,
+      cityId,
+      searchUrl:
+        cityId === null
+          ? null
+          : redfinRentalsUrlFor(market, cityId, { furnished: true }),
+      verdict:
+        cityId === null
+          ? "No confident match. The market stays unsearchable rather than showing another city's rentals."
+          : `Open searchUrl in a browser: it must be ${market.name}, ${market.stateCode}. If it is, add "${market.slug}: ${cityId}" to REDFIN_CITY_ID.`,
+    });
+  }
 
   // Setup diagnostic: the vendor's own field names, so the provisional
   // aliases in lib/live/redfin can be pinned and the rest deleted.

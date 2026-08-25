@@ -9,32 +9,31 @@ import {
   mapRedfinListing,
   priceOf,
   redfinCoversMarket,
-  redfinRentalsUrl,
+  redfinRentalsUrlFor,
 } from "./redfin";
 
 const jax = MARKET_BY_SLUG.get("jacksonville")!;
 
-describe("redfinRentalsUrl", () => {
+describe("redfinRentalsUrlFor", () => {
   it("builds the real URL shape, filter included", () => {
-    expect(redfinRentalsUrl(jax)).toBe(
+    expect(redfinRentalsUrlFor(jax, 8907)).toBe(
       "https://www.redfin.com/city/8907/FL/Jacksonville/rentals"
     );
-    expect(redfinRentalsUrl(jax, { furnished: true })).toBe(
+    expect(redfinRentalsUrlFor(jax, 8907, { furnished: true })).toBe(
       "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/is-furnished"
     );
   });
 
-  it("returns null for a market with no known city id", () => {
-    // Redfin keys cities by an opaque number. Guessing one would search
-    // a different city entirely and report its rentals as this market's.
-    const tampa = MARKET_BY_SLUG.get("tampa")!;
-    expect(redfinCoversMarket(tampa)).toBe(false);
-    expect(redfinRentalsUrl(tampa)).toBeNull();
-  });
-
   it("hyphenates multi-word city names", () => {
     const multi = { ...jax, name: "St Petersburg", stateCode: "FL" };
-    expect(redfinRentalsUrl(multi)).toContain("/FL/St-Petersburg/rentals");
+    expect(redfinRentalsUrlFor(multi, 1234)).toContain(
+      "/FL/St-Petersburg/rentals"
+    );
+  });
+
+  it("knows which markets are seeded without going to ask", () => {
+    expect(redfinCoversMarket(jax)).toBe(true);
+    expect(redfinCoversMarket(MARKET_BY_SLUG.get("tampa")!)).toBe(false);
   });
 });
 
