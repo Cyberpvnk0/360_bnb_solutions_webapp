@@ -14,7 +14,11 @@
 
 import { MARKETS } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
-import { normalizeCity, REDFIN_CITY_ID } from "@/lib/live/redfin-city";
+import {
+  normalizeCity,
+  REDFIN_CITY_ID,
+  resolveCityIdOnce,
+} from "@/lib/live/redfin-city";
 
 const SCRAPER = "https://api.scraperapi.com/";
 
@@ -181,4 +185,79 @@ export function stillMissing(): string[] {
   return MARKETS.filter((m) => REDFIN_CITY_ID[m.slug] === undefined).map(
     (m) => m.slug
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* The tail: markets the state indexes don't list                      */
+/* ------------------------------------------------------------------ */
+
+export interface MissingResult {
+  batch: number;
+  batches: number;
+  attempted: string[];
+  resolved: Record<string, number>;
+  unresolved: string[];
+  remainingAfter: number;
+}
+
+/**
+ * Resolve a batch of the markets no state index covered.
+ *
+ * These are asked for by name, one lookup each, which is why they're
+ * batched: twenty at five in flight fits a serverless budget, and eight
+ * runs clear the tail. The same verification applies — a lookup that
+ * can't confirm both city and state returns nothing rather than a
+ * plausible neighbour.
+ */
+export async function resolveMissingBatch(
+  batch: number,
+  perBatch = 20
+): Promise<MissingResult> {
+  const missing = stillMissing();
+  const batches = Math.ceil(missing.length / perBatch) || 1;
+  const slugs = missing.slice(batch * perBatch, (batch + 1) * perBatch);
+  const key = process.env.SCRAPERAPI_KEY;
+
+  const base: MissingResult = {
+    batch,
+    batches,
+    attempted: slugs,
+    resolved: {},
+    unresolved: slugs,
+    remainingAfter: missing.length,
+  };
+  if (!key || slugs.length === 0) return base;
+
+  const markets = slugs
+    .map((slug) => MARKETS.find((m) => m.slug === slug))
+    .filter((m): m is Market => m !== undefined);
+
+  const ids: (number | null)[] = new Array(markets.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, markets.length) }, async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= markets.length) return;
+        ids[i] = await resolveCityIdOnce(markets[i], key);
+      }
+    })
+  );
+
+  const resolved: Record<string, number> = {};
+  const unresolved: string[] = [];
+  markets.forEach((m, i) => {
+    const id = ids[i];
+    if (id === null || id === undefined) unresolved.push(m.slug);
+    else resolved[m.slug] = id;
+  });
+
+  return {
+    batch,
+    batches,
+    attempted: slugs,
+    resolved,
+    unresolved,
+    remainingAfter: missing.length - Object.keys(resolved).length,
+  };
 }

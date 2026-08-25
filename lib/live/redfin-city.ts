@@ -525,6 +525,39 @@ function autocompleteFor(market: Market): string {
   })}`;
 }
 
+/**
+ * A single premium-tier autocomplete lookup, for bulk use.
+ *
+ * The state index pages list a state's larger cities and skip the small
+ * resort towns — Aspen, Key West, Gatlinburg, Moab — so those have to be
+ * asked for by name. Leaner than the diagnostic path on purpose: one
+ * tier, one timeout, so dozens can run inside a single request.
+ */
+export async function resolveCityIdOnce(
+  market: Market,
+  key: string,
+  timeoutMs = 15_000
+): Promise<number | null> {
+  try {
+    const params = new URLSearchParams({
+      api_key: key,
+      url: autocompleteFor(market),
+      premium: "true",
+    });
+    const res = await fetch(`${SCRAPER}?${params}`, {
+      next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    return pickCandidate(
+      extractCandidates(parseGuardedJson(await res.text())),
+      market
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** Resolved this run, so one market never resolves twice per instance. */
 const resolved = new Map<string, number | null>();
 
