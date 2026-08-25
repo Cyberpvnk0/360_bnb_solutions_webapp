@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   amenityFields,
+  arrayPaths,
   describeFields,
   describeShape,
   proseFields,
+  statusStrings,
 } from "./shape";
 
 const PROSE =
@@ -92,5 +94,44 @@ describe("proseFields / amenityFields", () => {
     ]);
     expect(proseFields(fields)).toEqual([]);
     expect(amenityFields(fields)).toEqual([]);
+  });
+});
+
+describe("arrayPaths", () => {
+  it("names where the records are, without knowing the schema", () => {
+    // The question a probe has to answer when extraction finds nothing:
+    // an empty result told us nothing about the payload that produced it.
+    const body = { data: { homes: [{ a: 1 }, { a: 2 }], total: 2 } };
+    expect(arrayPaths(body)).toContainEqual({ path: "data.homes", length: 2 });
+  });
+
+  it("reports a bare array at the root", () => {
+    expect(arrayPaths([1, 2, 3])[0]).toEqual({ path: "(root)", length: 3 });
+  });
+
+  it("reports empty arrays too — an empty container is an answer", () => {
+    expect(arrayPaths({ homes: [] })).toContainEqual({
+      path: "homes",
+      length: 0,
+    });
+  });
+
+  it("finds nothing in a payload with no arrays", () => {
+    expect(arrayPaths({ error: "nope" })).toEqual([]);
+  });
+});
+
+describe("statusStrings", () => {
+  it("surfaces a vendor explaining itself", () => {
+    expect(
+      statusStrings({ error: "Invalid search URL", homes: [] })
+    ).toEqual({ error: "Invalid search URL" });
+  });
+
+  it("ignores ordinary content, however long", () => {
+    // Only status-ish keys, so record values never ride along.
+    expect(statusStrings({ address: "1204 Glencoe St", price: 1850 })).toEqual(
+      {}
+    );
   });
 });

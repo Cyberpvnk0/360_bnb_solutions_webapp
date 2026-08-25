@@ -243,8 +243,14 @@ export function mapRedfinListing(
 
 export interface RedfinFetch {
   listings: RentalListing[];
-  /** Raw rows, for the shape probe only — never rendered. */
+  /** Rows our extractor found, for the shape probe only. */
   raw: Row[];
+  /** The WHOLE parsed response. A probe that only ever sees the rows we
+   *  already extracted cannot explain an extraction that found none. */
+  body: unknown;
+  /** False when the response wasn't JSON at all. */
+  parsed: boolean;
+  bytes: number;
   credits: number | null;
   searchUrl: string;
 }
@@ -297,7 +303,14 @@ export async function fetchRedfinRentals(
     throw new RedfinError("http", res.status, detail);
   }
 
-  const body: unknown = await res.json().catch(() => null);
+  const text = await res.text();
+  let body: unknown = null;
+  let parsed = true;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    parsed = false;
+  }
   const raw = extractListings(body);
   const furnished = Boolean(opts.furnished);
   const listings = raw
@@ -305,5 +318,13 @@ export async function fetchRedfinRentals(
     .filter((l): l is RentalListing => l !== null)
     .sort((a, b) => a.rentMonthly - b.rentMonthly);
 
-  return { listings, raw, credits: creditsFrom(res), searchUrl };
+  return {
+    listings,
+    raw,
+    body,
+    parsed,
+    bytes: text.length,
+    credits: creditsFrom(res),
+    searchUrl,
+  };
 }

@@ -101,6 +101,65 @@ export function describeFields(
   );
 }
 
+/**
+ * Every array in a payload, by dotted path and length.
+ *
+ * This is the "where are the records?" question, answered without
+ * knowing the schema. A probe that only describes the array it already
+ * found teaches nothing when extraction misses — which is exactly how a
+ * live Redfin response came back reporting an empty shape rather than
+ * naming the container it actually used.
+ */
+export function arrayPaths(
+  value: unknown,
+  path = "",
+  depth = 0,
+  out: { path: string; length: number }[] = []
+): { path: string; length: number }[] {
+  if (depth > 6 || out.length > 40) return out;
+  if (Array.isArray(value)) {
+    out.push({ path: path || "(root)", length: value.length });
+    // Records usually sit in the first array found; don't recurse into
+    // every element, just the first, to keep the report short.
+    if (value.length > 0) arrayPaths(value[0], `${path}[0]`, depth + 1, out);
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      arrayPaths(v, path ? `${path}.${k}` : k, depth + 1, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * Short string values under status-ish keys — a vendor explaining
+ * itself, not record content. When a payload carries no records at all,
+ * this is usually where it says why.
+ */
+export function statusStrings(
+  value: unknown,
+  depth = 0,
+  out: Record<string, string> = {}
+): Record<string, string> {
+  if (depth > 4 || Object.keys(out).length > 12) return out;
+  if (Array.isArray(value)) return out;
+  if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (
+        typeof v === "string" &&
+        v.length <= 200 &&
+        /error|message|status|detail|reason|warning|info/i.test(k)
+      ) {
+        out[k] = v;
+      } else {
+        statusStrings(v, depth + 1, out);
+      }
+    }
+  }
+  return out;
+}
+
 /** Past this length a string is prose, not a label: comfortably beyond
  *  "Single Family", a formatted address, or an agent's name. */
 export const PROSE_MIN_LENGTH = 80;

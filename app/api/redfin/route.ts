@@ -15,7 +15,13 @@
 import { NextResponse } from "next/server";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import { fetchRedfinRentals, RedfinError } from "@/lib/live/redfin";
-import { amenityFields, describeFields, proseFields } from "@/lib/live/shape";
+import {
+  amenityFields,
+  arrayPaths,
+  describeFields,
+  proseFields,
+  statusStrings,
+} from "@/lib/live/shape";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
 /** A parsed search of a whole market is slower than a plain fetch. */
@@ -55,30 +61,45 @@ export async function GET(request: Request) {
   // aliases in lib/live/redfin can be pinned and the rest deleted.
   if (shape) {
     try {
-      const { raw, listings, credits, searchUrl } = await fetchRedfinRentals(
-        market,
-        { furnished }
-      );
+      const { raw, listings, body, parsed, bytes, credits, searchUrl } =
+        await fetchRedfinRentals(market, { furnished });
       const fields = describeFields(raw);
+      // Describe the WHOLE response, not just the rows we managed to
+      // extract: when extraction finds nothing, the rows are empty and
+      // describing them explains nothing at all.
+      const found = arrayPaths(body);
+      const shapeOfBody = describeFields([body], 4);
       return NextResponse.json({
         searchUrl,
+        parsed,
+        bytes,
+        credits,
         rowsReturned: raw.length,
         rowsMapped: listings.length,
-        credits,
-        /** Every field Redfin ships, unioned across all rows. */
+        /** Every array in the payload, by path and length — the answer
+         *  to "where are the listings?" without knowing the schema. */
+        arrays: found,
+        /** The vendor explaining itself, when it carries no records. */
+        status: statusStrings(body),
+        /** Top-level shape of the response. */
+        responseShape: shapeOfBody,
+        /** Fields of the rows our extractor did find, if any. */
         vendorFields: fields,
         proseFields: proseFields(fields),
         amenityFields: amenityFields(fields),
-        /** What our provisional aliases actually managed to read. A
-         *  mapped count far below the returned count means the aliases
-         *  are wrong, not that the listings are unusable. */
         sample: listings.slice(0, 3),
-        verdict:
-          listings.length === 0 && raw.length > 0
-            ? "Rows came back but none mapped — pin the aliases in lib/live/redfin to the vendorFields above."
-            : listings.length === 0
-              ? "No rows at all. Check searchUrl in a browser: the city id or filter token may be wrong."
-              : `Mapped ${listings.length} of ${raw.length}.`,
+        verdict: !parsed
+          ? "Response wasn't JSON. Read `status` and `bytes` — this is usually an error page, not a payload."
+          : listings.length === 0 && raw.length > 0
+            ? "Rows came back but none mapped — pin the aliases in lib/live/redfin to vendorFields."
+            : raw.length === 0 && found.some((a) => a.length > 0)
+              ? `The payload DOES carry records, at: ${found
+                  .filter((a) => a.length > 0)
+                  .map((a) => `${a.path} (${a.length})`)
+                  .join(", ")}. Point extractListings at that path.`
+              : raw.length === 0
+                ? "The payload genuinely carries no records. Either this search has no results, or the URL is wrong — open searchUrl in a browser to tell which."
+                : `Mapped ${listings.length} of ${raw.length}.`,
       });
     } catch (error) {
       return failure(error);
