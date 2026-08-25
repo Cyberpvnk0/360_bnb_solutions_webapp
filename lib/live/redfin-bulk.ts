@@ -313,11 +313,37 @@ export interface PageProbe {
    *  BOTTOM of the file, so a head-of-response preview never shows
    *  them — which is how the first probe returned a perfectly good
    *  robots.txt and told us nothing. */
-  sitemaps?: string[];
+  sitemaps: string[];
   /** <loc> entries, when the page is itself a sitemap. */
-  locs?: string[];
-  locCount?: number;
+  locs: string[];
+  locCount: number;
+  /** Internal link shapes on the page, by count — what navigation
+   *  exists, without dumping thousands of hrefs. Finding a fuller city
+   *  index means knowing what kinds of page Redfin links to at all. */
+  linkPatterns: { prefix: string; count: number }[];
+  /** Marks which build answered, so an empty result can never be
+   *  mistaken for a stale deploy again. */
+  probe: "v2";
   head: string;
+}
+
+/** `/city/8907/FL/...` → `/city/{id}/{ST}` — the SHAPE of a link. */
+function linkShapes(text: string): { prefix: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const m of text.matchAll(/href="(\/[^"?#]{1,80})/g)) {
+    const shape = m[1]
+      .split("/")
+      .slice(0, 4)
+      .map((part) =>
+        /^\d+$/.test(part) ? "{n}" : /^[A-Z]{2}$/.test(part) ? "{ST}" : part
+      )
+      .join("/");
+    counts.set(shape, (counts.get(shape) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([prefix, count]) => ({ prefix, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 18);
 }
 
 /** `Sitemap: https://…` — case-insensitive, one per line. */
@@ -337,6 +363,11 @@ export async function probePage(url: string): Promise<PageProbe> {
     bytes: 0,
     cityLinksFound: 0,
     sampleLinks: [],
+    sitemaps: [],
+    locs: [],
+    locCount: 0,
+    linkPatterns: [],
+    probe: "v2",
     head: "",
   };
   if (!key) return empty;
@@ -366,10 +397,14 @@ export async function probePage(url: string): Promise<PageProbe> {
       bytes: text.length,
       cityLinksFound: links.length,
       sampleLinks: links.slice(0, 8),
-      sitemaps: maps.length > 0 ? maps : undefined,
-      locCount: locs.length > 0 ? locs.length : undefined,
-      // Enough to recognise the useful one without returning thousands.
-      locs: locs.length > 0 ? locs.slice(0, 40) : undefined,
+      // Always present, even when empty: an omitted field is
+      // indistinguishable from an old deploy, which is exactly how the
+      // last robots.txt probe managed to answer nothing twice.
+      sitemaps: maps,
+      locCount: locs.length,
+      locs: locs.slice(0, 40),
+      linkPatterns: linkShapes(text),
+      probe: "v2",
       head: text.slice(0, 300),
     };
   } catch {
