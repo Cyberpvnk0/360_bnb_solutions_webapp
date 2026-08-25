@@ -33,15 +33,20 @@ export const CITY_ID_REVALIDATE_SECONDS = 31_536_000;
  * domain there: the standard tier answers with "Protected domains may
  * require adding premium=true OR ultra_premium=true".
  *
- * Trying standard first costs nothing — ScraperAPI states plainly that
- * a failed request is not charged — so the ladder starts cheap and only
- * climbs when it has to.
+ * Standard is NOT in the ladder: it has already been measured failing on
+ * this exact domain, so trying it first spends twenty seconds of a
+ * sixty-second budget learning what we know. A bypass request on a
+ * protected domain is slow, and three of them in series is how this
+ * route first returned a 504 rather than an answer.
  */
 const TIERS: { name: string; params: Record<string, string> }[] = [
-  { name: "standard", params: {} },
   { name: "premium", params: { premium: "true" } },
   { name: "ultra", params: { ultra_premium: "true" } },
 ];
+
+/** Per-attempt ceiling. Two attempts have to fit inside the route's own
+ *  budget with room to answer, however slow the upstream is. */
+const ATTEMPT_TIMEOUT_MS = 20_000;
 
 /**
  * Known ids, seeded from real URLs. A static entry costs nothing and is
@@ -252,9 +257,18 @@ async function fetchAutocomplete(
       url: target,
       ...tier.params,
     });
-    const res = await fetch(`${SCRAPER}?${params}`, {
-      next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${SCRAPER}?${params}`, {
+        next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
+        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+      });
+    } catch {
+      // A tier that hangs is a tier that failed; give the next one its
+      // own budget rather than letting one stall the whole request.
+      last = { tier: tier.name, status: 408, text: "attempt timed out" };
+      continue;
+    }
     const text = await res.text();
     last = { tier: tier.name, status: res.status, text };
     if (!res.ok) continue;
