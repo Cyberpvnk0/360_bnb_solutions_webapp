@@ -68,17 +68,28 @@ function tiersToTry(): ScrapeTier[] {
   return to < from ? [TIER_ORDER[from]] : TIER_ORDER.slice(from, to + 1);
 }
 
+export type ScraperApiReason =
+  | "no-key"
+  /** 401 — the key itself is wrong. */
+  | "auth"
+  /** 403 — the key is fine but the account may not do THIS. Kept apart
+   *  from `auth` because "your key is wrong" sends you to fix a key that
+   *  was working a minute earlier. */
+  | "forbidden"
+  | "quota"
+  | "blocked"
+  | "http"
+  | "network";
+
 /** Why an enrichment attempt failed, in words the diagnostics can show. */
 export class ScraperApiError extends Error {
   constructor(
-    readonly reason:
-      | "no-key"
-      | "auth"
-      | "quota"
-      | "blocked"
-      | "http"
-      | "network",
-    readonly status?: number
+    readonly reason: ScraperApiReason,
+    readonly status?: number,
+    /** The vendor's own explanation, verbatim and bounded. This is their
+     *  error copy, not listing content — and it is the difference
+     *  between knowing why a tier was refused and guessing. */
+    readonly detail?: string
   ) {
     super(`ScraperAPI ${reason}${status ? ` (${status})` : ""}`);
     this.name = "ScraperApiError";
@@ -390,13 +401,18 @@ async function scrape(
   }
 
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      throw new ScraperApiError("auth", res.status);
-    }
-    if (res.status === 429) throw new ScraperApiError("quota", res.status);
+    // Read their explanation before deciding what to call this.
+    const detail = (await res.text().catch(() => ""))
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 300);
+    if (res.status === 401) throw new ScraperApiError("auth", 401, detail);
+    if (res.status === 403) throw new ScraperApiError("forbidden", 403, detail);
+    if (res.status === 429) throw new ScraperApiError("quota", 429, detail);
     // ScraperAPI answers 500 when it exhausted its own retries upstream.
-    if (res.status === 500) throw new ScraperApiError("blocked", res.status);
-    throw new ScraperApiError("http", res.status);
+    if (res.status === 500) throw new ScraperApiError("blocked", 500, detail);
+    throw new ScraperApiError("http", res.status, detail);
   }
 
   return { doc: await res.text(), credits: creditsFrom(res), tier };
@@ -418,14 +434,35 @@ async function readPage(url: string): Promise<{
 }> {
   let spent = 0;
   let last: FetchOutcome | null = null;
+  let refusal: ScraperApiError | null = null;
+
   for (const tier of tiersToTry()) {
-    const attempt = await scrape(url, tier);
+    let attempt: FetchOutcome;
+    try {
+      attempt = await scrape(url, tier);
+    } catch (error) {
+      // A tier the account can't use is a reason to try the NEXT tier,
+      // not to abandon the read. Throwing here is what made a 403 on
+      // `premium` look like a dead key and stopped the ladder before
+      // `ultra` was ever tried.
+      if (
+        error instanceof ScraperApiError &&
+        (error.reason === "forbidden" || error.reason === "http")
+      ) {
+        refusal = error;
+        continue;
+      }
+      throw error;
+    }
     spent += attempt.credits ?? 0;
     last = attempt;
     if (!isChallenge(attempt.doc)) {
       return { outcome: attempt, spent, challenged: false };
     }
   }
+
+  // Every tier refused outright and none returned a page to judge.
+  if (!last && refusal) throw refusal;
   return { outcome: last!, spent, challenged: true };
 }
 

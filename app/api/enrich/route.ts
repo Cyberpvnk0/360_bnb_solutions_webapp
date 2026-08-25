@@ -213,6 +213,16 @@ export async function GET(request: Request) {
     /** Where the text was found, and what went wrong where it wasn't. */
     strategies,
     failures,
+    /** What the vendor SAID about each distinct refusal. A 403 that
+     *  reads "not available on your plan" is a billing decision; one
+     *  that reads anything else is a different problem entirely. */
+    vendorMessages: [
+      ...new Set(
+        batch.records
+          .map((r) => r.failureDetail)
+          .filter((d): d is string => Boolean(d))
+      ),
+    ].slice(0, 5),
     /** How far the two-hop got, and what the last page looked like.
      *  Booleans and counts only — never a word of any listing. */
     reachedDetail,

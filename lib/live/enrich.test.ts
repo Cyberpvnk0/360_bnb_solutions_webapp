@@ -179,11 +179,48 @@ describe("describeListing", () => {
     expect(url).toContain(encodeURIComponent("12 River Rd, Jacksonville, FL"));
   });
 
-  it("throws a named reason the UI can explain", async () => {
-    vi.stubGlobal("fetch", mockFetch("nope", { status: 401 }));
+  it("calls a bad key a bad key, and a refused feature something else", async () => {
+    // A 403 arrived on `premium` while the same key was working on
+    // `standard`. Filing both under "auth" sends you to fix a key that
+    // was never broken.
+    vi.stubGlobal("fetch", mockFetch("Invalid API key", { status: 401 }));
     await expect(
       describeListing("12 River Rd", "Jacksonville", "FL")
     ).rejects.toMatchObject({ reason: "auth" });
+
+    vi.stubGlobal(
+      "fetch",
+      mockFetch("This feature is not available on your plan", { status: 403 })
+    );
+    await expect(
+      describeListing("12 River Rd", "Jacksonville", "FL")
+    ).rejects.toMatchObject({
+      reason: "forbidden",
+      detail: expect.stringContaining("not available on your plan"),
+    });
+  });
+
+  it("tries the next tier when one is refused, instead of giving up", async () => {
+    // The bug this replaced: a 403 on `premium` threw, so `ultra` was
+    // never attempted and the run reported eight dead addresses.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("not on your plan", { status: 403 }))
+      .mockResolvedValueOnce(new Response(HTML.jsonLd));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const facts = await describeListing("12 River Rd", "Jacksonville", "FL");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("ultra_premium=true");
+    expect(facts.featuresKnown).toBe(true);
+    expect(facts.tier).toBe("ultra");
+  });
+
+  it("reports the refusal when every tier is refused", async () => {
+    vi.stubGlobal("fetch", mockFetch("not on your plan", { status: 403 }));
+    await expect(
+      describeListing("12 River Rd", "Jacksonville", "FL")
+    ).rejects.toMatchObject({ reason: "forbidden" });
   });
 });
 

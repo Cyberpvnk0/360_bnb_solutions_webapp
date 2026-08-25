@@ -69,6 +69,9 @@ export interface EnrichmentRecord {
   /** Structural read of the page — never its content. */
   signals: PageSignals | null;
   failure: string | null;
+  /** The vendor's own words about a refusal — the difference between
+   *  knowing why and guessing. Absent on success. */
+  failureDetail?: string;
 }
 
 export interface EnrichmentBatch {
@@ -158,6 +161,8 @@ export async function enrichTargets(
         signals: null,
         failure:
           error instanceof ScraperApiError ? error.reason : "network",
+        failureDetail:
+          error instanceof ScraperApiError ? error.detail : undefined,
       };
     }
   });
