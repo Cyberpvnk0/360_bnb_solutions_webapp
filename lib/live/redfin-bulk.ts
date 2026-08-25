@@ -355,7 +355,10 @@ function sitemapLocs(text: string): string[] {
   return [...text.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
 }
 
-export async function probePage(url: string): Promise<PageProbe> {
+export async function probePage(
+  url: string,
+  tier: "standard" | "premium" = "premium"
+): Promise<PageProbe> {
   const key = process.env.SCRAPERAPI_KEY;
   const empty: PageProbe = {
     url,
@@ -380,11 +383,16 @@ export async function probePage(url: string): Promise<PageProbe> {
       `${SCRAPER}?${new URLSearchParams({
         api_key: key,
         url,
-        premium: "true",
+        // A sitemap is published FOR crawlers, so it may not need the
+        // bypass at all — and the bypass is what makes a multi-megabyte
+        // file too slow to finish inside the budget.
+        ...(tier === "premium" ? { premium: "true" } : {}),
       })}`,
       {
         next: { revalidate: STATE_PAGE_REVALIDATE_SECONDS },
-        signal: AbortSignal.timeout(25_000),
+        // Most of the budget: a large sitemap is a slow transfer, not a
+        // hung request, and 25s was cutting it off mid-download.
+        signal: AbortSignal.timeout(50_000),
       }
     );
     const text = await res.text();

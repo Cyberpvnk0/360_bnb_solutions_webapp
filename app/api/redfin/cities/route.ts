@@ -34,7 +34,8 @@ export async function GET(request: Request) {
   // fuller index than the state pages provide.
   const probeUrl = searchParams.get("probeUrl");
   if (probeUrl) {
-    return NextResponse.json(await probePage(probeUrl));
+    const tier = searchParams.get("tier") === "standard" ? "standard" : "premium";
+    return NextResponse.json(await probePage(probeUrl, tier));
   }
 
   // The tail: markets no state index listed, asked for by name.
