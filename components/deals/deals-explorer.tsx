@@ -623,7 +623,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
           ) : redfinActive ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
               <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
-              Furnished · via Redfin
+              Furnished
             </span>
           ) : redfinReason ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">

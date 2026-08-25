@@ -166,7 +166,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
               href={zillowUrl}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Open on Zillow"
+              aria-label="View the original listing"
               className="flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
             >
               <ArrowUpRight aria-hidden className="size-4" />

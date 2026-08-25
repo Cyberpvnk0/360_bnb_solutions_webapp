@@ -63,12 +63,12 @@ export async function getRedfinFurnished(
 export function redfinFailureLabel(reason?: RedfinFailureReason): string {
   switch (reason) {
     case "no-city":
-      return "Couldn't identify this city on Redfin";
+      return "Furnished search isn't available for this market";
     case "no-key":
       return "Furnished search isn't configured";
     case "auth":
     case "forbidden":
-      return "Furnished search key rejected";
+      return "Furnished search is unavailable right now";
     case "quota":
       return "Furnished search quota reached";
     case "daily-cap":

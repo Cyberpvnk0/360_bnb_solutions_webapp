@@ -9,7 +9,8 @@
  * Everything a hunter needs before making the call lives here: the
  * unit's facts, who to contact, the deal read at this market's actual
  * ADR and occupancy, and the actions — add to a list, run the full
- * numbers, open on Zillow. Every figure comes through lib/calc with the
+ * numbers, open the original listing. Every figure comes through
+ * lib/calc with the
  * same benchmark inputs the cards use, so nothing can disagree.
  */
 
@@ -155,7 +156,7 @@ export function ListingDetailDialog({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
               >
-                {listing.sourceUrl ? "Redfin" : "Zillow"}
+                View listing
                 <ArrowUpRight aria-hidden className="size-3" />
               </a>
             </div>
@@ -202,9 +203,8 @@ export function ListingDetailDialog({
                 </div>
               ) : (
                 <p className="mt-1.5 text-sm text-muted-foreground">
-                  This feed didn&apos;t include contact details for the
-                  listing. Open it on {listing.sourceUrl ? "Redfin" : "Zillow"}{" "}
-                  to reach the lister.
+                  No contact details published for this listing. Open the
+                  original listing to reach the lister.
                 </p>
               )}
             </div>
