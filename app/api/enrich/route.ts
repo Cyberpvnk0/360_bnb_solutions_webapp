@@ -169,6 +169,13 @@ export async function GET(request: Request) {
     if (r.failure) failures[r.failure] = (failures[r.failure] ?? 0) + 1;
   }
   const rendered = batch.records.filter((r) => r.rendered).length;
+  // Where the pipeline actually got to, and what it was looking at —
+  // the difference between "extraction is wrong" and "we never reached
+  // the page that has the description".
+  const reachedDetail = batch.records.filter((r) => r.reachedDetail).length;
+  const withSignals = batch.records.filter((r) => r.signals);
+  const tally = (pick: (s: NonNullable<typeof withSignals[number]["signals"]>) => boolean) =>
+    withSignals.filter((r) => pick(r.signals!)).length;
   const furnished = batch.records.filter((r) =>
     r.features.includes("Furnished")
   ).length;
@@ -202,6 +209,23 @@ export async function GET(request: Request) {
     /** Where the text was found, and what went wrong where it wasn't. */
     strategies,
     failures,
+    /** How far the two-hop got, and what the last page looked like.
+     *  Booleans and counts only — never a word of any listing. */
+    reachedDetail,
+    pageSignals: {
+      hasDetailLink: tally((x) => x.hasDetailLink),
+      hasNextData: tally((x) => x.hasNextData),
+      hasApollo: tally((x) => x.hasApollo),
+      hasJsonLd: tally((x) => x.hasJsonLd),
+      looksLikeChallenge: tally((x) => x.looksLikeChallenge),
+      boilerplateOnly: tally((x) => x.boilerplate),
+      medianBytes: (() => {
+        const sizes = withSignals
+          .map((r) => r.signals!.bytes)
+          .sort((a, b) => a - b);
+        return sizes.length ? sizes[Math.floor(sizes.length / 2)] : 0;
+      })(),
+    },
     /** Of the pages we could read, how many say furnished. */
     furnishedFound: furnished,
     records: batch.records,

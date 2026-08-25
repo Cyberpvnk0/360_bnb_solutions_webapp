@@ -31,6 +31,16 @@ function record(
   out.set(path, cur);
 }
 
+/** Keys that are DATA, not schema: dates, ids, numeric indexes. A feed
+ *  keyed by date (RentCast's `history`) would otherwise report one field
+ *  path per day and bury the actual schema in tens of thousands of
+ *  lines — the report has to describe the shape, not the contents. */
+const DYNAMIC_KEY = /^(?:\d{4}-\d{2}-\d{2}|\d+|[0-9a-f]{8,})$/i;
+
+function normalizeKey(key: string): string {
+  return DYNAMIC_KEY.test(key) ? "*" : key;
+}
+
 function walk(
   value: unknown,
   path: string,
@@ -58,7 +68,8 @@ function walk(
       return;
     }
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      walk(v, path ? `${path}.${k}` : k, depth + 1, maxDepth, out);
+      const key = normalizeKey(k);
+      walk(v, path ? `${path}.${key}` : key, depth + 1, maxDepth, out);
     }
     return;
   }

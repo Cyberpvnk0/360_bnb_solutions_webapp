@@ -10,7 +10,11 @@
  * which is the honest outcome, rather than counting it as unfurnished.
  */
 
-import { describeListing, ScraperApiError } from "@/lib/live/scraperapi";
+import {
+  describeListing,
+  ScraperApiError,
+  type PageSignals,
+} from "@/lib/live/scraperapi";
 import type { RentalListing } from "@/lib/mock/types";
 
 /**
@@ -57,6 +61,10 @@ export interface EnrichmentRecord {
   textLength: number;
   credits: number | null;
   rendered: boolean;
+  /** Did the search page lead us to the listing's own page? */
+  reachedDetail: boolean;
+  /** Structural read of the page — never its content. */
+  signals: PageSignals | null;
   failure: string | null;
 }
 
@@ -127,6 +135,8 @@ export async function enrichTargets(
         textLength: facts.textLength,
         credits: facts.credits,
         rendered: facts.rendered,
+        reachedDetail: facts.reachedDetail,
+        signals: facts.signals,
         failure: null,
       };
     } catch (error) {
@@ -139,6 +149,8 @@ export async function enrichTargets(
         textLength: 0,
         credits: null,
         rendered: false,
+        reachedDetail: false,
+        signals: null,
         failure:
           error instanceof ScraperApiError ? error.reason : "network",
       };
