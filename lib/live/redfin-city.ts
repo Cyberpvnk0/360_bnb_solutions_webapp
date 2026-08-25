@@ -545,32 +545,49 @@ export interface OnceResult {
 export async function resolveCityIdOnce(
   market: Market,
   key: string,
-  timeoutMs = 15_000
+  timeoutMs = 28_000
 ): Promise<OnceResult> {
-  try {
-    const params = new URLSearchParams({
-      api_key: key,
-      url: autocompleteFor(market),
-      premium: "true",
-    });
-    const res = await fetch(`${SCRAPER}?${params}`, {
-      next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      return { id: null, status: res.status, head: text.slice(0, 180), candidates: 0 };
+  // A 429 is the vendor's thread limit, not a verdict on the city, so
+  // it earns one patient retry. A premium fetch on a protected domain
+  // routinely takes twenty seconds; the first cut of this gave it
+  // fifteen and then called seven timeouts a result.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const params = new URLSearchParams({
+        api_key: key,
+        url: autocompleteFor(market),
+        premium: "true",
+      });
+      const res = await fetch(`${SCRAPER}?${params}`, {
+        next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const text = await res.text();
+      if (res.status === 429 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 2_500));
+        continue;
+      }
+      if (!res.ok) {
+        return {
+          id: null,
+          status: res.status,
+          head: text.slice(0, 180),
+          candidates: 0,
+        };
+      }
+      const found = extractCandidates(parseGuardedJson(text));
+      return {
+        id: pickCandidate(found, market),
+        status: res.status,
+        head: text.slice(0, 180),
+        candidates: found.length,
+      };
+    } catch {
+      if (attempt === 0) continue;
+      return { id: null, status: 408, head: "attempt timed out", candidates: 0 };
     }
-    const found = extractCandidates(parseGuardedJson(text));
-    return {
-      id: pickCandidate(found, market),
-      status: res.status,
-      head: text.slice(0, 180),
-      candidates: found.length,
-    };
-  } catch {
-    return { id: null, status: 408, head: "attempt timed out", candidates: 0 };
   }
+  return { id: null, status: 429, head: "rate limited", candidates: 0 };
 }
 
 /** Resolved this run, so one market never resolves twice per instance. */

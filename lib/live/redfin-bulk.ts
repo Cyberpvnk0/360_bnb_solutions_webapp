@@ -26,8 +26,15 @@ const SCRAPER = "https://api.scraperapi.com/";
 /** State pages are static; a year is if anything conservative. */
 const STATE_PAGE_REVALIDATE_SECONDS = 31_536_000;
 
-/** Requests in flight, matching the vendor's trial thread limit. */
-const CONCURRENCY = 5;
+/**
+ * Requests in flight.
+ *
+ * Three, not five. Five matches the trial thread limit exactly, which
+ * leaves no headroom: run two batches close together and the second
+ * invocation's requests collide with the first's, which is how a run
+ * came back thirteen-of-twenty rate limited.
+ */
+const CONCURRENCY = 3;
 /** Per-page ceiling, so one slow state can't spend the whole budget. */
 const PAGE_TIMEOUT_MS = 18_000;
 
@@ -220,7 +227,7 @@ export interface MissingResult {
  */
 export async function resolveMissingBatch(
   batch: number,
-  perBatch = 20
+  perBatch = 12
 ): Promise<MissingResult> {
   const missing = stillMissing();
   const batches = Math.ceil(missing.length / perBatch) || 1;
