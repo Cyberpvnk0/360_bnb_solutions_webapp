@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import {
+  REDFIN_SEARCH_ENDPOINT,
   extractListings,
   mapRedfinListing,
   redfinCoversMarket,
@@ -136,5 +137,16 @@ describe("mapRedfinListing", () => {
   it("never carries a description — Redfin's tag replaces the prose", () => {
     const l = mapRedfinListing(row, jax, { furnished: true, index: 0 })!;
     expect(l.description).toBeUndefined();
+  });
+});
+
+describe("the endpoint itself", () => {
+  it("is the versioned path", () => {
+    // The unversioned path answers and bills but returns nothing
+    // readable, which reads as an empty market rather than a wrong URL.
+    // Confirmed against ScraperAPI's own generated snippet.
+    expect(REDFIN_SEARCH_ENDPOINT).toBe(
+      "https://api.scraperapi.com/structured/redfin/search/v1"
+    );
   });
 });

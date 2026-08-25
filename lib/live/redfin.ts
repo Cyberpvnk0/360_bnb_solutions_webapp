@@ -21,7 +21,14 @@
 
 import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
-const SEARCH_ENDPOINT = "https://api.scraperapi.com/structured/redfin/search";
+/**
+ * Versioned path, confirmed from ScraperAPI's own generated snippet.
+ * The unversioned `/structured/redfin/search` answers, and bills, but
+ * returns nothing this mapper can read — a wrong endpoint that costs
+ * money and looks like an empty market.
+ */
+export const REDFIN_SEARCH_ENDPOINT =
+  "https://api.scraperapi.com/structured/redfin/search/v1";
 
 /** A day: rental inventory turns over, and this is one call per market. */
 export const REDFIN_REVALIDATE_SECONDS = 86_400;
@@ -276,15 +283,13 @@ export async function fetchRedfinRentals(
   const searchUrl = redfinRentalsUrl(market, opts);
   if (!searchUrl) throw new RedfinError("no-city");
 
-  const params = new URLSearchParams({
-    api_key: key,
-    url: searchUrl,
-    country_code: "us",
-  });
+  // Exactly the parameters ScraperAPI's own snippet sends. Extras that
+  // "shouldn't hurt" are how a working request quietly stops working.
+  const params = new URLSearchParams({ api_key: key, url: searchUrl });
 
   let res: Response;
   try {
-    res = await fetch(`${SEARCH_ENDPOINT}?${params}`, {
+    res = await fetch(`${REDFIN_SEARCH_ENDPOINT}?${params}`, {
       next: { revalidate: REDFIN_REVALIDATE_SECONDS },
     });
   } catch {
