@@ -309,7 +309,24 @@ export interface PageProbe {
   bytes: number;
   cityLinksFound: number;
   sampleLinks: CityLink[];
+  /** Sitemap URLs, when the page is a robots.txt. They sit at the
+   *  BOTTOM of the file, so a head-of-response preview never shows
+   *  them — which is how the first probe returned a perfectly good
+   *  robots.txt and told us nothing. */
+  sitemaps?: string[];
+  /** <loc> entries, when the page is itself a sitemap. */
+  locs?: string[];
+  locCount?: number;
   head: string;
+}
+
+/** `Sitemap: https://…` — case-insensitive, one per line. */
+function sitemapLines(text: string): string[] {
+  return [...text.matchAll(/^\s*Sitemap:\s*(\S+)/gim)].map((m) => m[1]);
+}
+
+function sitemapLocs(text: string): string[] {
+  return [...text.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
 }
 
 export async function probePage(url: string): Promise<PageProbe> {
@@ -341,12 +358,18 @@ export async function probePage(url: string): Promise<PageProbe> {
     );
     const text = await res.text();
     const links = extractCityLinks(text);
+    const maps = sitemapLines(text);
+    const locs = sitemapLocs(text);
     return {
       url,
       status: res.status,
       bytes: text.length,
       cityLinksFound: links.length,
       sampleLinks: links.slice(0, 8),
+      sitemaps: maps.length > 0 ? maps : undefined,
+      locCount: locs.length > 0 ? locs.length : undefined,
+      // Enough to recognise the useful one without returning thousands.
+      locs: locs.length > 0 ? locs.slice(0, 40) : undefined,
       head: text.slice(0, 300),
     };
   } catch {
