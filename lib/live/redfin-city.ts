@@ -533,11 +533,20 @@ function autocompleteFor(market: Market): string {
  * asked for by name. Leaner than the diagnostic path on purpose: one
  * tier, one timeout, so dozens can run inside a single request.
  */
+export interface OnceResult {
+  id: number | null;
+  status: number;
+  /** First characters of the response — the only way to tell a block
+   *  page from a payload whose shape we misread. */
+  head: string;
+  candidates: number;
+}
+
 export async function resolveCityIdOnce(
   market: Market,
   key: string,
   timeoutMs = 15_000
-): Promise<number | null> {
+): Promise<OnceResult> {
   try {
     const params = new URLSearchParams({
       api_key: key,
@@ -548,13 +557,19 @@ export async function resolveCityIdOnce(
       next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return null;
-    return pickCandidate(
-      extractCandidates(parseGuardedJson(await res.text())),
-      market
-    );
+    const text = await res.text();
+    if (!res.ok) {
+      return { id: null, status: res.status, head: text.slice(0, 180), candidates: 0 };
+    }
+    const found = extractCandidates(parseGuardedJson(text));
+    return {
+      id: pickCandidate(found, market),
+      status: res.status,
+      head: text.slice(0, 180),
+      candidates: found.length,
+    };
   } catch {
-    return null;
+    return { id: null, status: 408, head: "attempt timed out", candidates: 0 };
   }
 }
 

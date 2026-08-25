@@ -16,6 +16,7 @@
 
 import { NextResponse } from "next/server";
 import {
+  probePage,
   resolveBatch,
   resolveMissingBatch,
   stillMissing,
@@ -28,6 +29,13 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const raw = Number(searchParams.get("batch"));
   const batch = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
+
+  //试 any Redfin page and count the city links on it — for finding a
+  // fuller index than the state pages provide.
+  const probeUrl = searchParams.get("probeUrl");
+  if (probeUrl) {
+    return NextResponse.json(await probePage(probeUrl));
+  }
 
   // The tail: markets no state index listed, asked for by name.
   if (searchParams.get("missing")) {
@@ -45,7 +53,7 @@ export async function GET(request: Request) {
           : null,
       verdict:
         got === 0
-          ? "Nothing resolved in this batch. These may genuinely not exist as Redfin cities — small towns often sit under a county or neighbouring city."
+          ? "Nothing resolved. Read `statuses` and `sampleResponses` — a batch containing El Paso and Fresno failing is the lookup, not the towns."
           : `${got} resolved, ${tail.unresolved.length} still unmatched in this batch.`,
     });
   }
