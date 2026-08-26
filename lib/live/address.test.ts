@@ -214,3 +214,20 @@ describe("street suffixes the probe turned up", () => {
     expect(addressKey("5 Mount Vernon Rd")).toBe(addressKey("5 Mt Vernon Rd"));
   });
 });
+
+describe("saints and forts in street names", () => {
+  it("matches the spelled-out and abbreviated forms", () => {
+    expect(addressKey("2798 Saint Johns Ave")).toBe(
+      addressKey("2798 St Johns Ave")
+    );
+    expect(addressKey("100 Fort Caroline Rd")).toBe(
+      addressKey("100 Ft Caroline Rd")
+    );
+  });
+
+  it("leaves ordinary streets alone", () => {
+    // "Street" already reduces to "st"; folding saint the same way
+    // must not disturb it.
+    expect(addressKey("1204 Glencoe Street")).toBe("1204 glencoe st");
+  });
+});

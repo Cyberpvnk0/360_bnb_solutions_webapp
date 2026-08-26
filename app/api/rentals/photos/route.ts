@@ -71,7 +71,7 @@ export async function GET(request: Request) {
   const photos: Record<string, string> = {};
   let exact = 0;
   let byBuilding = 0;
-  const unmatched: string[] = [];
+  const misses: string[] = [];
 
   for (const listing of listings) {
     if (listing.photoUrl) continue;
@@ -84,8 +84,8 @@ export async function GET(request: Request) {
       photos[listing.id] = hit;
       if (own) exact += 1;
       else byBuilding += 1;
-    } else if (unmatched.length < 12) {
-      unmatched.push(key ?? `(unkeyable) ${listing.address}`);
+    } else {
+      misses.push(key ?? `(unkeyable) ${listing.address}`);
     }
   }
 
@@ -108,7 +108,14 @@ export async function GET(request: Request) {
           // two without another round of guessing.
           photoSource: source?.stats ?? null,
           sampleIndexKeys: [...index.keys()].slice(0, 12),
-          sampleUnmatchedRowKeys: unmatched,
+          // Spread across the whole miss list. The rows arrive sorted
+          // by rent, so "the first twelve" was the twelve cheapest —
+          // and a sample of one end of a sorted list shaped a whole
+          // round of this investigation.
+          sampleUnmatchedRowKeys: Array.from(
+            { length: Math.min(12, misses.length) },
+            (_, i) => misses[Math.floor((i * misses.length) / Math.min(12, misses.length))]
+          ),
           verdict:
             index.size === 0
               ? "The photo source returned nothing for this market — read photoSource: pages and rows say whether the fetch worked, withAddress and withPhoto whether the rows were readable."

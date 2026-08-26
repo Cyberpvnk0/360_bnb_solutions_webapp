@@ -30,6 +30,12 @@ const SUFFIXES: [RegExp, string][] = [
   [/\b(crossing|xing)\b/g, "xing"],
   [/\b(point|pt)\b/g, "pt"],
   [/\b(mount|mt)\b/g, "mt"],
+  // Written into street NAMES, not just suffixes — "St Johns Ave" is
+  // Saint Johns, and one vendor spells it out. Folding saint into "st"
+  // is safe because "Main Street" has already become "main st" by the
+  // time anything compares.
+  [/\b(saint)\b/g, "st"],
+  [/\b(fort|ft)\b/g, "ft"],
   [/\b(apartment|apt|unit|ste|suite)\b/g, "unit"],
   // Directionals, spelled out on one side and lettered on the other.
   // "9256 7th Ave S" and "9256 7th Avenue South" are the same building,
