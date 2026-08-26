@@ -15,11 +15,7 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import {
-  basemapName,
-  basemapStyle,
-  describeMapError,
-} from "@/lib/map/basemap";
+import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
 import { ArrowUpRight, X } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
@@ -126,7 +122,7 @@ export function CompsStreetMap({
     if (!container) return;
     const map = new maplibregl.Map({
       container,
-      style: basemapStyle(),
+      style: BASEMAP_STYLE,
       center: [subject.lon, subject.lat],
       zoom: 12,
       attributionControl: { compact: true },
@@ -222,8 +218,8 @@ export function CompsStreetMap({
 
         {tileError ? (
           <p className="pointer-events-none absolute left-3 top-3 z-20 max-w-[min(28rem,90%)] rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
-            Street tiles unavailable from {basemapName()} ({tileError}) — pins
-            are still placed to scale.
+            Street tiles unavailable ({tileError}) — pins are still placed to
+            scale.
           </p>
         ) : null}
 

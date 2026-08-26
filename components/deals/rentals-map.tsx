@@ -15,11 +15,7 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import {
-  basemapName,
-  basemapStyle,
-  describeMapError,
-} from "@/lib/map/basemap";
+import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
 import { fmtMoney } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import { cn } from "@/lib/utils";
@@ -86,7 +82,7 @@ export function RentalsMap({
     const els = markerElsRef.current;
     const map = new maplibregl.Map({
       container,
-      style: basemapStyle(),
+      style: BASEMAP_STYLE,
       center: US_CENTER,
       zoom: US_ZOOM,
       attributionControl: { compact: true },
@@ -208,8 +204,8 @@ export function RentalsMap({
       <div ref={containerRef} className="h-full w-full" />
       {tileError ? (
         <p className="pointer-events-none absolute left-3 top-3 z-20 max-w-[min(28rem,90%)] rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
-          Street tiles unavailable from {basemapName()} ({tileError}) — pins
-          still placed to scale.
+          Street tiles unavailable ({tileError}) — pins still placed to
+          scale.
         </p>
       ) : null}
     </div>
