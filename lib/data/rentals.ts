@@ -94,6 +94,31 @@ export async function getLiveRentals(
   }
 }
 
+/**
+ * Photos for a market's rows, keyed by normalised address.
+ *
+ * A second call on purpose: the rows come back without imagery so they
+ * can render as soon as the feed answers, and this fills the pictures
+ * in behind them. Returns an empty map for anything it can't cover —
+ * the caller merges what it gets and leaves the rest alone.
+ */
+export async function getBorrowedPhotos(
+  marketSlug: string
+): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(
+      `/api/rentals/photos?market=${encodeURIComponent(marketSlug)}`
+    );
+    if (!res.ok) return {};
+    const data = (await res.json().catch(() => null)) as {
+      photos?: Record<string, string>;
+    } | null;
+    return data?.photos ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export interface ZipRentalsResult extends LiveRentalsResult {
   /** The covered market anchoring cushion math for this ZIP, if any. */
   market?: string | null;

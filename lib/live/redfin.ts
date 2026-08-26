@@ -19,6 +19,7 @@
  * delete the aliases that never fire.
  */
 
+import { addressKey } from "@/lib/live/address";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
 import { cityIdFor, REDFIN_CITY_ID } from "@/lib/live/redfin-city";
@@ -390,46 +391,6 @@ export function mapRedfinListing(
 /* Photo index: Redfin's pictures on another feed's rows               */
 /* ------------------------------------------------------------------ */
 
-/**
- * Punctuation-blind, abbreviation-blind address key.
- *
- * Used to decide whether a Redfin row and a RentCast row are the SAME
- * building. A loose match here hangs one property's photo on another's
- * card — the kind of wrong that looks completely right, so the key is
- * built from house number, street name and (where present) unit, and a
- * row that can't produce one is never matched.
- */
-export function addressKey(address: string): string | null {
-  const cleaned = address
-    .toLowerCase()
-    .replace(/[.,#]/g, " ")
-    .replace(/\b(street|st)\b/g, "st")
-    .replace(/\b(avenue|ave)\b/g, "ave")
-    .replace(/\b(road|rd)\b/g, "rd")
-    .replace(/\b(drive|dr)\b/g, "dr")
-    .replace(/\b(lane|ln)\b/g, "ln")
-    .replace(/\b(court|ct)\b/g, "ct")
-    .replace(/\b(boulevard|blvd)\b/g, "blvd")
-    .replace(/\b(terrace|ter)\b/g, "ter")
-    .replace(/\b(place|pl)\b/g, "pl")
-    .replace(/\b(apartment|apt|unit|ste|suite)\b/g, "unit")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const number = cleaned.match(/^\d+/)?.[0];
-  if (!number) return null;
-  // Everything up to the city: street plus any unit designator.
-  const street = cleaned
-    .slice(number.length)
-    .split(/\bjacksonville\b|\b[a-z]{2}\s+\d{5}\b/)[0]
-    // The unit NUMBER distinguishes units; the word in front of it does
-    // not, and "#902" strips to a bare number while "Apt 902" doesn't.
-    .replace(/\bunit\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (street.length < 3) return null;
-  return `${number} ${street}`;
-}
 
 /**
  * Redfin's thumbnails for a market, keyed by address.
@@ -448,9 +409,10 @@ export async function fetchRedfinPhotoIndex(
   market: Market
 ): Promise<Map<string, string>> {
   const index = new Map<string, string>();
-  // Resolve rather than consult the seeded map: a market whose id we can
-  // find still deserves its photos.
-  if ((await cityIdFor(market)) === null) return index;
+  // Seeded ids only. Photos are decoration, and resolving an unknown id
+  // costs two proxy round trips before it can even fail — latency spent
+  // on the one part of the row a student can do without.
+  if (!redfinCoversMarket(market)) return index;
 
   const { raw } = await fetchRedfinRentals(market, { furnished: false });
   for (const row of raw) {

@@ -24,11 +24,13 @@ import {
   SearchX,
 } from "lucide-react";
 import {
+  getBorrowedPhotos,
   getLiveRentals,
   getLiveRentalsByZip,
   type LiveFailureReason,
 } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
+import { addressKey } from "@/lib/live/address";
 import { estimateCushionPts } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { Button } from "@/components/ui/button";
@@ -269,6 +271,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     };
   }, [liveTarget]);
 
+
   /* ---------------------------------------------------------------- */
   /* Furnished: answered by Redfin, not by reading prose               */
   /*                                                                    */
@@ -306,6 +309,41 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     liveTarget && liveChecked !== liveTarget.slug
   );
 
+  /* ---------------------------------------------------------------- */
+  /* Photos, fetched after the rows are already on screen              */
+  /*                                                                    */
+  /* The rentals feed ships no imagery, so a picture has to come from a
+     second source that takes about as long as the first. Asking for
+     both before rendering anything meant the wait was the sum of two
+     vendors; asking afterwards means rows appear at the speed of one
+     and fill in their pictures a moment later. Nothing here is
+     load-bearing: no answer just leaves the sketches in place.        */
+  /* ---------------------------------------------------------------- */
+
+  const [photos, setPhotos] = React.useState<{
+    slug: string;
+    byAddress: Record<string, string>;
+  } | null>(null);
+
+  /** Only worth asking for real inventory: the preview set's addresses
+   *  are generated, so nothing out there could match them. */
+  const photoTarget = liveActive ? live!.slug : null;
+
+  React.useEffect(() => {
+    if (!photoTarget) return;
+    let cancelled = false;
+    getBorrowedPhotos(photoTarget).then((byAddress) => {
+      if (cancelled) return;
+      setPhotos({ slug: photoTarget, byAddress });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [photoTarget]);
+
+  const photosFor =
+    photos && photos.slug === photoTarget ? photos.byAddress : null;
+
   // Join listings with their market once — cushion comes through
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
   const rows = React.useMemo<Row[]>(() => {
@@ -326,9 +364,14 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
           (listFilter
             ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
             : []));
-    return source.flatMap((listing) => {
-      const market = bySlug.get(listing.marketSlug);
+    return source.flatMap((raw) => {
+      const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
+      // A borrowed photo, if one arrived and this row still has none.
+      const borrowed = raw.photoUrl
+        ? undefined
+        : photosFor?.[addressKey(raw.address) ?? ""];
+      const listing = borrowed ? { ...raw, photoUrl: borrowed } : raw;
       return [
         {
           listing,
@@ -359,6 +402,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
     lists,
     redfinActive,
     redfin,
+    photosFor,
   ]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
