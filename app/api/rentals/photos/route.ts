@@ -11,6 +11,14 @@
  * one, to get a picture they hadn't asked for yet. So: rows ship first,
  * pictures land after.
  *
+ * And the second source is not just a photo mine. It is the same search
+ * the Furnished view shows outright, so its rows arrive as complete
+ * listings — photo welded on, nothing to match. A row the feed also
+ * carries lends that row its photo; a row the feed DOESN'T carry is
+ * returned as a listing in its own right rather than discarded. That is
+ * the Furnished approach, replicated: where a photo exists at the
+ * source, the property on screen has it, because it IS that row.
+ *
  * The match happens HERE, not in the browser, and the answer is keyed
  * by listing id. Both feeds are already in the server's cache, so it
  * costs nothing extra — and it means there is exactly one copy of the
@@ -32,8 +40,8 @@ import {
 import { fetchLiveRentals } from "@/lib/live/rentcast";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
-/** One proxied search, paginated. Comfortably inside the ceiling. */
-export const maxDuration = 60;
+/** Two paginated searches plus geocoding on a cold market. */
+export const maxDuration = 120;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -72,11 +80,15 @@ export async function GET(request: Request) {
   let exact = 0;
   let byBuilding = 0;
   const misses: string[] = [];
+  /** Buildings the feed already shows in some form — an extra row for
+   *  the same building would read as a duplicate card. */
+  const feedBuildings = new Set<string>();
 
   for (const listing of listings) {
+    const building = buildingKey(listing.address);
+    if (building) feedBuildings.add(building);
     if (listing.photoUrl) continue;
     const key = addressKey(listing.address);
-    const building = buildingKey(listing.address);
     const own = key ? index.get(key) : undefined;
     const block = building ? buildings.get(building) : undefined;
     const hit = own ?? block;
@@ -89,11 +101,23 @@ export async function GET(request: Request) {
     }
   }
 
+  // The rows the feed doesn't carry, offered as listings. Dedup is by
+  // BUILDING on purpose: the feed lists a complex unit by unit while
+  // the source lists it once, and a card for "the building" beside five
+  // cards for its units reads as a sixth copy, not more inventory.
+  const extras = (source?.listings ?? []).filter((listing) => {
+    const building = buildingKey(listing.address);
+    return building === null || !feedBuildings.has(building);
+  });
+
   return NextResponse.json({
     market: market.slug,
     photos,
+    /** Complete listings the feed doesn't carry — shown, not mined. */
+    listings: extras,
     /** Coverage, not a claim that every row has one. */
     matched: Object.keys(photos).length,
+    extrasAdded: extras.length,
     rows: listings.length,
     ...(shape
       ? {

@@ -19,7 +19,7 @@
  * delete the aliases that never fire.
  */
 
-import { addressKey, buildingKey } from "@/lib/live/address";
+import { addressKey, buildingKey, streetPartOf } from "@/lib/live/address";
 import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
@@ -390,7 +390,9 @@ export function mapRedfinListing(
     listing: {
       id: `live--${market.slug}--rf-${key}`,
       analysisId: `r--live--${market.slug}--rf-${key}`,
-      address,
+      // The street, not "Community Name | Street" — the marketing name
+      // reads as noise on a card and wrecks address joins.
+      address: streetPartOf(address),
       city: pickString(raw, CITY_KEYS) ?? market.name,
       stateCode: pickString(raw, STATE_KEYS) ?? market.stateCode,
       marketSlug: market.slug,
@@ -512,6 +514,12 @@ export async function probeHouseFilters(market: Market): Promise<unknown> {
 }
 
 export interface RedfinPhotoIndex {
+  /** Every row as a full listing — geocoded, photo attached, the same
+   *  mapping the Furnished view runs. Rows the feed doesn't carry get
+   *  SHOWN from these rather than discarded: the photo source is a
+   *  listing source, and stripping it for parts was the mistake this
+   *  whole matching saga kept paying for. */
+  listings: RentalListing[];
   /** Address → photo, exact. Consulted first. */
   index: Map<string, string>;
   /** Building → photo, for a flat in a block photographed once. Kept
@@ -609,18 +617,20 @@ export async function fetchRedfinPhotoIndex(
   // Seeded ids only. Photos are decoration, and resolving an unknown id
   // costs two proxy round trips before it can even fail — latency spent
   // on the one part of the row a student can do without.
-  if (!redfinCoversMarket(market)) return { index, buildings, stats };
+  if (!redfinCoversMarket(market))
+    return { listings: [], index, buildings, stats };
 
   const pages = photoPages();
   const [everything, ...typed] = await Promise.all([
-    fetchRedfinRentals(market, { furnished: false, map: false, pages }),
+    // Fully mapped — geocoded and photo-bearing — because these rows
+    // are shown, not just mined for thumbnails.
+    fetchRedfinRentals(market, { furnished: false, pages }),
     // A narrower pass must not sink the search it supplements — but its
     // failure gets NAMED, not eaten. A bare catch here reported a
     // vendor throttle as "this city has no houses".
     ...photoTypes().map((propertyType) =>
       fetchRedfinRentals(market, {
         furnished: false,
-        map: false,
         pages,
         propertyType,
       }).catch((error: unknown) => {
@@ -671,7 +681,13 @@ export async function fetchRedfinPhotoIndex(
   absorb(houseRows, stats.houseSampleAddresses);
   stats.housePassNewKeys = index.size - beforeHouses;
 
-  return { index, buildings, stats };
+  // The passes overlap — a house on page one of both is one listing.
+  const byId = new Map<string, RentalListing>();
+  for (const listing of [everything, ...houses].flatMap((r) => r.listings)) {
+    if (!byId.has(listing.id)) byId.set(listing.id, listing);
+  }
+
+  return { listings: [...byId.values()], index, buildings, stats };
 }
 
 /* ------------------------------------------------------------------ */

@@ -24,7 +24,7 @@ import {
   SearchX,
 } from "lucide-react";
 import {
-  getBorrowedPhotos,
+  getMarketPhotoMerge,
   getLiveRentals,
   getLiveRentalsByZip,
   type LiveFailureReason,
@@ -337,6 +337,9 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
   const [photos, setPhotos] = React.useState<{
     slug: string;
     byListingId: Record<string, string>;
+    /** Photo-bearing listings the feed doesn't carry, shown alongside
+     *  its rows — the Furnished approach, applied everywhere. */
+    extras: RentalListing[];
   } | null>(null);
 
   /** Only worth asking for real inventory: the preview set's addresses
@@ -346,9 +349,9 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
   React.useEffect(() => {
     if (!photoTarget) return;
     let cancelled = false;
-    getBorrowedPhotos(photoTarget).then((byListingId) => {
+    getMarketPhotoMerge(photoTarget).then(({ photos: byListingId, listings }) => {
       if (cancelled) return;
-      setPhotos({ slug: photoTarget, byListingId });
+      setPhotos({ slug: photoTarget, byListingId, extras: listings });
     });
     return () => {
       cancelled = true;
@@ -357,6 +360,8 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
 
   const photosFor =
     photos && photos.slug === photoTarget ? photos.byListingId : null;
+  const extraRows =
+    photos && photos.slug === photoTarget ? photos.extras : null;
 
   // Join listings with their market once — cushion comes through
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
@@ -374,10 +379,14 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
         ? zipActive
           ? zipResult!.listings
           : []
-        : (marketRows ??
-          (listFilter
+        : marketRows
+          ? // The feed's rows, plus the photo source's own listings for
+            // buildings the feed doesn't carry — the same rows the
+            // Furnished view shows, welded photo and all.
+            [...marketRows, ...(extraRows ?? [])]
+          : listFilter
             ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
-            : []));
+            : [];
     return source.flatMap((raw) => {
       const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
@@ -417,6 +426,7 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
     redfinActive,
     redfin,
     photosFor,
+    extraRows,
   ]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {

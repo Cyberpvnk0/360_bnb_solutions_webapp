@@ -94,32 +94,47 @@ export async function getLiveRentals(
   }
 }
 
+export interface MarketPhotoMerge {
+  /** listing id → photo URL, for rows the feed already shows. */
+  photos: Record<string, string>;
+  /** Complete listings the feed doesn't carry, photos welded on — the
+   *  same rows the Furnished view would show. */
+  listings: RentalListing[];
+}
+
 /**
- * Photos for a market's rows, keyed by LISTING ID.
+ * Photos and photo-bearing listings for a market, a beat after the rows.
  *
  * A second call on purpose: the rows come back without imagery so they
- * can render as soon as the feed answers, and this fills the pictures
- * in behind them. Returns an empty map for anything it can't cover —
- * the caller merges what it gets and leaves the rest alone.
+ * can render as soon as the feed answers, and this fills in behind
+ * them — pictures onto the rows the feed has, whole listings for the
+ * ones it hasn't. Returns nothing for anything it can't cover; the
+ * caller merges what it gets and leaves the rest alone.
  *
  * By id, not by address, because the address matching lives on the
  * server next to both feeds. Nothing here needs to know how two
  * vendors spell a street.
  */
-export async function getBorrowedPhotos(
+export async function getMarketPhotoMerge(
   marketSlug: string
-): Promise<Record<string, string>> {
+): Promise<MarketPhotoMerge> {
+  const empty: MarketPhotoMerge = { photos: {}, listings: [] };
   try {
     const res = await fetch(
       `/api/rentals/photos?market=${encodeURIComponent(marketSlug)}`
     );
-    if (!res.ok) return {};
+    if (!res.ok) return empty;
     const data = (await res.json().catch(() => null)) as {
       photos?: Record<string, string>;
+      listings?: RentalListing[];
     } | null;
-    return data?.photos ?? {};
+    const listings = Array.isArray(data?.listings) ? data.listings : [];
+    // Registered like any live rows, so "Run the numbers" resolves them
+    // after a navigation exactly as it does for the feed's own.
+    registerLiveListings(listings);
+    return { photos: data?.photos ?? {}, listings };
   } catch {
-    return {};
+    return empty;
   }
 }
 

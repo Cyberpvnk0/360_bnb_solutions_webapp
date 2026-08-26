@@ -130,22 +130,30 @@ interface ParsedAddress {
   unit: string | null;
 }
 
-function parseAddress(address: string): ParsedAddress | null {
-  // Apartment listings arrive as "Community Name | 5000 Big Island Dr".
-  // The building's marketing name is not an address and matches nothing
-  // on the other side — and because plenty of them start with a digit
-  // ("5 Thousand Town"), the leading-number check below waves the whole
-  // string through as if it were a street. Take the street.
-  const piped = address.includes("|")
-    ? (address
-        .split("|")
-        .map((p) => p.trim())
-        .filter((p) => /^\d/.test(p))
-        .pop() ?? address.split("|").pop()!.trim())
-    : address;
+/**
+ * The postal part of a listing's address line.
+ *
+ * Apartment listings arrive as "Community Name | 5000 Big Island Dr".
+ * The building's marketing name is not an address: it matches nothing
+ * on the other side of a join, and it reads as noise on a card — and
+ * because plenty of them start with a digit ("5 Thousand Town"), a
+ * leading-number check waves the whole string through as if it were a
+ * street. Take the street.
+ */
+export function streetPartOf(address: string): string {
+  if (!address.includes("|")) return address;
+  return (
+    address
+      .split("|")
+      .map((p) => p.trim())
+      .filter((p) => /^\d/.test(p))
+      .pop() ?? address.split("|").pop()!.trim()
+  );
+}
 
+function parseAddress(address: string): ParsedAddress | null {
   // Commas separate street from city; a unit can fall on either side.
-  const parts = piped.split(",").map((p) => p.trim());
+  const parts = streetPartOf(address).split(",").map((p) => p.trim());
   const streetParts: string[] = [];
   let unit: string | null = null;
   for (const [i, part] of parts.entries()) {
