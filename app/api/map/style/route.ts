@@ -17,10 +17,13 @@
  * setting. What this does buy: the key stays out of the JS bundle and
  * out of the repo, and the provider changes without a release.
  *
- * Precedence: an explicit style URL, then a MapTiler key, then
- * OpenFreeMap, which needs no key at all. Every branch answers with a
- * usable style, so a missing key degrades to the free provider rather
- * than to a blank map.
+ * Precedence: MAP_RASTER=1, then an explicit style URL, then a
+ * MapTiler key, then OpenFreeMap, which needs no key at all. Every
+ * branch answers with a usable style, so a missing key degrades to the
+ * free provider rather than to a blank map.
+ *
+ *   MAPTILER_MAP   which map id to use, default "dataviz-light"
+ *   MAP_RASTER=1   raster tiles instead of vector
  */
 
 import { NextResponse } from "next/server";
@@ -30,10 +33,43 @@ const REVALIDATE_SECONDS = 86_400;
 
 const OPENFREEMAP = "https://tiles.openfreemap.org/styles/positron";
 
-/** Light and low-contrast: a backdrop, not the subject. Dark mode
- *  inverts the canvas in CSS, so one style covers both themes. */
-const maptiler = (key: string) =>
-  `https://api.maptiler.com/maps/dataviz-light/style.json?key=${encodeURIComponent(key)}`;
+/** Any map id from the MapTiler dashboard — "dataviz-light", "base-v4",
+ *  "streets-v2". Light ones suit us: dark mode inverts the canvas in
+ *  CSS, so one style covers both themes. */
+const MAPTILER_MAP = process.env.MAPTILER_MAP ?? "dataviz-light";
+
+const maptilerVector = (key: string) =>
+  `https://api.maptiler.com/maps/${MAPTILER_MAP}/style.json?key=${encodeURIComponent(key)}`;
+
+/**
+ * A raster style, built here rather than fetched.
+ *
+ * Vector is the better rendering — sharper, lighter, restyleable — but
+ * it asks more of the browser: a worker, a tile parser, and a second
+ * request for the tile manifest before anything can draw. Raster asks
+ * for images. When a vector basemap comes up blank and its own
+ * attribution is sitting there proving the style loaded, this is the
+ * path that isolates it, and it is a perfectly good map to ship.
+ *
+ * Set MAP_RASTER=1 to use it.
+ */
+function maptilerRaster(key: string): string {
+  return JSON.stringify({
+    version: 8,
+    sources: {
+      basemap: {
+        type: "raster",
+        tiles: [
+          `https://api.maptiler.com/maps/${MAPTILER_MAP}/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(key)}`,
+        ],
+        tileSize: 256,
+        attribution:
+          '<a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener noreferrer">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">&copy; OpenStreetMap contributors</a>',
+      },
+    },
+    layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+  });
+}
 
 /** Both spellings: the documented one, and the one you get when the
  *  platform won't accept NEXT_PUBLIC_ on a sensitive variable. */
@@ -46,12 +82,30 @@ function resolve(): { url: string; provider: string } {
     process.env.MAPTILER_KEY ??
     process.env.NEXT_MAPTILER_KEY ??
     process.env.NEXT_PUBLIC_MAPTILER_KEY;
-  if (key) return { url: maptiler(key), provider: "MapTiler" };
+  if (key) return { url: maptilerVector(key), provider: `MapTiler ${MAPTILER_MAP}` };
 
   return { url: OPENFREEMAP, provider: "OpenFreeMap" };
 }
 
 export async function GET() {
+  // Raster is assembled here, so it needs no upstream fetch at all —
+  // one less thing between a request and a visible map.
+  const rasterKey =
+    process.env.MAP_RASTER === "1"
+      ? (process.env.MAPTILER_KEY ??
+        process.env.NEXT_MAPTILER_KEY ??
+        process.env.NEXT_PUBLIC_MAPTILER_KEY)
+      : undefined;
+  if (rasterKey) {
+    return new NextResponse(maptilerRaster(rasterKey), {
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "public, max-age=3600, stale-while-revalidate=86400",
+        "x-basemap-provider": `MapTiler ${MAPTILER_MAP} (raster)`,
+      },
+    });
+  }
+
   const { url, provider } = resolve();
 
   let res: Response;

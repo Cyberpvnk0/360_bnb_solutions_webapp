@@ -139,9 +139,12 @@ export function CompsStreetMap({
     // style on the first error, which could blank a map whose tiles
     // were about to arrive; MapLibre already draws whatever it has.
     map.on("error", (event) => setTileError(describeMapError(event)));
-    // Tiles for the opening view are in. Anything logged before this
-    // was transient, so the notice clears with them.
-    map.on("idle", () => setTileError(null));
+    // Cleared by a tile that actually arrived — NOT by "idle", which
+    // fires just as happily when every tile failed and there is nothing
+    // left to try. Clearing on idle is why a blank map stayed silent.
+    map.on("sourcedata", (event) => {
+      if (event.tile && event.isSourceLoaded) setTileError(null);
+    });
 
     // Subject pin — brand red diamond in a gold ring.
     const subjectEl = document.createElement("div");
