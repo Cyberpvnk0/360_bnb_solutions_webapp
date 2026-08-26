@@ -31,15 +31,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { addressKey, buildingKey } from "@/lib/live/address";
-import {
-  fetchRedfinPhotoIndex,
-  mapRedfinRows,
-  probeHouseFilters,
-  redfinAddressOf,
-  redfinCoversMarket,
-} from "@/lib/live/redfin";
-import { fetchLiveRentals } from "@/lib/live/rentcast";
+import { buildMarketPhotoMerge } from "@/lib/live/photo-merge";
+import { probeHouseFilters, redfinCoversMarket } from "@/lib/live/redfin";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
 /** Two paginated searches plus geocoding on a cold market. The plan's
@@ -71,57 +64,8 @@ export async function GET(request: Request) {
     });
   }
 
-  // Both are cached by the time a student is looking at the rows, so
-  // this is a cache read in the common case, and parallel when it isn't.
-  const [source, listings] = await Promise.all([
-    fetchRedfinPhotoIndex(market).catch(() => null),
-    fetchLiveRentals(market).catch(() => []),
-  ]);
-  const index = source?.index ?? new Map<string, string>();
-  const buildings = source?.buildings ?? new Map<string, string>();
-
-  const photos: Record<string, string> = {};
-  let exact = 0;
-  let byBuilding = 0;
-  const misses: string[] = [];
-  /** Buildings the feed already shows in some form — an extra row for
-   *  the same building would read as a duplicate card. */
-  const feedBuildings = new Set<string>();
-
-  for (const listing of listings) {
-    const building = buildingKey(listing.address);
-    if (building) feedBuildings.add(building);
-    if (listing.photoUrl) continue;
-    const key = addressKey(listing.address);
-    const own = key ? index.get(key) : undefined;
-    const block = building ? buildings.get(building) : undefined;
-    const hit = own ?? block;
-    if (hit) {
-      photos[listing.id] = hit;
-      if (own) exact += 1;
-      else byBuilding += 1;
-    } else {
-      misses.push(key ?? `(unkeyable) ${listing.address}`);
-    }
-  }
-
-  // The rows the feed doesn't carry, offered as listings. Dedup is by
-  // BUILDING on purpose: the feed lists a complex unit by unit while
-  // the source lists it once, and a card for "the building" beside five
-  // cards for its units reads as a sixth copy, not more inventory.
-  //
-  // Deduped BEFORE mapping, because mapping means geocoding, seconds
-  // per cold address — placing rows that were about to be discarded is
-  // how this route once outran its whole time budget on the biggest
-  // market and answered with nothing.
-  const candidates = (source?.rows ?? []).filter((row) => {
-    const address = redfinAddressOf(row);
-    const building = address ? buildingKey(address) : null;
-    return building === null || !feedBuildings.has(building);
-  });
-  const extras = candidates.length
-    ? (await mapRedfinRows(candidates, market, { furnished: false })).listings
-    : [];
+  const merge = await buildMarketPhotoMerge(market);
+  const { photos, extras, index, misses } = merge;
 
   return NextResponse.json({
     market: market.slug,
@@ -131,19 +75,19 @@ export async function GET(request: Request) {
     /** Coverage, not a claim that every row has one. */
     matched: Object.keys(photos).length,
     extrasAdded: extras.length,
-    rows: listings.length,
+    rows: merge.rows,
     ...(shape
       ? {
           // Both sides' keys, so a format mismatch is visible rather
           // than guessed at. These are normalised street addresses from
           // public listings — no contact details, no prose.
-          exact,
-          byBuilding,
+          exact: merge.exact,
+          byBuilding: merge.byBuilding,
           indexedKeys: index.size,
           // Where the photo source's rows went. A thin index is either
           // few rows or rows we failed to read, and these separate the
           // two without another round of guessing.
-          photoSource: source?.stats ?? null,
+          photoSource: merge.stats,
           sampleIndexKeys: [...index.keys()].slice(0, 12),
           // Spread across the whole miss list. The rows arrive sorted
           // by rent, so "the first twelve" was the twelve cheapest —
@@ -158,9 +102,9 @@ export async function GET(request: Request) {
               ? "The photo source returned nothing for this market — read photoSource: pages and rows say whether the fetch worked, withAddress and withPhoto whether the rows were readable."
               : Object.keys(photos).length === 0
                 ? "Both sides have rows and NOTHING matched: compare sampleIndexKeys with sampleUnmatchedRowKeys — the two are writing addresses differently."
-                : source?.stats.housePassError
-                  ? `Matching works, but the house pass DIED: ${source.stats.housePassError}. "quota" is the vendor's concurrency throttle, not the filter — the filter itself was measured working. Retry; the shared request gate should hold every pass under the limit now.`
-                  : (source?.stats.housePassNewKeys ?? 0) < 20
+                : merge.stats?.housePassError
+                  ? `Matching works, but the house pass DIED: ${merge.stats?.housePassError}. "quota" is the vendor's concurrency throttle, not the filter — the filter itself was measured working. Retry; the shared request gate should hold every pass under the limit now.`
+                  : (merge.stats?.housePassNewKeys ?? 0) < 20
                     ? "Matching works, but the house pass is INERT — it returned rows and added almost no new keys, which is what a filter the vendor ignores looks like. Compare houseSampleAddresses with sampleAddresses: if both are apartment communities, the filter is not biting. Try ?houseProbe=1."
                     : "Matching works and both passes contribute. Coverage is bounded by page depth (see morePages) and by how much inventory the two sources share.",
         }
