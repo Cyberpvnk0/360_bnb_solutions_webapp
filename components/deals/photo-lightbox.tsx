@@ -12,6 +12,11 @@
  * fixed overlay nested in that dialog's own stacking context would sit
  * underneath it.
  *
+ * Which is why pointer-events are re-enabled explicitly. A modal Radix
+ * dialog sets `pointer-events: none` on the body and restores it only
+ * on its own content, so a sibling portal renders perfectly and cannot
+ * be clicked — no close, no arrows, no thumbnails, nothing.
+ *
  * Escape is captured rather than merely handled — the dialog behind is
  * listening for the same key, and without this, one press would close
  * both and drop the student back to the grid.
@@ -20,6 +25,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function PhotoLightbox({
   photos,
@@ -70,16 +76,22 @@ export function PhotoLightbox({
       aria-label={caption}
       // Anything that isn't the photo or a control dismisses.
       onClick={onClose}
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4 sm:p-8"
+      className="pointer-events-auto fixed inset-0 z-[120] flex flex-col bg-black/90"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={shown}
-        alt={caption}
-        // Contained, not cropped: seeing the whole room is the point.
-        className="max-h-full max-w-full cursor-default object-contain"
-        onClick={(event) => event.stopPropagation()}
-      />
+      {/* The photo takes whatever the filmstrip leaves. Laid out as
+          rows rather than centred over the whole overlay: absolutely
+          positioning the strip put it under the image, where its
+          thumbnails could be seen and not clicked. */}
+      <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={shown}
+          alt={caption}
+          // Contained, not cropped: seeing the whole room is the point.
+          className="max-h-full max-w-full cursor-default object-contain"
+          onClick={(event) => event.stopPropagation()}
+        />
+      </div>
 
       <button
         type="button"
@@ -114,9 +126,42 @@ export function PhotoLightbox({
           >
             <ChevronRight aria-hidden className="size-6" />
           </button>
-          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium tabular text-white">
-            {index + 1} / {photos.length}
-          </span>
+          {/* The whole set at a glance. Arrows are fine for stepping one
+              at a time; this is for finding the kitchen out of thirty. */}
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="flex shrink-0 items-center justify-center gap-3 overflow-x-auto px-4 pb-4"
+          >
+            <span className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs font-medium tabular text-white">
+              {index + 1} / {photos.length}
+            </span>
+            <div className="flex gap-2">
+              {photos.map((photo, i) => (
+                <button
+                  key={photo}
+                  type="button"
+                  aria-label={`Photo ${i + 1}`}
+                  aria-current={i === index}
+                  onClick={() => onIndexChange(i)}
+                  className={cn(
+                    "size-14 shrink-0 overflow-hidden rounded-md border-2 transition-opacity duration-150",
+                    i === index
+                      ? "border-white opacity-100"
+                      : "border-transparent opacity-55 hover:opacity-90"
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="size-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
         </>
       ) : null}
     </div>,

@@ -11,7 +11,7 @@
  */
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Expand } from "lucide-react";
 import type { RentalListing } from "@/lib/mock/types";
 import { PhotoLightbox } from "./photo-lightbox";
 import { PropertyImage } from "./property-image";
@@ -109,9 +109,13 @@ export function ListingGallery({
           type="button"
           onClick={() => setZoomed(true)}
           aria-label="Enlarge photo"
-          className="block w-full cursor-zoom-in"
+          className="group relative block w-full cursor-zoom-in"
         >
           <PropertyImage listing={listing} className={className} />
+          <span className="pointer-events-none absolute bottom-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white transition-colors duration-150 group-hover:bg-black/75">
+            <Expand aria-hidden className="size-3.5" />
+            Enlarge
+          </span>
         </button>
         {zoomed ? (
           <PhotoLightbox
@@ -140,6 +144,22 @@ export function ListingGallery({
         className="size-full cursor-zoom-in object-cover"
         onError={() => setBroken((current) => [...current, shown])}
       />
+
+      {/* Said out loud, not just implied by a hover cursor: without a
+          control here the crop reads as all there is.
+
+          Bottom-left on purpose. The panel's own close button is pinned
+          top-right and sits over this image — anything put there is
+          unclickable, which is how the first version of this shipped. */}
+      <button
+        type="button"
+        onClick={() => setZoomed(true)}
+        aria-label="Enlarge photo"
+        className="absolute bottom-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white transition-colors duration-150 hover:bg-black/75"
+      >
+        <Expand aria-hidden className="size-3.5" />
+        Enlarge
+      </button>
 
       {photos.length > 1 ? (
         <>
