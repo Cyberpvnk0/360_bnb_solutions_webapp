@@ -24,6 +24,9 @@ import type { Market, RentalListing } from "@/lib/mock/types";
 export interface MarketPhotoMerge {
   /** False when no photo source is mapped for this market. */
   covered: boolean;
+  /** The feed's own rows, so a warming run can store the whole day —
+   *  listings and photos both — in one computation. */
+  feed: RentalListing[];
   /** Feed listing id → photo, for rows the feed already shows. */
   photos: Record<string, string>;
   /** Complete listings the feed doesn't carry — shown, not mined. */
@@ -43,6 +46,7 @@ export async function buildMarketPhotoMerge(
 ): Promise<MarketPhotoMerge> {
   const empty: MarketPhotoMerge = {
     covered: redfinCoversMarket(market),
+    feed: [],
     photos: {},
     extras: [],
     rows: 0,
@@ -108,6 +112,7 @@ export async function buildMarketPhotoMerge(
 
   return {
     covered: true,
+    feed: listings,
     photos,
     extras,
     rows: listings.length,

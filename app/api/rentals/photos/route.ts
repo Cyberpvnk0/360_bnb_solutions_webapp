@@ -31,6 +31,11 @@
  */
 
 import { NextResponse } from "next/server";
+import {
+  isFresh,
+  readMarketStore,
+  writeMarketPhotoMerge,
+} from "@/lib/db/market-store";
 import { buildMarketPhotoMerge } from "@/lib/live/photo-merge";
 import { probeHouseFilters, redfinCoversMarket } from "@/lib/live/redfin";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
@@ -64,8 +69,34 @@ export async function GET(request: Request) {
     });
   }
 
+  // The durable store first — a fresh photo merge is the whole answer,
+  // computed once today by whoever got here first (usually the warming
+  // cron). The shape probe always computes live: it exists to watch the
+  // pipeline run, and a stored answer would hide exactly what it is
+  // for.
+  const stored = await readMarketStore(market.slug);
+  if (!shape && stored?.photoMerge && isFresh(stored.photoMergeAt)) {
+    const kept = stored.photoMerge;
+    return NextResponse.json({
+      market: market.slug,
+      photos: kept.photos,
+      listings: kept.extras,
+      matched: kept.matched,
+      extrasAdded: kept.extras.length,
+      rows: kept.rows,
+    });
+  }
+
   const merge = await buildMarketPhotoMerge(market);
   const { photos, extras, index, misses } = merge;
+  if (merge.covered) {
+    await writeMarketPhotoMerge(market.slug, {
+      photos,
+      extras,
+      matched: Object.keys(photos).length,
+      rows: merge.rows,
+    });
+  }
 
   return NextResponse.json({
     market: market.slug,
@@ -88,6 +119,12 @@ export async function GET(request: Request) {
           // few rows or rows we failed to read, and these separate the
           // two without another round of guessing.
           photoSource: merge.stats,
+          // What the durable store held when this probe began, so a
+          // stale or missing row is visible next to the live numbers.
+          store: {
+            listingsAt: stored?.listingsAt ?? null,
+            photoMergeAt: stored?.photoMergeAt ?? null,
+          },
           sampleIndexKeys: [...index.keys()].slice(0, 12),
           // Spread across the whole miss list. The rows arrive sorted
           // by rent, so "the first twelve" was the twelve cheapest —

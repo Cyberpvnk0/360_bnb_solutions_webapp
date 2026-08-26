@@ -18,6 +18,11 @@
  */
 
 import { NextResponse } from "next/server";
+import {
+  storeConfigured,
+  writeMarketListings,
+  writeMarketPhotoMerge,
+} from "@/lib/db/market-store";
 import { buildMarketPhotoMerge } from "@/lib/live/photo-merge";
 import { warmList, warmSlice } from "@/lib/live/warm";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
@@ -59,6 +64,20 @@ export async function GET(request: Request) {
     }
     try {
       const merge = await buildMarketPhotoMerge(market);
+      // The point of warming: the work lands in the durable store, so
+      // it survives deploys and serves every instance — not just the
+      // framework cache of whichever one ran the cron.
+      if (merge.feed.length > 0) {
+        await writeMarketListings(slug, merge.feed);
+      }
+      if (merge.covered) {
+        await writeMarketPhotoMerge(slug, {
+          photos: merge.photos,
+          extras: merge.extras,
+          matched: Object.keys(merge.photos).length,
+          rows: merge.rows,
+        });
+      }
       results.push({
         slug,
         ok: true,
@@ -76,5 +95,12 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ enabled: true, listSize: list.length, results });
+  return NextResponse.json({
+    enabled: true,
+    listSize: list.length,
+    // Without the store, warming still helps the instance that ran it —
+    // but only the store makes it durable. Say which mode this run was.
+    durable: storeConfigured(),
+    results,
+  });
 }

@@ -29,6 +29,11 @@ import {
 } from "@/lib/live/rentcast";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import {
+  isFresh,
+  readMarketStore,
+  writeMarketListings,
+} from "@/lib/db/market-store";
+import {
   amenityFields,
   describeFields,
   describeShape,
@@ -138,7 +143,25 @@ export async function GET(request: Request) {
     }
   }
 
+  // The durable store first: a fresh row is the same inventory this
+  // route would fetch, already fetched — by the warming cron, another
+  // instance, or an earlier deploy — and serving it spends neither a
+  // vendor request nor a quota slot. asOf is the row's real fetch
+  // time, never dressed up as now.
+  const stored = await readMarketStore(market.slug);
   const gate = checkLiveSearch(`market:${market.slug}`);
+  if (stored?.listings?.length && isFresh(stored.listingsAt)) {
+    return NextResponse.json({
+      live: true,
+      asOf: stored.listingsAt,
+      market: market.slug,
+      center: { lat: market.lat, lon: market.lon },
+      listings: stored.listings,
+      remaining: gate.remaining,
+      cap: gate.cap,
+    });
+  }
+
   if (!gate.allowed) {
     return NextResponse.json(
       { live: false, reason: "daily-cap", cap: gate.cap, remaining: 0 },
@@ -149,6 +172,10 @@ export async function GET(request: Request) {
   try {
     const listings = await fetchLiveRentals(market);
     const spent = commitLiveSearch(`market:${market.slug}`);
+    // Stored for the next instance, deploy, and student. Awaited so a
+    // serverless runtime can't freeze the write mid-flight; it still
+    // never throws.
+    await writeMarketListings(market.slug, listings);
     return NextResponse.json({
       live: true,
       asOf: new Date().toISOString(),
@@ -159,6 +186,19 @@ export async function GET(request: Request) {
       cap: spent.cap,
     });
   } catch (error) {
+    // A stale row beats an apology: it is the same feed, honestly
+    // timestamped, from a day the vendor was answering.
+    if (stored?.listings?.length) {
+      return NextResponse.json({
+        live: true,
+        asOf: stored.listingsAt,
+        market: market.slug,
+        center: { lat: market.lat, lon: market.lon },
+        listings: stored.listings,
+        remaining: gate.remaining,
+        cap: gate.cap,
+      });
+    }
     return failure(error);
   }
 }
