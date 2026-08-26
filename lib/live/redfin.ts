@@ -966,7 +966,25 @@ export async function fetchRedfinRentals(
   let body: unknown = null;
   let parsed = true;
   let pages = 0;
-  let failedPages = 0;
+  const failed: string[] = [];
+
+  const absorbPage = (page: Awaited<ReturnType<typeof fetchPage>>) => {
+    pages += 1;
+    raw.push(...page.rows);
+    bytes += page.bytes;
+    if (page.credits !== null) credits = (credits ?? 0) + page.credits;
+    // Diagnostics describe the FIRST page; later ones share its shape.
+    if (body === null) {
+      body = page.body;
+      parsed = page.parsed;
+    }
+    for (const next of nextPageUrls(page.body)) {
+      if (!seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  };
 
   while (queue.length > 0 && pages < limit) {
     const wave = queue.slice(0, limit - pages);
@@ -978,29 +996,28 @@ export async function fetchRedfinRentals(
     if (pages === 0 && settled.every((r) => r.status === "rejected")) {
       throw (settled[0] as PromiseRejectedResult).reason;
     }
-    for (const result of settled) {
-      if (result.status === "rejected") {
-        failedPages += 1;
-        continue;
-      }
-      const page = result.value;
-      pages += 1;
-      raw.push(...page.rows);
-      bytes += page.bytes;
-      if (page.credits !== null) credits = (credits ?? 0) + page.credits;
-      // Diagnostics describe the FIRST page; later ones share its shape.
-      if (body === null) {
-        body = page.body;
-        parsed = page.parsed;
-      }
-      for (const next of nextPageUrls(page.body)) {
-        if (!seen.has(next)) {
-          seen.add(next);
-          queue.push(next);
-        }
-      }
-    }
+    settled.forEach((result, i) => {
+      if (result.status === "rejected") failed.push(wave[i]);
+      else absorbPage(result.value);
+    });
   }
+
+  // One patient retry for what the throttle ate. It refuses a burst,
+  // not a grudge: a page it bounced a moment ago usually loads on the
+  // second ask, a failed request is never billed, and a live probe
+  // showed five of thirteen pages lost this way — rows already paid
+  // for in latency and abandoned.
+  if (failed.length > 0 && pages < limit) {
+    const retrying = failed.splice(0, limit - pages);
+    const settled = await Promise.allSettled(
+      retrying.map((url) => fetchPage(url))
+    );
+    settled.forEach((result, i) => {
+      if (result.status === "rejected") failed.push(retrying[i]);
+      else absorbPage(result.value);
+    });
+  }
+  const failedPages = failed.length;
   // Pages we failed to read still exist, so a lossy pass reports both.
   const morePages = queue.length > 0 || failedPages > 0;
   const furnished = Boolean(opts.furnished);
