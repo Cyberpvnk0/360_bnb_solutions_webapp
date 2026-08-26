@@ -13,6 +13,7 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { RentalListing } from "@/lib/mock/types";
+import { PhotoLightbox } from "./photo-lightbox";
 import { PropertyImage } from "./property-image";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,8 @@ export function ListingGallery({
    *  as a broken frame. */
   const [broken, setBroken] = React.useState<string[]>([]);
   const [index, setIndex] = React.useState(0);
+  /** Open once someone clicks a photo to actually look at it. */
+  const [zoomed, setZoomed] = React.useState(false);
 
   // A different listing in the same slot resets during render, not in
   // an effect: a synchronous setState inside one cascades renders.
@@ -55,6 +58,7 @@ export function ListingGallery({
     setFetched(null);
     setBroken([]);
     setIndex(0);
+    setZoomed(false);
   }
 
   const photos = (
@@ -94,8 +98,32 @@ export function ListingGallery({
     };
   }, [source, listing.photos]);
 
+  // No gallery, but the card's own picture is still worth enlarging —
+  // it is cropped to the same frame and just as unreadable at this size.
   if (photos.length === 0) {
-    return <PropertyImage listing={listing} className={className} />;
+    const only = listing.photoUrl;
+    if (!only) return <PropertyImage listing={listing} className={className} />;
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          aria-label="Enlarge photo"
+          className="block w-full cursor-zoom-in"
+        >
+          <PropertyImage listing={listing} className={className} />
+        </button>
+        {zoomed ? (
+          <PhotoLightbox
+            photos={[only]}
+            index={0}
+            onIndexChange={() => {}}
+            onClose={() => setZoomed(false)}
+            caption={`${listing.address}, ${listing.city}`}
+          />
+        ) : null}
+      </>
+    );
   }
 
   const shown = photos[Math.min(index, photos.length - 1)];
@@ -108,7 +136,8 @@ export function ListingGallery({
       <img
         src={shown}
         alt={`${listing.address} — photo ${index + 1} of ${photos.length}`}
-        className="size-full object-cover"
+        onClick={() => setZoomed(true)}
+        className="size-full cursor-zoom-in object-cover"
         onError={() => setBroken((current) => [...current, shown])}
       />
 
@@ -134,6 +163,16 @@ export function ListingGallery({
             {index + 1} / {photos.length}
           </span>
         </>
+      ) : null}
+
+      {zoomed ? (
+        <PhotoLightbox
+          photos={photos}
+          index={Math.min(index, photos.length - 1)}
+          onIndexChange={setIndex}
+          onClose={() => setZoomed(false)}
+          caption={`${listing.address}, ${listing.city}`}
+        />
       ) : null}
     </div>
   );
