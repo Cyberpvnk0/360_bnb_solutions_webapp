@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addressKey } from "@/lib/live/address";
+import { addressKey, buildingKey } from "@/lib/live/address";
 
 describe("addressKey", () => {
   it("matches the same building written two ways", () => {
@@ -72,6 +72,39 @@ describe("addressKey", () => {
   it("drops a city that arrives with no state or ZIP behind it", () => {
     expect(addressKey("500 Ocean Dr, Miami Beach")).toBe(
       addressKey("500 Ocean Drive")
+    );
+  });
+});
+
+describe("buildingKey", () => {
+  it("drops an explicit unit so a block's photo reaches its flats", () => {
+    // One source lists every unit; the other photographs the building
+    // once. Without this, no apartment ever gets a picture.
+    expect(buildingKey("9256 7th Ave Unit 4, Jacksonville, FL 32208")).toBe(
+      addressKey("9256 7th Ave, Jacksonville, FL")
+    );
+    expect(buildingKey("1204 Glencoe St #12B, Tampa, FL")).toBe(
+      addressKey("1204 Glencoe St")
+    );
+    expect(buildingKey("77 Park Ave, Apt 3, Denver, CO")).toBe(
+      addressKey("77 Park Ave")
+    );
+  });
+
+  it("leaves a bare trailing number alone", () => {
+    // "1000 Highway 41" is not unit 41 of Highway. Stripping it would
+    // merge it with Highway 9 and hang one building's photo on another.
+    expect(buildingKey("1000 Highway 41, Ocala, FL")).toBe(
+      addressKey("1000 Highway 41, Ocala, FL")
+    );
+    expect(buildingKey("1000 Highway 41")).not.toBe(
+      buildingKey("1000 Highway 9")
+    );
+  });
+
+  it("is a no-op on an address with no unit at all", () => {
+    expect(buildingKey("500 Ocean Dr, Miami Beach")).toBe(
+      addressKey("500 Ocean Dr, Miami Beach")
     );
   });
 });

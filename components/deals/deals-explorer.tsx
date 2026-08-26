@@ -30,7 +30,7 @@ import {
   type LiveFailureReason,
 } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
-import { addressKey } from "@/lib/live/address";
+import { addressKey, buildingKey } from "@/lib/live/address";
 import { estimateCushionPts } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { Button } from "@/components/ui/button";
@@ -378,9 +378,12 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
       const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
       // A borrowed photo, if one arrived and this row still has none.
+      // Exact address first; the building it sits in second, so a flat
+      // in a block that was photographed once still shows something.
       const borrowed = raw.photoUrl
         ? undefined
-        : photosFor?.[addressKey(raw.address) ?? ""];
+        : (photosFor?.[addressKey(raw.address) ?? ""] ??
+          photosFor?.[buildingKey(raw.address) ?? ""]);
       const listing = borrowed ? { ...raw, photoUrl: borrowed } : raw;
       return [
         {
@@ -568,6 +571,30 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
 
   /** Nothing searched, no list open — the opening state. */
   const idle = !zip && !liveTarget && !listFilter;
+
+  /**
+   * The feed has been asked and hasn't answered.
+   *
+   * Worth its own branch, because without one an in-flight search falls
+   * through to the no-results state and tells a student their filters
+   * rule out every listing — while the real answer is still in the
+   * post. A market nobody has searched today has nothing cached to
+   * ride, so that wait is at its longest exactly when the screen is at
+   * its least honest.
+   */
+  const awaitingFeed =
+    zipChecking || redfinChecking || Boolean(liveTarget && liveChecking);
+
+  /**
+   * The feed answered for this market and had nothing in it.
+   *
+   * Not the same as filters being too tight, and saying so matters:
+   * "loosen a filter" is advice that cannot work, and it sends someone
+   * hunting through controls for a problem that isn't there.
+   */
+  const marketEmpty = Boolean(
+    liveTarget && !awaitingFeed && (marketRows?.length ?? 0) === 0
+  );
 
   const countLabel = idle
     ? `${fmtNum(totals.rentals)} rentals across ${fmtNum(totals.markets)} markets`
@@ -785,6 +812,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
             selectedId={selectedId}
             onHover={setHoveredId}
             onSelect={selectFromMap}
+            loading={awaitingFeed}
             className="min-h-0 flex-1"
           />
         </div>
@@ -837,6 +865,21 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
                 </p>
               ) : null}
             </div>
+          ) : awaitingFeed && filtered.length === 0 ? (
+            <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-2">
+              {Array.from({ length: 6 }, (_, i) => (
+                <div
+                  key={i}
+                  className="overflow-hidden rounded-lg border border-border bg-card"
+                >
+                  <div className="h-28 w-full animate-pulse bg-secondary/70" />
+                  <div className="space-y-2 p-4">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-secondary/70" />
+                    <div className="h-3 w-1/3 animate-pulse rounded bg-secondary/60" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
             <div className="p-6">
               <EmptyState
@@ -846,7 +889,11 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
                     ? liveFailureLabel(zipResult?.reason)
                     : zipActive
                       ? `No active rentals in ZIP ${zip}`
-                      : "No rentals match"
+                      : redfinActive && (redfin?.listings.length ?? 0) === 0
+                        ? `No furnished rentals listed in ${liveTarget!.name}`
+                        : marketEmpty
+                          ? `Nothing listed for rent in ${liveTarget!.name} right now`
+                          : "No rentals match"
                 }
                 description={
                   zipFailed
@@ -859,9 +906,13 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
                           : "ZIP search reads live inventory only, and the feed didn't answer. Search a market by name to browse the preview set."
                       : zipActive
                         ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
-                        : filters.query
-                          ? "Check the spelling, or pick a market from the search suggestions — they cover all 387."
-                          : "These filters rule out every listing we track. Loosen one and the grid comes back."
+                        : redfinActive && (redfin?.listings.length ?? 0) === 0
+                          ? "The feed carries no furnished units here today. Turn Furnished off to see everything else listed in this market."
+                          : marketEmpty
+                            ? "The feed answered for this market and had no active rentals in it — this isn't a filter you can loosen. Try a nearby market, or check back: inventory changes daily."
+                            : filters.query
+                              ? "Check the spelling, or pick a market from the search suggestions — they cover all 387."
+                              : "These filters rule out every listing we track. Loosen one and the grid comes back."
                 }
                 action={
                   <Button variant="outline" onClick={resetFilters}>

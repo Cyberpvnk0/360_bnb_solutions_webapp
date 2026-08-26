@@ -70,3 +70,31 @@ export function addressKey(address: string): string | null {
   if (rest.length < 3) return null;
   return `${number} ${rest}`;
 }
+
+/**
+ * The same address with the unit dropped — the building, not the flat.
+ *
+ * The two sources disagree about granularity, not just spelling. One
+ * lists every unit in a block separately; the other photographs the
+ * block once. Keyed strictly, "9256 7th Ave Unit 4" matches nothing,
+ * and every apartment in the city goes without a picture — which is
+ * most of them.
+ *
+ * Only an EXPLICIT unit is removed: "Apt 4", "#12B", "Unit 3". A bare
+ * trailing number is left alone, because "1000 Highway 41" is not
+ * unit 41 of Highway, and merging it with Highway 9 would put one
+ * building's photo on another's row.
+ *
+ * A fallback behind the exact key, and an honest one: the photo really
+ * is that building. It is not that unit's kitchen, which is why an
+ * exact match always wins.
+ */
+export function buildingKey(address: string): string | null {
+  const withoutUnit = address.replace(
+    // The word boundary belongs to the spelled-out forms only: there is
+    // no boundary between a space and a "#", so \b# never matches.
+    /(?:,\s*)?(?:#|\b(?:apartment|apt|unit|ste|suite)\b\.?)\s*[\w-]+/gi,
+    " "
+  );
+  return addressKey(withoutUnit);
+}

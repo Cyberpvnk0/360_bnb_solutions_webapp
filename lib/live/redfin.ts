@@ -19,7 +19,7 @@
  * delete the aliases that never fire.
  */
 
-import { addressKey } from "@/lib/live/address";
+import { addressKey, buildingKey } from "@/lib/live/address";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
 import { cityIdFor, REDFIN_CITY_ID } from "@/lib/live/redfin-city";
@@ -422,8 +422,13 @@ export async function fetchRedfinPhotoIndex(
     const address = pickString(row, ADDRESS_KEYS);
     const photo = pickString(row, PHOTO_KEYS);
     if (!address || !photo) continue;
+    // Both granularities. The exact key is preferred at lookup; the
+    // building key is what lets a block's photo reach the flats inside
+    // it, which is most of the rows in any city.
     const key = addressKey(address);
     if (key && !index.has(key)) index.set(key, photo);
+    const building = buildingKey(address);
+    if (building && !index.has(building)) index.set(building, photo);
   }
   return index;
 }

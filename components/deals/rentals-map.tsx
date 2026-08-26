@@ -38,6 +38,9 @@ interface RentalsMapProps {
   listings: RentalListing[];
   /** Set for a market/ZIP search; null while browsing nationwide. */
   focus: MapFocus | null;
+  /** The feed has been asked and hasn't answered. An empty map with no
+   *  word for it is the same picture as a broken one. */
+  loading?: boolean;
   hoveredId: string | null;
   selectedId: string | null;
   onHover: (id: string | null) => void;
@@ -50,6 +53,7 @@ const MILES_PER_DEG_LAT = 69;
 export function RentalsMap({
   listings,
   focus,
+  loading = false,
   hoveredId,
   selectedId,
   onHover,
@@ -205,6 +209,15 @@ export function RentalsMap({
   return (
     <div className={cn("relative min-w-0 bg-secondary/60", className)}>
       <div ref={containerRef} className="h-full w-full" />
+      {loading ? (
+        <span className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+          <span
+            aria-hidden
+            className="size-3 animate-spin rounded-full border-2 border-border border-t-gold"
+          />
+          Finding rentals…
+        </span>
+      ) : null}
       {tileError ? (
         <p className="pointer-events-none absolute left-3 top-3 z-20 max-w-[min(28rem,90%)] rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
           Street tiles unavailable ({tileError}) — pins still placed to
