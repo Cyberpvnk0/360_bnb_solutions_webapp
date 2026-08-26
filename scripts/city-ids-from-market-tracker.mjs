@@ -80,6 +80,22 @@ const WANT = ["REGION_TYPE", "TABLE_ID", "CITY", "STATE_CODE"];
 
 const unquote = (s) => s.replace(/^"|"$/g, "");
 
+/**
+ * Four of the 23,007 city names carry their own state on the end —
+ * "Washington, DC", "Spencer, Ma" — and the trailing state survives
+ * normalisation, so those cities match nothing. Dropping a suffix that
+ * repeats the row's OWN state code is safe in a way that dropping any
+ * trailing comma-part would not be: "Lynchburg, Moore County" keeps its
+ * county, because Moore County is not Tennessee.
+ *
+ * This is what kept the District of Columbia unresolved through every
+ * other approach we tried.
+ */
+function withoutStateSuffix(city, state) {
+  const suffix = new RegExp(`,\\s*${state}$`, "i");
+  return city.replace(suffix, "").trim();
+}
+
 async function source() {
   if (localFile) return createReadStream(localFile);
   const res = await fetch(SOURCE);
@@ -89,6 +105,9 @@ async function source() {
 
 /** state → normalized name → Set of ids. A set, so duplicates surface. */
 const byState = new Map();
+/** The same keys, holding the name as the export actually spelled it,
+ *  so a match can report whether normalising was load-bearing. */
+const spelling = new Map();
 let rows = 0;
 let skipped = 0;
 
@@ -120,15 +139,24 @@ for await (const line of lines) {
   }
   let cities = byState.get(state);
   if (cities === undefined) byState.set(state, (cities = new Map()));
-  const key = normalizeCity(city);
+  const plain = withoutStateSuffix(city, state);
+  const key = normalizeCity(plain);
   let ids = cities.get(key);
   if (ids === undefined) cities.set(key, (ids = new Set()));
   ids.add(id);
+  if (!spelling.has(`${state}|${key}`)) spelling.set(`${state}|${key}`, plain);
 }
 
 const resolved = {};
 const ambiguous = [];
 const absent = [];
+/**
+ * Markets that matched only because normalising rewrote one of the two
+ * names. Worth listing rather than counting: it is the one place a
+ * match can be produced by our own string handling rather than by the
+ * two sources agreeing, so every entry deserves a look.
+ */
+const bridged = [];
 for (const market of MARKETS) {
   const ids = byState.get(market.stateCode)?.get(normalizeCity(market.name));
   if (ids === undefined) {
@@ -139,6 +167,11 @@ for (const market of MARKETS) {
     );
   } else {
     resolved[market.slug] = [...ids][0];
+    if (spelling.get(`${market.stateCode}|${normalizeCity(market.name)}`) !== market.name) {
+      bridged.push(
+        `${market.slug}: "${market.name}" == "${spelling.get(`${market.stateCode}|${normalizeCity(market.name)}`)}"`
+      );
+    }
   }
 }
 
@@ -164,6 +197,8 @@ for (const [slug, id] of conflicts) {
   console.log(`  ! ${slug}: committed ${REDFIN_CITY_ID[slug]} vs export ${id}`);
 }
 
+console.log(`\nmatched only after normalising (${bridged.length}):`);
+for (const b of bridged) console.log(`  ${b}`);
 console.log(`\nrefused, more than one id (${ambiguous.length}):`);
 for (const a of ambiguous) console.log(`  ${a}`);
 console.log(`\nno row in the export (${absent.length}):`);

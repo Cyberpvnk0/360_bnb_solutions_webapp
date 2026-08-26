@@ -413,6 +413,13 @@ export const REDFIN_CITY_ID: Record<string, number> = {
   "wisconsin-dells": 21087,
   worcester: 20420,
   yuma: 20893,
+
+  // The District, which every other route missed. The export writes its
+  // city as the literal string "Washington, DC", and the trailing state
+  // survives normalising, so the name matched nothing — the one market
+  // with no state index page of its own, unresolved for the dullest
+  // possible reason.
+  washington: 12839,
 };
 
 /** Comparable form: case, punctuation and "saint" all vary between
