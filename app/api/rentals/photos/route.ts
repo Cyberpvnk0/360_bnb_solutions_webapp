@@ -99,7 +99,9 @@ export async function GET(request: Request) {
               ? "The photo source returned nothing for this market — read photoSource: pages and rows say whether the fetch worked, withAddress and withPhoto whether the rows were readable."
               : Object.keys(photos).length === 0
                 ? "Both sides have rows and NOTHING matched: compare sampleIndexKeys with sampleUnmatchedRowKeys — the two are writing addresses differently."
-                : "Matching works. Coverage is bounded by how many rows the photo source returns for this market.",
+                : (source?.stats.housePassRows ?? 0) === 0
+                  ? "Matching works, but the house pass returned nothing — read photoSource.housePassUrl. The default search is nearly all apartment communities, so single-family rows stay unmatched until that filter bites."
+                  : "Matching works, both passes returned rows, and coverage is now bounded by how many the source carries for this market.",
         }
       : {}),
   });

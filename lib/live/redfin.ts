@@ -91,11 +91,17 @@ export function nextPageUrls(body: unknown): string[] {
 export function redfinRentalsUrlFor(
   market: Market,
   cityId: number,
-  opts: { furnished?: boolean } = {}
+  opts: { furnished?: boolean; propertyTypes?: string[] } = {}
 ): string {
   const city = market.name.trim().replace(/\s+/g, "-");
   const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}/rentals`;
-  return opts.furnished ? `${base}/filter/is-furnished` : base;
+  // Filters stack behind one /filter/ segment, comma separated.
+  const filters: string[] = [];
+  if (opts.furnished) filters.push("is-furnished");
+  if (opts.propertyTypes?.length) {
+    filters.push(`property-type=${opts.propertyTypes.join(",")}`);
+  }
+  return filters.length > 0 ? `${base}/filter/${filters.join(",")}` : base;
 }
 
 /**
@@ -107,7 +113,7 @@ export function redfinRentalsUrlFor(
  */
 export async function redfinRentalsUrl(
   market: Market,
-  opts: { furnished?: boolean } = {}
+  opts: { furnished?: boolean; propertyTypes?: string[] } = {}
 ): Promise<string | null> {
   const cityId = await cityIdFor(market);
   return cityId === null ? null : redfinRentalsUrlFor(market, cityId, opts);
@@ -434,11 +440,34 @@ export interface RedfinPhotoIndex {
     rows: number;
     withAddress: number;
     withPhoto: number;
+    /** Rows the house pass contributed. Zero here with a healthy
+     *  default pass means the property-type filter is not biting and
+     *  the URL form needs changing — not that the city has no houses. */
+    housePassRows: number;
+    /** The URL the house pass asked for, so a filter that Redfin
+     *  ignores can be read rather than inferred from a zero. */
+    housePassUrl: string | null;
     /** Raw, as the vendor wrote them — the pipe-separated community
      *  names only became visible once these were printed. */
     sampleAddresses: string[];
   };
 }
+
+/**
+ * Two passes, because the default search is nearly all apartments.
+ *
+ * A city's rentals search comes back dominated by managed communities —
+ * Cedar Creek Villas, Riverbank Apartments — while the feed we are
+ * matching against is mostly single-family houses. Four pages of the
+ * default view produced 164 rows and matched twelve, and every row it
+ * failed to match was a house. Paging deeper would have bought more
+ * apartments.
+ *
+ * So the second pass asks for houses specifically. It is additive and
+ * failure is harmless: a filter that doesn't bite returns nothing, the
+ * default pass still stands, and housePassRows says which happened.
+ */
+const HOUSE_TYPES = ["house", "townhouse"];
 
 export async function fetchRedfinPhotoIndex(
   market: Market
@@ -449,6 +478,8 @@ export async function fetchRedfinPhotoIndex(
     rows: 0,
     withAddress: 0,
     withPhoto: 0,
+    housePassRows: 0,
+    housePassUrl: null as string | null,
     sampleAddresses: [] as string[],
   };
   // Seeded ids only. Photos are decoration, and resolving an unknown id
@@ -456,15 +487,26 @@ export async function fetchRedfinPhotoIndex(
   // on the one part of the row a student can do without.
   if (!redfinCoversMarket(market)) return { index, stats };
 
-  const { raw, pages } = await fetchRedfinRentals(market, {
-    furnished: false,
-    map: false,
-    pages: photoPages(),
-  });
-  stats.pages = pages;
-  stats.rows = raw.length;
+  const pages = photoPages();
+  const [everything, houses] = await Promise.all([
+    fetchRedfinRentals(market, { furnished: false, map: false, pages }),
+    // Never let the narrower pass sink the search it is supplementing.
+    fetchRedfinRentals(market, {
+      furnished: false,
+      map: false,
+      pages,
+      propertyTypes: HOUSE_TYPES,
+    }).catch(() => null),
+  ]);
 
-  for (const row of raw) {
+  stats.pages = everything.pages + (houses?.pages ?? 0);
+  stats.housePassRows = houses?.raw.length ?? 0;
+  stats.housePassUrl = houses?.searchUrl ?? null;
+
+  // Houses first: they are the rows the feed is full of, and the first
+  // writer of a key wins.
+  for (const row of [...(houses?.raw ?? []), ...everything.raw]) {
+    stats.rows += 1;
     const address = pickString(row, ADDRESS_KEYS);
     const photo = pickString(row, PHOTO_KEYS);
     if (address) {
@@ -744,6 +786,8 @@ export async function fetchRedfinRentals(
     map?: boolean;
     /** Override the page ceiling for this call. */
     pages?: number;
+    /** Narrow to particular property types, e.g. ["house"]. */
+    propertyTypes?: string[];
   } = {}
 ): Promise<RedfinFetch> {
   const searchUrl = await redfinRentalsUrl(market, opts);

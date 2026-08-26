@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+
+import type { Market } from "@/lib/mock/types";
 import { MARKET_BY_SLUG, MARKETS } from "@/lib/mock/markets";
 import { REDFIN_CITY_ID } from "./redfin-city";
 import {
@@ -264,5 +266,48 @@ describe("harvestPhotos", () => {
   it("returns each photo once", () => {
     const dup = "https://ssl.cdn-redfin.com/a.jpg";
     expect(harvestPhotos({ a: dup, b: dup })).toEqual([dup]);
+  });
+});
+
+describe("redfinRentalsUrlFor property types", () => {
+  const market = {
+    name: "Jacksonville",
+    stateCode: "FL",
+  } as unknown as Market;
+
+  it("asks for houses when the default search won't surface them", () => {
+    // The default rentals view is nearly all managed communities, and
+    // the feed we match against is mostly houses — this is the pass
+    // that reaches them.
+    expect(
+      redfinRentalsUrlFor(market, 8907, { propertyTypes: ["house"] })
+    ).toBe("https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/property-type=house");
+  });
+
+  it("stacks several types behind one filter segment", () => {
+    expect(
+      redfinRentalsUrlFor(market, 8907, {
+        propertyTypes: ["house", "townhouse"],
+      })
+    ).toBe(
+      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/property-type=house,townhouse"
+    );
+  });
+
+  it("stacks furnished alongside a type", () => {
+    expect(
+      redfinRentalsUrlFor(market, 8907, {
+        furnished: true,
+        propertyTypes: ["house"],
+      })
+    ).toBe(
+      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/is-furnished,property-type=house"
+    );
+  });
+
+  it("is unchanged when nothing is asked of it", () => {
+    expect(redfinRentalsUrlFor(market, 8907)).toBe(
+      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals"
+    );
   });
 });
