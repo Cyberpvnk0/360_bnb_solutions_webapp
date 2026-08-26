@@ -119,23 +119,28 @@ export async function getMarketPhotoMerge(
   marketSlug: string
 ): Promise<MarketPhotoMerge> {
   const empty: MarketPhotoMerge = { photos: {}, listings: [] };
-  try {
+  const attempt = async (): Promise<MarketPhotoMerge | null> => {
     const res = await fetch(
       `/api/rentals/photos?market=${encodeURIComponent(marketSlug)}`
-    );
-    if (!res.ok) return empty;
+    ).catch(() => null);
+    if (!res?.ok) return null;
     const data = (await res.json().catch(() => null)) as {
       photos?: Record<string, string>;
       listings?: RentalListing[];
     } | null;
-    const listings = Array.isArray(data?.listings) ? data.listings : [];
+    if (!data) return null;
+    const listings = Array.isArray(data.listings) ? data.listings : [];
     // Registered like any live rows, so "Run the numbers" resolves them
     // after a navigation exactly as it does for the feed's own.
     registerLiveListings(listings);
-    return { photos: data?.photos ?? {}, listings };
-  } catch {
-    return empty;
-  }
+    return { photos: data.photos ?? {}, listings };
+  };
+
+  // One retry, because the failure worth planning for is a cold big
+  // market outrunning the server's clock. That first attempt is not
+  // wasted — every page fetched and address placed before the timeout
+  // is cached — so the second ask finishes on the warmed remainder.
+  return (await attempt()) ?? (await attempt()) ?? empty;
 }
 
 export interface ZipRentalsResult extends LiveRentalsResult {

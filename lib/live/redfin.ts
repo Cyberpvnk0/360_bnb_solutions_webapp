@@ -514,12 +514,13 @@ export async function probeHouseFilters(market: Market): Promise<unknown> {
 }
 
 export interface RedfinPhotoIndex {
-  /** Every row as a full listing — geocoded, photo attached, the same
-   *  mapping the Furnished view runs. Rows the feed doesn't carry get
-   *  SHOWN from these rather than discarded: the photo source is a
-   *  listing source, and stripping it for parts was the mistake this
-   *  whole matching saga kept paying for. */
-  listings: RentalListing[];
+  /** Every photo-bearing row, raw and deduped, ready to become shown
+   *  listings via mapRedfinRows. Raw on purpose: mapping means
+   *  geocoding, seconds per cold address, and the CALLER knows which
+   *  rows will survive its dedup — placing the rest is how the biggest
+   *  market's photo pass outran its time budget and answered with
+   *  nothing at all. */
+  rows: Row[];
   /** Address → photo, exact. Consulted first. */
   index: Map<string, string>;
   /** Building → photo, for a flat in a block photographed once. Kept
@@ -618,19 +619,18 @@ export async function fetchRedfinPhotoIndex(
   // costs two proxy round trips before it can even fail — latency spent
   // on the one part of the row a student can do without.
   if (!redfinCoversMarket(market))
-    return { listings: [], index, buildings, stats };
+    return { rows: [], index, buildings, stats };
 
   const pages = photoPages();
   const [everything, ...typed] = await Promise.all([
-    // Fully mapped — geocoded and photo-bearing — because these rows
-    // are shown, not just mined for thumbnails.
-    fetchRedfinRentals(market, { furnished: false, pages }),
+    fetchRedfinRentals(market, { furnished: false, map: false, pages }),
     // A narrower pass must not sink the search it supplements — but its
     // failure gets NAMED, not eaten. A bare catch here reported a
     // vendor throttle as "this city has no houses".
     ...photoTypes().map((propertyType) =>
       fetchRedfinRentals(market, {
         furnished: false,
+        map: false,
         pages,
         propertyType,
       }).catch((error: unknown) => {
@@ -681,13 +681,18 @@ export async function fetchRedfinPhotoIndex(
   absorb(houseRows, stats.houseSampleAddresses);
   stats.housePassNewKeys = index.size - beforeHouses;
 
-  // The passes overlap — a house on page one of both is one listing.
-  const byId = new Map<string, RentalListing>();
-  for (const listing of [everything, ...houses].flatMap((r) => r.listings)) {
-    if (!byId.has(listing.id)) byId.set(listing.id, listing);
+  // The passes overlap — a house on page one of both is one row. Keyed
+  // by listing URL where there is one, address otherwise.
+  const byKey = new Map<string, Row>();
+  for (const row of [...everything.raw, ...houseRows]) {
+    const address = pickString(row, ADDRESS_KEYS);
+    const photo = pickString(row, PHOTO_KEYS) ?? harvestPhotos(row)[0];
+    if (!address || !photo) continue;
+    const key = pickString(row, URL_KEYS) ?? address;
+    if (!byKey.has(key)) byKey.set(key, row);
   }
 
-  return { listings: [...byId.values()], index, buildings, stats };
+  return { rows: [...byKey.values()], index, buildings, stats };
 }
 
 /* ------------------------------------------------------------------ */
@@ -950,6 +955,65 @@ async function fetchPage(pageUrl: string): Promise<{
  * about 41 rows, so stopping there shows a third of a market and reads
  * as a narrower search than the one that ran.
  */
+/** The address a raw search row carries, wherever the vendor put it. */
+export function redfinAddressOf(row: Row): string | null {
+  return pickString(row, ADDRESS_KEYS) ?? null;
+}
+
+/**
+ * Raw search rows to shown listings: place, map, sort.
+ *
+ * Its own function so a caller can choose WHICH rows earn the work.
+ * Geocoding is the expensive step — Redfin's rows carry no coordinates,
+ * so every address goes to the Census geocoder, seconds each on a cold
+ * cache — and placing three hundred rows to then discard half as
+ * duplicates is how the biggest market's photo pass outran its whole
+ * time budget and answered with nothing.
+ *
+ * Cached 30 days per address, so a market pays this once and every
+ * student after that rides it free.
+ */
+export async function mapRedfinRows(
+  raw: readonly Row[],
+  market: Market,
+  opts: { furnished: boolean }
+): Promise<{
+  listings: RentalListing[];
+  skipped: Record<string, number>;
+  geocodedBy: Record<string, number>;
+}> {
+  const skipped: Record<string, number> = {};
+  const geocodedBy: Record<string, number> = {};
+  const listings: RentalListing[] = [];
+
+  const points = await geocodeAll(
+    raw.map((row) => {
+      const line = pickString(row, ADDRESS_KEYS) ?? "";
+      // Census wants a complete one-line address; Redfin's already
+      // carries city and state, but a bare street needs help.
+      return /,/.test(line)
+        ? line
+        : `${line}, ${market.name}, ${market.stateCode}`;
+    })
+  );
+
+  raw.forEach((row, index) => {
+    const found = points[index];
+    if (found?.source) {
+      geocodedBy[found.source] = (geocodedBy[found.source] ?? 0) + 1;
+    }
+    const result = mapRedfinListing(row, market, {
+      furnished: opts.furnished,
+      index,
+      coords: found?.point ?? undefined,
+    });
+    if (result.ok) listings.push(result.listing);
+    else skipped[result.skip] = (skipped[result.skip] ?? 0) + 1;
+  });
+  listings.sort((a, b) => a.rentMonthly - b.rentMonthly);
+  return { listings, skipped, geocodedBy };
+}
+
 export async function fetchRedfinRentals(
   market: Market,
   opts: {
@@ -1037,44 +1101,11 @@ export async function fetchRedfinRentals(
   // Pages we failed to read still exist, so a lossy pass reports both.
   const morePages = queue.length > 0 || failedPages > 0;
   const furnished = Boolean(opts.furnished);
-  const skipped: Record<string, number> = {};
-  const geocodedBy: Record<string, number> = {};
-  const listings: RentalListing[] = [];
-
-  // Redfin's search rows carry no coordinates, so every address is
-  // placed before it can be shown. Cached 30 days per address, so a
-  // market costs this once and every student after that rides it free.
-  //
-  // Skipped entirely for callers that only want the raw rows — placing
-  // eighty addresses to then discard every one of them is pure latency,
-  // and the photo index was paying it on every market.
-  const points = opts.map === false
-    ? []
-    : await geocodeAll(
-        raw.map((row) => {
-          const line = pickString(row, ADDRESS_KEYS) ?? "";
-          // Census wants a complete one-line address; Redfin's already
-          // carries city and state, but a bare street needs help.
-          return /,/.test(line)
-            ? line
-            : `${line}, ${market.name}, ${market.stateCode}`;
-        })
-      );
-
-  if (opts.map !== false) raw.forEach((row, index) => {
-    const found = points[index];
-    if (found?.source) {
-      geocodedBy[found.source] = (geocodedBy[found.source] ?? 0) + 1;
-    }
-    const result = mapRedfinListing(row, market, {
-      furnished,
-      index,
-      coords: found?.point ?? undefined,
-    });
-    if (result.ok) listings.push(result.listing);
-    else skipped[result.skip] = (skipped[result.skip] ?? 0) + 1;
-  });
-  listings.sort((a, b) => a.rentMonthly - b.rentMonthly);
+  const mapped =
+    opts.map === false
+      ? { listings: [], skipped: {}, geocodedBy: {} }
+      : await mapRedfinRows(raw, market, { furnished });
+  const { listings, skipped, geocodedBy } = mapped;
 
   return {
     listings,

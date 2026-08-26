@@ -34,14 +34,18 @@ import { NextResponse } from "next/server";
 import { addressKey, buildingKey } from "@/lib/live/address";
 import {
   fetchRedfinPhotoIndex,
+  mapRedfinRows,
   probeHouseFilters,
+  redfinAddressOf,
   redfinCoversMarket,
 } from "@/lib/live/redfin";
 import { fetchLiveRentals } from "@/lib/live/rentcast";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
-/** Two paginated searches plus geocoding on a cold market. */
-export const maxDuration = 120;
+/** Two paginated searches plus geocoding on a cold market. The plan's
+ *  whole ceiling, because the first visit to a big market genuinely
+ *  needs it — and everything after rides the caches. */
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -105,10 +109,19 @@ export async function GET(request: Request) {
   // BUILDING on purpose: the feed lists a complex unit by unit while
   // the source lists it once, and a card for "the building" beside five
   // cards for its units reads as a sixth copy, not more inventory.
-  const extras = (source?.listings ?? []).filter((listing) => {
-    const building = buildingKey(listing.address);
+  //
+  // Deduped BEFORE mapping, because mapping means geocoding, seconds
+  // per cold address — placing rows that were about to be discarded is
+  // how this route once outran its whole time budget on the biggest
+  // market and answered with nothing.
+  const candidates = (source?.rows ?? []).filter((row) => {
+    const address = redfinAddressOf(row);
+    const building = address ? buildingKey(address) : null;
     return building === null || !feedBuildings.has(building);
   });
+  const extras = candidates.length
+    ? (await mapRedfinRows(candidates, market, { furnished: false })).listings
+    : [];
 
   return NextResponse.json({
     market: market.slug,
