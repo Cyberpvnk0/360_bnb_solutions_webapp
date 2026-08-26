@@ -55,10 +55,16 @@ export function PropertyImage({
   const [stage, setStage] = React.useState<Stage>(first);
   const [loaded, setLoaded] = React.useState(false);
 
-  // A new listing in the same slot starts its own fallback chain.
-  const [lastId, setLastId] = React.useState(listing.id);
-  if (listing.id !== lastId) {
-    setLastId(listing.id);
+  // A new listing in the same slot starts its own fallback chain — and
+  // so does a photo ARRIVING for the listing already in it. Photos are
+  // borrowed from a second source and land after the rows, so keying
+  // this on the id alone meant a row that had already fallen back to a
+  // sketch stayed a sketch: the picture turned up and nothing looked at
+  // it again. That is the whole borrowed-photo feature, silently off.
+  const chain = `${listing.id}|${listing.photoUrl ?? ""}`;
+  const [lastChain, setLastChain] = React.useState(chain);
+  if (chain !== lastChain) {
+    setLastChain(chain);
     setStage(first);
     setLoaded(false);
   }

@@ -47,11 +47,29 @@ export const REDFIN_REVALIDATE_SECONDS = 86_400;
  */
 export const DEFAULT_MAX_PAGES = 4;
 
-function maxPages(): number {
-  const raw = Number(process.env.REDFIN_MAX_PAGES);
+function maxPages(override?: number): number {
+  const raw = override ?? Number(process.env.REDFIN_MAX_PAGES);
   return Number.isFinite(raw) && raw > 0
     ? Math.min(10, Math.floor(raw))
     : DEFAULT_MAX_PAGES;
+}
+
+/**
+ * Pages to read when the point is photos rather than listings.
+ *
+ * Separate from the search depth because it buys a different thing.
+ * Coverage here is bounded by how many rows the photo source returns
+ * against a feed that returns far more, so every extra page is more
+ * rows that can match — and pages after the first go in parallel, so
+ * it costs credits rather than time.
+ *
+ * Left at the search default until someone chooses otherwise: this is
+ * a per-market-per-day cost on somebody's plan, not a free dial.
+ * REDFIN_PHOTO_PAGES turns it up; the diagnostic reports what it buys.
+ */
+function photoPages(): number {
+  const raw = Number(process.env.REDFIN_PHOTO_PAGES);
+  return Number.isFinite(raw) && raw > 0 ? maxPages(raw) : maxPages();
 }
 
 /** The next-page links a search response hands back, absolute. */
@@ -417,6 +435,7 @@ export async function fetchRedfinPhotoIndex(
   const { raw } = await fetchRedfinRentals(market, {
     furnished: false,
     map: false,
+    pages: photoPages(),
   });
   for (const row of raw) {
     const address = pickString(row, ADDRESS_KEYS);
@@ -686,13 +705,19 @@ async function fetchPage(pageUrl: string): Promise<{
  */
 export async function fetchRedfinRentals(
   market: Market,
-  opts: { furnished?: boolean; /** Set false to skip geocoding and
-    mapping and return only the raw rows. */ map?: boolean } = {}
+  opts: {
+    furnished?: boolean;
+    /** Set false to skip geocoding and mapping and return only the raw
+     *  rows. */
+    map?: boolean;
+    /** Override the page ceiling for this call. */
+    pages?: number;
+  } = {}
 ): Promise<RedfinFetch> {
   const searchUrl = await redfinRentalsUrl(market, opts);
   if (!searchUrl) throw new RedfinError("no-city");
 
-  const limit = maxPages();
+  const limit = maxPages(opts.pages);
   const raw: Row[] = [];
   let bytes = 0;
   let credits: number | null = null;

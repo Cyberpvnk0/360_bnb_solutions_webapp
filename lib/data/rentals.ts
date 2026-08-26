@@ -95,12 +95,16 @@ export async function getLiveRentals(
 }
 
 /**
- * Photos for a market's rows, keyed by normalised address.
+ * Photos for a market's rows, keyed by LISTING ID.
  *
  * A second call on purpose: the rows come back without imagery so they
  * can render as soon as the feed answers, and this fills the pictures
  * in behind them. Returns an empty map for anything it can't cover —
  * the caller merges what it gets and leaves the rest alone.
+ *
+ * By id, not by address, because the address matching lives on the
+ * server next to both feeds. Nothing here needs to know how two
+ * vendors spell a street.
  */
 export async function getBorrowedPhotos(
   marketSlug: string

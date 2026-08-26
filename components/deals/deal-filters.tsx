@@ -44,15 +44,20 @@ export const TYPE_LABEL: Record<PropertyType, string> = {
 export interface DealFilters {
   /** Substring match on market name or state. */
   query: string;
-  /** Empty = all states. */
-  states: string[];
   /** Monthly rent bounds; the slider extremes mean "no bound". */
   rentMin: number;
   rentMax: number;
-  /** 0 = any. */
-  bedsMin: number;
-  /** 0 = any. */
-  bathsMin: number;
+  /**
+   * Exact counts to keep; empty = any. 5 means "5 or more", so the
+   * top tile stays open-ended without a second field.
+   *
+   * Chosen over a minimum because a minimum cannot express the search
+   * people actually run: someone shopping one-bedroom arbitrage does
+   * not want a five-bed on the list, and "1+" hands them every one.
+   */
+  beds: number[];
+  /** Exact counts to keep; empty = any. 5 means "5 or more". */
+  baths: number[];
   /** All four checked = everything. */
   types: PropertyType[];
   /** The deal-maker: only listings tagged Furnished (their furnishing
@@ -64,11 +69,10 @@ export interface DealFilters {
 
 export const DEFAULT_DEAL_FILTERS: DealFilters = {
   query: "",
-  states: [],
   rentMin: 500,
   rentMax: 6000,
-  bedsMin: 0,
-  bathsMin: 0,
+  beds: [],
+  baths: [],
   types: TYPE_OPTIONS.map((t) => t.value),
   furnishedOnly: false,
   keywords: [],
@@ -77,11 +81,10 @@ export const DEFAULT_DEAL_FILTERS: DealFilters = {
 export function isDefaultDealFilters(f: DealFilters): boolean {
   return (
     f.query === "" &&
-    f.states.length === 0 &&
     f.rentMin === DEFAULT_DEAL_FILTERS.rentMin &&
     f.rentMax === DEFAULT_DEAL_FILTERS.rentMax &&
-    f.bedsMin === 0 &&
-    f.bathsMin === 0 &&
+    f.beds.length === 0 &&
+    f.baths.length === 0 &&
     f.types.length === TYPE_OPTIONS.length &&
     !f.furnishedOnly &&
     f.keywords.length === 0
@@ -197,79 +200,6 @@ function PanelBody({ children }: { children: React.ReactNode }) {
 /* Panels                                                              */
 /* ------------------------------------------------------------------ */
 
-function LocationPanel({
-  applied,
-  states,
-  onApply,
-  onClose,
-}: {
-  applied: DealFilters;
-  states: string[];
-  onApply: (patch: Partial<DealFilters>) => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = React.useState(applied.query);
-  const [selected, setSelected] = React.useState<string[]>(applied.states);
-
-  const toggleState = (code: string) =>
-    setSelected((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-    );
-
-  return (
-    <>
-      <PanelBody>
-        <div>
-          <Label htmlFor="df-query" className="text-xs text-muted-foreground">
-            Search market
-          </Label>
-          <Input
-            id="df-query"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Market name…"
-            className="mt-1.5 h-8"
-          />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">States</p>
-          <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-            {states.map((code) => {
-              const on = selected.includes(code);
-              return (
-                <button
-                  key={code}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleState(code)}
-                  className={cn(
-                    "h-7 rounded-sm border text-xs transition-colors duration-150 tabular",
-                    on
-                      ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
-                      : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  )}
-                >
-                  {code}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </PanelBody>
-      <PanelFooter
-        onReset={() => {
-          setQuery("");
-          setSelected([]);
-        }}
-        onApply={() => {
-          onApply({ query: query.trim(), states: selected });
-          onClose();
-        }}
-      />
-    </>
-  );
-}
-
 /** Monthly-rent tiers — the bands arbitrage hunters actually shop. */
 const PRICE_TIERS: { label: string; sub: string; min: number; max: number }[] = [
   { label: "Under $1,500", sub: "entry", min: DEFAULT_DEAL_FILTERS.rentMin, max: 1500 },
@@ -360,51 +290,63 @@ function PricePanel({
   );
 }
 
-function MinTilesPanel({
-  options,
+function CountTilesPanel({
   applied,
   unit,
   onApply,
   onClose,
 }: {
-  /** [value, label] pairs; 0 = Any. */
-  options: [number, string][];
-  applied: number;
+  applied: number[];
   unit: string;
-  onApply: (value: number) => void;
+  onApply: (value: number[]) => void;
   onClose: () => void;
 }) {
-  const [value, setValue] = React.useState(applied);
+  const [selected, setSelected] = React.useState<number[]>(applied);
+  const toggle = (v: number) =>
+    setSelected((current) =>
+      current.includes(v)
+        ? current.filter((x) => x !== v)
+        : [...current, v].sort((a, b) => a - b)
+    );
+
   return (
     <>
       <PanelBody>
-        <p className="text-xs text-muted-foreground">Minimum {unit}</p>
+        <p className="text-xs text-muted-foreground">
+          {selected.length === 0 ? `Any ${unit}` : `Exact ${unit}`}
+        </p>
         <div
           className="grid gap-1.5"
-          style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}
+          style={{ gridTemplateColumns: `repeat(${COUNT_OPTIONS.length}, 1fr)` }}
         >
-          {options.map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              aria-pressed={value === v}
-              onClick={() => setValue(v)}
-              className={cn(
-                "h-9 rounded-sm border text-sm transition-colors duration-150 tabular",
-                value === v
-                  ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
-                  : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-              )}
-            >
-              {label}
-            </button>
-          ))}
+          {COUNT_OPTIONS.map(([v, label]) => {
+            const on = selected.includes(v);
+            return (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggle(v)}
+                className={cn(
+                  "h-9 rounded-sm border text-sm transition-colors duration-150 tabular",
+                  on
+                    ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                    : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Pick as many as you like. Nothing selected means any.
+        </p>
       </PanelBody>
       <PanelFooter
-        onReset={() => setValue(0)}
+        onReset={() => setSelected([])}
         onApply={() => {
-          onApply(value);
+          onApply(selected);
           onClose();
         }}
       />
@@ -587,19 +529,25 @@ function KeywordsPanel({
 /* The chip row                                                        */
 /* ------------------------------------------------------------------ */
 
-const BED_OPTIONS: [number, string][] = [
-  [0, "Any"],
-  [1, "1+"],
-  [2, "2+"],
-  [3, "3+"],
-  [4, "4+"],
+/** Exact counts, with the last one open-ended. */
+const COUNT_OPTIONS: [number, string][] = [
+  [1, "1"],
+  [2, "2"],
+  [3, "3"],
+  [4, "4"],
+  [5, "5+"],
 ];
-const BATH_OPTIONS: [number, string][] = [
-  [0, "Any"],
-  [1, "1+"],
-  [2, "2+"],
-  [3, "3+"],
-];
+
+/** "2 bd", "1, 2 bd", "5+ bd" — the chip has room for a few. */
+export function countSummary(values: number[], unit: string): string | undefined {
+  if (values.length === 0) return undefined;
+  const label = (v: number) => (v >= 5 ? "5+" : String(v));
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted.length <= 3
+    ? `${sorted.map(label).join(", ")} ${unit}`
+    : `${sorted.length} sizes`;
+}
+
 
 function priceSummary(f: DealFilters): string {
   const openLow = f.rentMin <= DEFAULT_DEAL_FILTERS.rentMin;
@@ -611,12 +559,10 @@ function priceSummary(f: DealFilters): string {
 
 export function DealFilterChips({
   filters,
-  states,
   onChange,
   featuresKnown = true,
 }: {
   filters: DealFilters;
-  states: string[];
   onChange: (patch: Partial<DealFilters>) => void;
   /** False when the current results carry no amenity data — the
    *  Furnished toggle would report a false zero, so it turns off. */
@@ -624,7 +570,6 @@ export function DealFilterChips({
 }) {
   const [openPanel, setOpenPanel] = React.useState<string | null>(null);
 
-  const locationActive = filters.query !== "" || filters.states.length > 0;
   const priceActive =
     filters.rentMin > DEFAULT_DEAL_FILTERS.rentMin ||
     filters.rentMax < DEFAULT_DEAL_FILTERS.rentMax;
@@ -638,23 +583,6 @@ export function DealFilterChips({
 
   return (
     <>
-      <FilterChip
-        label="Location"
-        active={locationActive}
-        summary={
-          filters.query ||
-          (filters.states.length > 0 ? filters.states.join(", ") : undefined)
-        }
-        {...chip("location")}
-      >
-        <LocationPanel
-          applied={filters}
-          states={states}
-          onApply={onChange}
-          onClose={close}
-        />
-      </FilterChip>
-
       <FilterChip
         label="Price"
         active={priceActive}
@@ -694,30 +622,28 @@ export function DealFilterChips({
 
       <FilterChip
         label="Beds"
-        active={filters.bedsMin > 0}
-        summary={`${filters.bedsMin}+ bd`}
+        active={filters.beds.length > 0}
+        summary={countSummary(filters.beds, "bd")}
         {...chip("beds")}
       >
-        <MinTilesPanel
-          options={BED_OPTIONS}
-          applied={filters.bedsMin}
+        <CountTilesPanel
+          applied={filters.beds}
           unit="bedrooms"
-          onApply={(bedsMin) => onChange({ bedsMin })}
+          onApply={(beds) => onChange({ beds })}
           onClose={close}
         />
       </FilterChip>
 
       <FilterChip
         label="Baths"
-        active={filters.bathsMin > 0}
-        summary={`${filters.bathsMin}+ ba`}
+        active={filters.baths.length > 0}
+        summary={countSummary(filters.baths, "ba")}
         {...chip("baths")}
       >
-        <MinTilesPanel
-          options={BATH_OPTIONS}
-          applied={filters.bathsMin}
+        <CountTilesPanel
+          applied={filters.baths}
           unit="bathrooms"
-          onApply={(bathsMin) => onChange({ bathsMin })}
+          onApply={(baths) => onChange({ baths })}
           onClose={close}
         />
       </FilterChip>

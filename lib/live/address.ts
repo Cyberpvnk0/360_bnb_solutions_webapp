@@ -26,6 +26,18 @@ const SUFFIXES: [RegExp, string][] = [
   [/\b(highway|hwy)\b/g, "hwy"],
   [/\b(trail|trl)\b/g, "trl"],
   [/\b(apartment|apt|unit|ste|suite)\b/g, "unit"],
+  // Directionals, spelled out on one side and lettered on the other.
+  // "9256 7th Ave S" and "9256 7th Avenue South" are the same building,
+  // and without these they were two different keys — which on a grid of
+  // numbered streets is a large share of every city.
+  [/\b(northeast|ne)\b/g, "ne"],
+  [/\b(northwest|nw)\b/g, "nw"],
+  [/\b(southeast|se)\b/g, "se"],
+  [/\b(southwest|sw)\b/g, "sw"],
+  [/\b(north|n)\b/g, "n"],
+  [/\b(south|s)\b/g, "s"],
+  [/\b(east|e)\b/g, "e"],
+  [/\b(west|w)\b/g, "w"],
 ];
 
 /** A comma-separated part that belongs to the street, not the city:
@@ -53,7 +65,13 @@ export function addressKey(address: string): string | null {
     else break;
   }
 
-  let cleaned = street.join(" ").toLowerCase().replace(/[.#]/g, " ");
+  let cleaned = street
+    .join(" ")
+    .toLowerCase()
+    .replace(/[.#]/g, " ")
+    // "N.W." arrives here as "n w"; rejoin it before the table below
+    // turns each half into a separate token.
+    .replace(/\b([ns])\s+([ew])\b/g, "$1$2");
   for (const [pattern, short] of SUFFIXES) cleaned = cleaned.replace(pattern, short);
   cleaned = cleaned.replace(/\s+/g, " ").trim();
 

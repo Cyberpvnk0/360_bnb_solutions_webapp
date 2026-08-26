@@ -30,7 +30,6 @@ import {
   type LiveFailureReason,
 } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
-import { addressKey, buildingKey } from "@/lib/live/address";
 import { estimateCushionPts } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { Button } from "@/components/ui/button";
@@ -118,12 +117,11 @@ const SORTERS: Record<SortKey, (a: Row, b: Row) => number> = {
   "rent-desc": (a, b) => b.listing.rentMonthly - a.listing.rentMonthly,
 };
 
-function matchesFilters(row: Row, f: DealFilters): boolean {
+export function matchesFilters(row: Row, f: DealFilters): boolean {
   const l = row.listing;
   // Token matching survives real typing: "jacksonville florida",
   // "Jacksonville, FL", and "jacksonville" all resolve the same market.
   if (f.query && !marketMatchesQuery(row.haystack, f.query)) return false;
-  if (f.states.length > 0 && !f.states.includes(l.stateCode)) return false;
   // Slider bounds at their extremes mean "no bound" — the default view
   // must show every listing, including any outside the slider's track.
   if (f.rentMin > DEFAULT_DEAL_FILTERS.rentMin && l.rentMonthly < f.rentMin) {
@@ -132,8 +130,15 @@ function matchesFilters(row: Row, f: DealFilters): boolean {
   if (f.rentMax < DEFAULT_DEAL_FILTERS.rentMax && l.rentMonthly > f.rentMax) {
     return false;
   }
-  if (f.bedsMin > 0 && l.bedrooms < f.bedsMin) return false;
-  if (f.bathsMin > 0 && l.bathrooms < f.bathsMin) return false;
+  // Exact sizes, not a floor. The top tile is open-ended, so a 5 keeps
+  // anything with five or more; a half bath rounds down, because 2.5 is
+  // what people call a two-bath.
+  if (f.beds.length > 0 && !f.beds.includes(Math.min(5, l.bedrooms))) {
+    return false;
+  }
+  if (f.baths.length > 0 && !f.baths.includes(Math.min(5, Math.floor(l.bathrooms)))) {
+    return false;
+  }
   if (!f.types.includes(l.propertyType)) return false;
   // A listing whose amenities are unknown is never excluded by a feature
   // filter — absence of data is not evidence of absence.
@@ -173,12 +178,11 @@ function liveFailureLabel(reason: LiveFailureReason | null | undefined): string 
 
 interface DealsExplorerProps {
   markets: Market[];
-  states: string[];
   /** Coverage figures for the opening invitation. */
   totals: { rentals: number; markets: number };
 }
 
-export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
+export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
   const [filters, setFilters] = React.useState<DealFilters>(DEFAULT_DEAL_FILTERS);
   const [sort, setSort] = React.useState<SortKey>("spread");
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
@@ -332,7 +336,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
 
   const [photos, setPhotos] = React.useState<{
     slug: string;
-    byAddress: Record<string, string>;
+    byListingId: Record<string, string>;
   } | null>(null);
 
   /** Only worth asking for real inventory: the preview set's addresses
@@ -342,9 +346,9 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   React.useEffect(() => {
     if (!photoTarget) return;
     let cancelled = false;
-    getBorrowedPhotos(photoTarget).then((byAddress) => {
+    getBorrowedPhotos(photoTarget).then((byListingId) => {
       if (cancelled) return;
-      setPhotos({ slug: photoTarget, byAddress });
+      setPhotos({ slug: photoTarget, byListingId });
     });
     return () => {
       cancelled = true;
@@ -352,7 +356,7 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
   }, [photoTarget]);
 
   const photosFor =
-    photos && photos.slug === photoTarget ? photos.byAddress : null;
+    photos && photos.slug === photoTarget ? photos.byListingId : null;
 
   // Join listings with their market once — cushion comes through
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
@@ -378,12 +382,9 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
       const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
       // A borrowed photo, if one arrived and this row still has none.
-      // Exact address first; the building it sits in second, so a flat
-      // in a block that was photographed once still shows something.
-      const borrowed = raw.photoUrl
-        ? undefined
-        : (photosFor?.[addressKey(raw.address) ?? ""] ??
-          photosFor?.[buildingKey(raw.address) ?? ""]);
+      // Matched on the server, so this is a lookup by id and there is
+      // no second copy of the address rules to keep in step.
+      const borrowed = raw.photoUrl ? undefined : photosFor?.[raw.id];
       const listing = borrowed ? { ...raw, photoUrl: borrowed } : raw;
       return [
         {
@@ -643,7 +644,6 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
         <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto">
         <DealFilterChips
           filters={filters}
-          states={states}
           featuresKnown={featuresKnown}
           onChange={(patch) => {
             if ("query" in patch) setZip(null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { marketMatchesQuery, normalizeKeyword } from "./deal-filters";
+import { countSummary, marketMatchesQuery, normalizeKeyword } from "./deal-filters";
 
 const JAX = "jacksonville florida fl";
 
@@ -34,5 +34,21 @@ describe("normalizeKeyword", () => {
     expect(normalizeKeyword("Water Front")).toBe("waterfront");
     expect(normalizeKeyword("washer & dryer")).toBe("washerdryer");
     expect(normalizeKeyword("PET-FRIENDLY")).toBe("petfriendly");
+  });
+});
+
+describe("countSummary", () => {
+  it("names the sizes rather than a floor", () => {
+    expect(countSummary([], "bd")).toBeUndefined();
+    expect(countSummary([2], "bd")).toBe("2 bd");
+    expect(countSummary([1, 2], "bd")).toBe("1, 2 bd");
+    // The top tile is open-ended, and the chip says so.
+    expect(countSummary([5], "ba")).toBe("5+ ba");
+    // Too many to name; the chip has finite room.
+    expect(countSummary([1, 2, 3, 4], "bd")).toBe("4 sizes");
+  });
+
+  it("reads the same however the tiles were clicked", () => {
+    expect(countSummary([3, 1], "bd")).toBe(countSummary([1, 3], "bd"));
   });
 });
