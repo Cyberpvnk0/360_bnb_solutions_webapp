@@ -56,8 +56,21 @@ const UNIT_PART = /^(?:#|(?:apartment|apt|unit|ste|suite)\b\.?)\s*[\w-]+$/i;
  * one city kept its sketch.
  */
 export function addressKey(address: string): string | null {
+  // Apartment listings arrive as "Community Name | 5000 Big Island Dr".
+  // The building's marketing name is not an address and matches nothing
+  // on the other side — and because plenty of them start with a digit
+  // ("5 Thousand Town"), the leading-number check below waves the whole
+  // string through as if it were a street. Take the street.
+  const piped = address.includes("|")
+    ? (address
+        .split("|")
+        .map((p) => p.trim())
+        .filter((p) => /^\d/.test(p))
+        .pop() ?? address.split("|").pop()!.trim())
+    : address;
+
   // Commas separate street from city; a unit can fall on either side.
-  const parts = address.split(",").map((p) => p.trim());
+  const parts = piped.split(",").map((p) => p.trim());
   const street: string[] = [];
   for (const [i, part] of parts.entries()) {
     if (part === "") continue;

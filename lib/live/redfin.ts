@@ -423,23 +423,55 @@ export function mapRedfinListing(
  * caller reports how many rows actually matched rather than implying
  * full coverage.
  */
+export interface RedfinPhotoIndex {
+  /** Normalised address → photo, keyed both exactly and by building. */
+  index: Map<string, string>;
+  /** Where the rows went, so a thin index can be explained rather than
+   *  guessed at. The first cut of this returned five keys for a city
+   *  and there was no way to see which step lost them. */
+  stats: {
+    pages: number;
+    rows: number;
+    withAddress: number;
+    withPhoto: number;
+    /** Raw, as the vendor wrote them — the pipe-separated community
+     *  names only became visible once these were printed. */
+    sampleAddresses: string[];
+  };
+}
+
 export async function fetchRedfinPhotoIndex(
   market: Market
-): Promise<Map<string, string>> {
+): Promise<RedfinPhotoIndex> {
   const index = new Map<string, string>();
+  const stats = {
+    pages: 0,
+    rows: 0,
+    withAddress: 0,
+    withPhoto: 0,
+    sampleAddresses: [] as string[],
+  };
   // Seeded ids only. Photos are decoration, and resolving an unknown id
   // costs two proxy round trips before it can even fail — latency spent
   // on the one part of the row a student can do without.
-  if (!redfinCoversMarket(market)) return index;
+  if (!redfinCoversMarket(market)) return { index, stats };
 
-  const { raw } = await fetchRedfinRentals(market, {
+  const { raw, pages } = await fetchRedfinRentals(market, {
     furnished: false,
     map: false,
     pages: photoPages(),
   });
+  stats.pages = pages;
+  stats.rows = raw.length;
+
   for (const row of raw) {
     const address = pickString(row, ADDRESS_KEYS);
     const photo = pickString(row, PHOTO_KEYS);
+    if (address) {
+      stats.withAddress += 1;
+      if (stats.sampleAddresses.length < 8) stats.sampleAddresses.push(address);
+    }
+    if (photo) stats.withPhoto += 1;
     if (!address || !photo) continue;
     // Both granularities. The exact key is preferred at lookup; the
     // building key is what lets a block's photo reach the flats inside
@@ -449,7 +481,7 @@ export async function fetchRedfinPhotoIndex(
     const building = buildingKey(address);
     if (building && !index.has(building)) index.set(building, photo);
   }
-  return index;
+  return { index, stats };
 }
 
 /* ------------------------------------------------------------------ */

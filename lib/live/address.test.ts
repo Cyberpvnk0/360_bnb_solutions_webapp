@@ -108,3 +108,35 @@ describe("buildingKey", () => {
     );
   });
 });
+
+describe("addresses that carry a building's marketing name", () => {
+  it("keeps the street and drops the name", () => {
+    // The photo source writes apartments as "Community | Street", and
+    // the other side writes only the street. Whole complexes went
+    // unmatched over this.
+    expect(addressKey("5 Thousand Town | 5000 Big Island Dr")).toBe(
+      addressKey("5000 Big Island Dr")
+    );
+    expect(
+      addressKey("360 Communities at Avenues Walk | 10654 Towns Way")
+    ).toBe(addressKey("10654 Towns Way"));
+  });
+
+  it("is not fooled by a name that starts with a number", () => {
+    // "5 Thousand Town" passes a leading-digit test, which is exactly
+    // how it got used as the street in the first place.
+    expect(addressKey("5 Thousand Town | 5000 Big Island Dr")).not.toBe(
+      addressKey("5 Thousand Town")
+    );
+  });
+
+  it("still keys a plain address with no name attached", () => {
+    expect(addressKey("6680 Bennett Creek Dr")).toBe("6680 bennett creek dr");
+  });
+
+  it("carries the unit through from the street half", () => {
+    expect(addressKey("The Lofts | 900 Main St Apt 5")).toBe(
+      addressKey("900 Main St Unit 5")
+    );
+  });
+});

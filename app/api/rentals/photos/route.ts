@@ -49,10 +49,11 @@ export async function GET(request: Request) {
 
   // Both are cached by the time a student is looking at the rows, so
   // this is a cache read in the common case, and parallel when it isn't.
-  const [index, listings] = await Promise.all([
-    fetchRedfinPhotoIndex(market).catch(() => new Map<string, string>()),
+  const [source, listings] = await Promise.all([
+    fetchRedfinPhotoIndex(market).catch(() => null),
     fetchLiveRentals(market).catch(() => []),
   ]);
+  const index = source?.index ?? new Map<string, string>();
 
   const photos: Record<string, string> = {};
   let exact = 0;
@@ -87,11 +88,15 @@ export async function GET(request: Request) {
           exact,
           byBuilding,
           indexedKeys: index.size,
+          // Where the photo source's rows went. A thin index is either
+          // few rows or rows we failed to read, and these separate the
+          // two without another round of guessing.
+          photoSource: source?.stats ?? null,
           sampleIndexKeys: [...index.keys()].slice(0, 12),
           sampleUnmatchedRowKeys: unmatched,
           verdict:
             index.size === 0
-              ? "The photo source returned nothing for this market — pagination, city id, or a vendor error. Nothing to match against."
+              ? "The photo source returned nothing for this market — read photoSource: pages and rows say whether the fetch worked, withAddress and withPhoto whether the rows were readable."
               : Object.keys(photos).length === 0
                 ? "Both sides have rows and NOTHING matched: compare sampleIndexKeys with sampleUnmatchedRowKeys — the two are writing addresses differently."
                 : "Matching works. Coverage is bounded by how many rows the photo source returns for this market.",
