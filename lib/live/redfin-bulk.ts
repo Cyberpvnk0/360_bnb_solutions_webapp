@@ -390,9 +390,10 @@ export async function probePage(
       })}`,
       {
         next: { revalidate: STATE_PAGE_REVALIDATE_SECONDS },
-        // Most of the budget: a large sitemap is a slow transfer, not a
-        // hung request, and 25s was cutting it off mid-download.
-        signal: AbortSignal.timeout(50_000),
+        // A large sitemap is a slow transfer, not a hung request. This
+        // sits just inside the route's own ceiling so the fetch is
+        // never the thing that gives up first.
+        signal: AbortSignal.timeout(240_000),
       }
     );
     const text = await res.text();

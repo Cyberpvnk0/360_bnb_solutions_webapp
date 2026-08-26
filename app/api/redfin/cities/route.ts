@@ -22,8 +22,16 @@ import {
   stillMissing,
 } from "@/lib/live/redfin-bulk";
 
-/** Ten states at five in flight, each capped — fits the budget. */
-export const maxDuration = 60;
+/**
+ * Long, because one job here is pulling a whole sitemap: Redfin's
+ * rental-city index is large enough to exceed a minute through a bypass
+ * proxy, and it is worth one slow request to get every city id at once
+ * instead of a hundred and fifty lookups.
+ *
+ * Vercel clamps this to the plan's ceiling — 60s on Hobby, 300s on Pro
+ * — so asking for more is safe: it either helps or is ignored.
+ */
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
