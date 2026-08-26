@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The Deal Finder map: MapLibre over CARTO/OSM raster tiles, one
+ * The Deal Finder map: MapLibre over keyless OSM vector tiles, one
  * rounded price pill per listing on the current page. Hover syncs with
  * the card grid in both directions; clicking a pill scrolls its card
  * into view. The camera refits whenever the filtered set moves to a
@@ -15,34 +15,11 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { BASEMAP_FALLBACK, BASEMAP_STYLE } from "@/lib/map/basemap";
 import { fmtMoney } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import { cn } from "@/lib/utils";
 
-const LIGHT_TILES = ["a", "b", "c", "d"].map(
-  (s) => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png`
-);
-const DARK_TILES = ["a", "b", "c", "d"].map(
-  (s) => `https://${s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png`
-);
-
-const ATTRIBUTION =
-  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>';
-
-function rasterStyle(tiles: string[]): maplibregl.StyleSpecification {
-  return {
-    version: 8,
-    sources: {
-      basemap: {
-        type: "raster",
-        tiles,
-        tileSize: 256,
-        attribution: ATTRIBUTION,
-      },
-    },
-    layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-  };
-}
 
 /** Continental-US default framing before any pins ask for better. */
 const US_CENTER: [number, number] = [-96.8, 38.6];
@@ -100,11 +77,9 @@ export function RentalsMap({
     if (!container) return;
     const markers = markersRef.current;
     const els = markerElsRef.current;
-
-    const dark = document.documentElement.classList.contains("dark");
     const map = new maplibregl.Map({
       container,
-      style: rasterStyle(dark ? DARK_TILES : LIGHT_TILES),
+      style: BASEMAP_STYLE,
       center: US_CENTER,
       zoom: US_ZOOM,
       attributionControl: { compact: true },
@@ -117,28 +92,22 @@ export function RentalsMap({
     );
 
     // Tiles can't load in offline previews — pins still place to scale.
-    map.on("error", (e) => {
-      if ((e as { sourceId?: string }).sourceId === "basemap") {
+    // The style is fetched from its host, so we don't own the source
+    // ids any more: anything that fails before the first successful
+    // render means no basemap, and the pins carry the view alone.
+    map.on("error", () => {
+      if (!map.isStyleLoaded()) {
+        map.setStyle(BASEMAP_FALLBACK);
         setTilesBlocked(true);
       }
     });
 
-    // Follow the app theme without rebuilding the map.
-    const observer = new MutationObserver(() => {
-      const nowDark = document.documentElement.classList.contains("dark");
-      map.setStyle(rasterStyle(nowDark ? DARK_TILES : LIGHT_TILES));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
 
     // The pane hides below lg (mobile toggle); resize when it reappears.
     const resizer = new ResizeObserver(() => map.resize());
     resizer.observe(container);
 
     return () => {
-      observer.disconnect();
       resizer.disconnect();
       markers.clear();
       els.clear();

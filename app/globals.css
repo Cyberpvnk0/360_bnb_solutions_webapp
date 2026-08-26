@@ -275,3 +275,19 @@
 @utility elev-raised {
   box-shadow: var(--elev-raised);
 }
+
+/*
+ * Dark mode for the maps.
+ *
+ * The basemap ships in one light style; inverting the canvas is what
+ * makes it dark, which costs no second style download and cannot fall
+ * out of sync with the theme. The filter lands on the canvas alone, so
+ * the price pins and popups — separate DOM overlaid on top — keep their
+ * own colours instead of coming out inverted.
+ *
+ * hue-rotate puts blues back where they started after the invert;
+ * without it water comes out orange.
+ */
+.dark .maplibregl-canvas {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+}

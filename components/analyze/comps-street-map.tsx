@@ -15,6 +15,7 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { BASEMAP_FALLBACK, BASEMAP_STYLE } from "@/lib/map/basemap";
 import { ArrowUpRight, X } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
@@ -22,30 +23,6 @@ import type { StrComp } from "@/lib/mock/types";
 import { PropertyThumb } from "./property-thumb";
 import { cn } from "@/lib/utils";
 
-const LIGHT_TILES = ["a", "b", "c", "d"].map(
-  (s) => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png`
-);
-const DARK_TILES = ["a", "b", "c", "d"].map(
-  (s) => `https://${s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png`
-);
-
-const ATTRIBUTION =
-  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>';
-
-function rasterStyle(tiles: string[]): maplibregl.StyleSpecification {
-  return {
-    version: 8,
-    sources: {
-      basemap: {
-        type: "raster",
-        tiles,
-        tileSize: 256,
-        attribution: ATTRIBUTION,
-      },
-    },
-    layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-  };
-}
 
 function hash(str: string): number {
   let h = 2166136261;
@@ -140,11 +117,9 @@ export function CompsStreetMap({
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    const dark = document.documentElement.classList.contains("dark");
     const map = new maplibregl.Map({
       container,
-      style: rasterStyle(dark ? DARK_TILES : LIGHT_TILES),
+      style: BASEMAP_STYLE,
       center: [subject.lon, subject.lat],
       zoom: 12,
       attributionControl: { compact: true },
@@ -157,8 +132,12 @@ export function CompsStreetMap({
     );
 
     // Tiles can't load in offline previews — pins still place to scale.
-    map.on("error", (e) => {
-      if ((e as { sourceId?: string }).sourceId === "basemap") {
+    // The style is fetched from its host, so we don't own the source
+    // ids any more: anything that fails before the first successful
+    // render means no basemap, and the pins carry the view alone.
+    map.on("error", () => {
+      if (!map.isStyleLoaded()) {
+        map.setStyle(BASEMAP_FALLBACK);
         setTilesBlocked(true);
       }
     });
@@ -210,18 +189,7 @@ export function CompsStreetMap({
 
     map.on("click", () => setActiveId(null));
 
-    // Follow the app theme without rebuilding the map.
-    const observer = new MutationObserver(() => {
-      const nowDark = document.documentElement.classList.contains("dark");
-      map.setStyle(rasterStyle(nowDark ? DARK_TILES : LIGHT_TILES));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
     return () => {
-      observer.disconnect();
       map.remove();
       mapRef.current = null;
     };
