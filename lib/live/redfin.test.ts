@@ -269,28 +269,17 @@ describe("harvestPhotos", () => {
   });
 });
 
-describe("redfinRentalsUrlFor property types", () => {
+describe("redfinRentalsUrlFor property type", () => {
   const market = {
     name: "Jacksonville",
     stateCode: "FL",
   } as unknown as Market;
 
   it("asks for houses when the default search won't surface them", () => {
-    // The default rentals view is nearly all managed communities, and
-    // the feed we match against is mostly houses — this is the pass
-    // that reaches them.
-    expect(
-      redfinRentalsUrlFor(market, 8907, { propertyTypes: ["house"] })
-    ).toBe("https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/property-type=house");
-  });
-
-  it("stacks several types behind one filter segment", () => {
-    expect(
-      redfinRentalsUrlFor(market, 8907, {
-        propertyTypes: ["house", "townhouse"],
-      })
-    ).toBe(
-      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/property-type=house,townhouse"
+    // Measured against the live search: this form returns real houses,
+    // where the unfiltered one is nearly all managed communities.
+    expect(redfinRentalsUrlFor(market, 8907, { propertyType: "house" })).toBe(
+      "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/property-type=house"
     );
   });
 
@@ -298,11 +287,21 @@ describe("redfinRentalsUrlFor property types", () => {
     expect(
       redfinRentalsUrlFor(market, 8907, {
         furnished: true,
-        propertyTypes: ["house"],
+        propertyType: "house",
       })
     ).toBe(
       "https://www.redfin.com/city/8907/FL/Jacksonville/rentals/filter/is-furnished,property-type=house"
     );
+  });
+
+  it("cannot build the comma-joined form that silently voids the filter", () => {
+    // "property-type=house,townhouse" measured identical to the
+    // unfiltered search — the extra value doesn't widen the filter, it
+    // disables it, and a row count cannot tell the two apart. The type
+    // is a single string so that URL has no way to be constructed.
+    const url = redfinRentalsUrlFor(market, 8907, { propertyType: "house" });
+    expect(url).not.toContain(",");
+    expect(url.match(/property-type=/g) ?? []).toHaveLength(1);
   });
 
   it("is unchanged when nothing is asked of it", () => {

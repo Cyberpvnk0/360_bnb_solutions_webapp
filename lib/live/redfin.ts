@@ -95,16 +95,21 @@ export function nextPageUrls(body: unknown): string[] {
 export function redfinRentalsUrlFor(
   market: Market,
   cityId: number,
-  opts: { furnished?: boolean; propertyTypes?: string[] } = {}
+  opts: { furnished?: boolean; propertyType?: string } = {}
 ): string {
   const city = market.name.trim().replace(/\s+/g, "-");
   const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}/rentals`;
   // Filters stack behind one /filter/ segment, comma separated.
+  //
+  // ONE property type. A live probe measured "property-type=house"
+  // returning real houses and "property-type=house,townhouse" returning
+  // the unfiltered set — the second value doesn't widen the filter, it
+  // silently voids it, and an ignored filter looks exactly like a
+  // working one from a row count. Several types means several passes,
+  // never one comma-joined value, so the broken form can't be built.
   const filters: string[] = [];
   if (opts.furnished) filters.push("is-furnished");
-  if (opts.propertyTypes?.length) {
-    filters.push(`property-type=${opts.propertyTypes.join(",")}`);
-  }
+  if (opts.propertyType) filters.push(`property-type=${opts.propertyType}`);
   return filters.length > 0 ? `${base}/filter/${filters.join(",")}` : base;
 }
 
@@ -117,7 +122,7 @@ export function redfinRentalsUrlFor(
  */
 export async function redfinRentalsUrl(
   market: Market,
-  opts: { furnished?: boolean; propertyTypes?: string[] } = {}
+  opts: { furnished?: boolean; propertyType?: string } = {}
 ): Promise<string | null> {
   const cityId = await cityIdFor(market);
   return cityId === null ? null : redfinRentalsUrlFor(market, cityId, opts);
@@ -560,7 +565,21 @@ export interface RedfinPhotoIndex {
  * failure is harmless: a filter that doesn't bite returns nothing, the
  * default pass still stands, and housePassRows says which happened.
  */
-const HOUSE_TYPES = ["house", "townhouse"];
+/**
+ * Extra passes, one property type each.
+ *
+ * Houses by default because that is what the feed is made of and what
+ * the default search never surfaces. REDFIN_PHOTO_TYPES adds more —
+ * "house,townhouse" runs TWO passes, not one two-valued filter.
+ */
+function photoTypes(): string[] {
+  const raw = process.env.REDFIN_PHOTO_TYPES;
+  if (!raw) return ["house"];
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
 
 export async function fetchRedfinPhotoIndex(
   market: Market
@@ -585,21 +604,26 @@ export async function fetchRedfinPhotoIndex(
   if (!redfinCoversMarket(market)) return { index, buildings, stats };
 
   const pages = photoPages();
-  const [everything, houses] = await Promise.all([
+  const [everything, ...typed] = await Promise.all([
     fetchRedfinRentals(market, { furnished: false, map: false, pages }),
-    // Never let the narrower pass sink the search it is supplementing.
-    fetchRedfinRentals(market, {
-      furnished: false,
-      map: false,
-      pages,
-      propertyTypes: HOUSE_TYPES,
-    }).catch(() => null),
+    // Never let a narrower pass sink the search it is supplementing.
+    ...photoTypes().map((propertyType) =>
+      fetchRedfinRentals(market, {
+        furnished: false,
+        map: false,
+        pages,
+        propertyType,
+      }).catch(() => null)
+    ),
   ]);
+  const houses = typed.filter((r) => r !== null);
 
-  stats.pages = everything.pages + (houses?.pages ?? 0);
-  stats.housePassRows = houses?.raw.length ?? 0;
-  stats.housePassUrl = houses?.searchUrl ?? null;
-  stats.morePages = everything.morePages || Boolean(houses?.morePages);
+  const houseRows = houses.flatMap((h) => h.raw);
+  stats.pages = everything.pages + houses.reduce((n, h) => n + h.pages, 0);
+  stats.housePassRows = houseRows.length;
+  stats.housePassUrl = houses.map((h) => h.searchUrl).join(" | ") || null;
+  stats.morePages =
+    everything.morePages || houses.some((h) => h.morePages);
 
   const absorb = (rows: readonly Row[], samples: string[]) => {
     for (const row of rows) {
@@ -625,7 +649,7 @@ export async function fetchRedfinPhotoIndex(
   // counted rather than assumed.
   absorb(everything.raw, stats.sampleAddresses);
   const beforeHouses = index.size;
-  absorb(houses?.raw ?? [], stats.houseSampleAddresses);
+  absorb(houseRows, stats.houseSampleAddresses);
   stats.housePassNewKeys = index.size - beforeHouses;
 
   return { index, buildings, stats };
@@ -891,8 +915,9 @@ export async function fetchRedfinRentals(
     map?: boolean;
     /** Override the page ceiling for this call. */
     pages?: number;
-    /** Narrow to particular property types, e.g. ["house"]. */
-    propertyTypes?: string[];
+    /** Narrow to ONE property type, e.g. "house". Never a list — see
+     *  redfinRentalsUrlFor. */
+    propertyType?: string;
   } = {}
 ): Promise<RedfinFetch> {
   const searchUrl = await redfinRentalsUrl(market, opts);
