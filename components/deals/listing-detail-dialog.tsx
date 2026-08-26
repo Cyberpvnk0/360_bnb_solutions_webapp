@@ -16,7 +16,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, Mail, Phone, TriangleAlert, User } from "lucide-react";
+import { Mail, Phone, TriangleAlert, User } from "lucide-react";
 import { projectDeal } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtNum, fmtPct } from "@/lib/format";
 import { benchmark2brInputs } from "@/lib/mock/markets";
@@ -145,20 +145,6 @@ export function ListingDetailDialog({
                   Run the numbers
                 </Link>
               </Button>
-              <a
-                href={
-                  listing.sourceUrl ??
-                  `https://www.zillow.com/homes/for_rent/${encodeURIComponent(
-                    `${listing.address}, ${listing.city}, ${listing.stateCode}`
-                  )}_rb/`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
-              >
-                View listing
-                <ArrowUpRight aria-hidden className="size-3" />
-              </a>
             </div>
 
             {/* Who to call — the step between "this pencils" and a lease. */}

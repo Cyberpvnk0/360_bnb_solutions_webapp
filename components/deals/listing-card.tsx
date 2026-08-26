@@ -10,7 +10,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import { PropertyImage } from "./property-image";
@@ -52,9 +52,6 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
     ref
   ) {
     const strong = cushionPts >= 8;
-    const zillowUrl = `https://www.zillow.com/homes/for_rent/${encodeURIComponent(
-      `${l.address}, ${l.city}, ${l.stateCode}`
-    )}_rb/`;
 
     return (
       <div
@@ -167,15 +164,6 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
                 Run the numbers
               </Link>
             </Button>
-            <a
-              href={zillowUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="View the original listing"
-              className="flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
-            >
-              <ArrowUpRight aria-hidden className="size-4" />
-            </a>
           </span>
         </div>
       </div>
