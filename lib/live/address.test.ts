@@ -140,3 +140,77 @@ describe("addresses that carry a building's marketing name", () => {
     );
   });
 });
+
+describe("directionals that move around", () => {
+  it("matches the same street whichever side the directional sits on", () => {
+    // One live probe returned "1530 21st st w" and "92 w 55th st" from
+    // the SAME feed, so this is not even a cross-vendor disagreement.
+    expect(addressKey("1530 W 21st St, Jacksonville, FL")).toBe(
+      addressKey("1530 21st St W")
+    );
+    expect(addressKey("92 W 55th St")).toBe(addressKey("92 55th St West"));
+    expect(addressKey("4092 Barnes Rd S")).toBe(addressKey("4092 S Barnes Rd"));
+    expect(addressKey("1204 NW 3rd St")).toBe(addressKey("1204 3rd St NW"));
+  });
+
+  it("never merges opposite sides of the same street", () => {
+    // Moving the directional is fine; forgetting it would hang one
+    // building's photo on another's row.
+    expect(addressKey("1530 W 21st St")).not.toBe(addressKey("1530 E 21st St"));
+    expect(addressKey("100 N Main St")).not.toBe(addressKey("100 S Main St"));
+    expect(addressKey("100 NE Oak Ave")).not.toBe(addressKey("100 NW Oak Ave"));
+  });
+
+  it("leaves a street with no directional untouched", () => {
+    expect(addressKey("3142 Mecca St")).toBe("3142 mecca st");
+    expect(addressKey("5224 Bragg Rd")).toBe("5224 bragg rd");
+  });
+
+  it("does not strip a street whose whole name is a direction", () => {
+    // "100 West" has nothing left to name it if the direction goes.
+    expect(addressKey("100 West St")).toBeTruthy();
+    expect(addressKey("100 North Ave")).toBeTruthy();
+  });
+});
+
+describe("a unit whose designation is a letter", () => {
+  it("never collides with a directional", () => {
+    // "1000 Main St Apt N" and "1000 Main St N" are different buildings.
+    // Folding the unit into the street made them one key, which puts a
+    // stranger's photo on a real listing — worse than showing none.
+    expect(addressKey("1000 Main St Apt N")).not.toBe(
+      addressKey("1000 Main St N")
+    );
+    expect(addressKey("1000 Main St Unit W")).not.toBe(
+      addressKey("1000 Main St W")
+    );
+  });
+
+  it("still matches the same unit written either way", () => {
+    expect(addressKey("1000 Main St Apt N")).toBe(addressKey("1000 Main St #N"));
+    expect(addressKey("1000 Main St, Apt N, Tampa, FL")).toBe(
+      addressKey("1000 Main St #n")
+    );
+  });
+
+  it("keeps the building key free of the unit either way", () => {
+    expect(buildingKey("1000 Main St Apt N")).toBe(buildingKey("1000 Main St"));
+    expect(buildingKey("1000 Main St N")).toBe(addressKey("1000 Main St N"));
+  });
+});
+
+describe("street suffixes the probe turned up", () => {
+  it("matches Expressway written both ways", () => {
+    // "7528 arlington expy" was sitting in a live index and could never
+    // have met the longhand form.
+    expect(addressKey("7528 Arlington Expressway")).toBe(
+      addressKey("7528 Arlington Expy")
+    );
+  });
+
+  it("handles the other common pairs", () => {
+    expect(addressKey("10 Market Square")).toBe(addressKey("10 Market Sq"));
+    expect(addressKey("22 Eagle Point")).toBe(addressKey("22 Eagle Pt"));
+    expect(addressKey("5 Mount Vernon Rd")).toBe(addressKey("5 Mt Vernon Rd"));
+  });
+});

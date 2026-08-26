@@ -24,7 +24,11 @@
 
 import { NextResponse } from "next/server";
 import { addressKey, buildingKey } from "@/lib/live/address";
-import { fetchRedfinPhotoIndex, redfinCoversMarket } from "@/lib/live/redfin";
+import {
+  fetchRedfinPhotoIndex,
+  probeHouseFilters,
+  redfinCoversMarket,
+} from "@/lib/live/redfin";
 import { fetchLiveRentals } from "@/lib/live/rentcast";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
@@ -38,6 +42,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ photos: {} }, { status: 404 });
   }
   const shape = searchParams.get("shape");
+
+  // One page per candidate URL, run only when asked. The house filter
+  // has to be found by measurement: a form the vendor ignores answers
+  // with the unfiltered set, so the only way to tell a working filter
+  // from a dead one is to compare what each returns.
+  if (searchParams.get("houseProbe")) {
+    return NextResponse.json(await probeHouseFilters(market));
+  }
 
   if (!redfinCoversMarket(market)) {
     return NextResponse.json({
@@ -54,6 +66,7 @@ export async function GET(request: Request) {
     fetchLiveRentals(market).catch(() => []),
   ]);
   const index = source?.index ?? new Map<string, string>();
+  const buildings = source?.buildings ?? new Map<string, string>();
 
   const photos: Record<string, string> = {};
   let exact = 0;
@@ -64,10 +77,12 @@ export async function GET(request: Request) {
     if (listing.photoUrl) continue;
     const key = addressKey(listing.address);
     const building = buildingKey(listing.address);
-    const hit = (key && index.get(key)) ?? (building && index.get(building));
+    const own = key ? index.get(key) : undefined;
+    const block = building ? buildings.get(building) : undefined;
+    const hit = own ?? block;
     if (hit) {
       photos[listing.id] = hit;
-      if (key && index.get(key)) exact += 1;
+      if (own) exact += 1;
       else byBuilding += 1;
     } else if (unmatched.length < 12) {
       unmatched.push(key ?? `(unkeyable) ${listing.address}`);
@@ -99,9 +114,9 @@ export async function GET(request: Request) {
               ? "The photo source returned nothing for this market — read photoSource: pages and rows say whether the fetch worked, withAddress and withPhoto whether the rows were readable."
               : Object.keys(photos).length === 0
                 ? "Both sides have rows and NOTHING matched: compare sampleIndexKeys with sampleUnmatchedRowKeys — the two are writing addresses differently."
-                : (source?.stats.housePassRows ?? 0) === 0
-                  ? "Matching works, but the house pass returned nothing — read photoSource.housePassUrl. The default search is nearly all apartment communities, so single-family rows stay unmatched until that filter bites."
-                  : "Matching works, both passes returned rows, and coverage is now bounded by how many the source carries for this market.",
+                : (source?.stats.housePassNewKeys ?? 0) < 20
+                  ? "Matching works, but the house pass is INERT — it returned rows and added almost no new keys, which is what a filter the vendor ignores looks like. Compare houseSampleAddresses with sampleAddresses: if both are apartment communities, the filter is not biting. Try ?houseProbe=1."
+                  : "Matching works and both passes contribute. Coverage is bounded by page depth (see morePages) and by how much inventory the two sources share.",
         }
       : {}),
   });

@@ -47,10 +47,14 @@ export const REDFIN_REVALIDATE_SECONDS = 86_400;
  */
 export const DEFAULT_MAX_PAGES = 4;
 
+/** Hard ceiling. Raised from ten once coverage, not latency, became
+ *  the binding constraint — pages go in parallel waves now. */
+const PAGE_CEILING = 25;
+
 function maxPages(override?: number): number {
   const raw = override ?? Number(process.env.REDFIN_MAX_PAGES);
   return Number.isFinite(raw) && raw > 0
-    ? Math.min(10, Math.floor(raw))
+    ? Math.min(PAGE_CEILING, Math.floor(raw))
     : DEFAULT_MAX_PAGES;
 }
 
@@ -429,9 +433,86 @@ export function mapRedfinListing(
  * caller reports how many rows actually matched rather than implying
  * full coverage.
  */
+/**
+ * Which URL form actually filters the rentals search to houses.
+ *
+ * This has to be measured rather than reasoned about. A filter segment
+ * the vendor doesn't recognise is not rejected — it is ignored, and the
+ * search answers with its default result set. That is indistinguishable
+ * from success by row count, which is exactly how a "house pass" came
+ * to return 166 apartment rows and report them as a win.
+ *
+ * So: one page of each candidate, side by side with one page of the
+ * unfiltered search, and the answer is whichever form returns something
+ * DIFFERENT. Deliberately behind a query flag — it costs a handful of
+ * requests and nobody should pay for it on a page load.
+ */
+export async function probeHouseFilters(market: Market): Promise<unknown> {
+  const cityId = REDFIN_CITY_ID[market.slug];
+  if (cityId === undefined) {
+    return { market: market.slug, error: "no city id for this market" };
+  }
+
+  const city = market.name.trim().replace(/\s+/g, "-");
+  const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}`;
+  const candidates: { label: string; url: string }[] = [
+    { label: "unfiltered (control)", url: `${base}/rentals` },
+    { label: "filter/property-type=house", url: `${base}/rentals/filter/property-type=house` },
+    { label: "filter/property-type=house,townhouse", url: `${base}/rentals/filter/property-type=house,townhouse` },
+    { label: "filter/propertyType=house", url: `${base}/rentals/filter/propertyType=house` },
+    { label: "filter/property-type=single-family", url: `${base}/rentals/filter/property-type=single-family` },
+    { label: "houses-for-rent", url: `${base}/houses-for-rent` },
+    { label: "apartments-for-rent", url: `${base}/apartments-for-rent` },
+  ];
+
+  const results = await Promise.all(
+    candidates.map(async ({ label, url }) => {
+      try {
+        const page = await fetchPage(url);
+        const addresses = page.rows
+          .map((row) => pickString(row, ADDRESS_KEYS))
+          .filter((a): a is string => Boolean(a));
+        return {
+          label,
+          url,
+          rows: page.rows.length,
+          parsed: page.parsed,
+          // The tell: a community name before a pipe is a managed
+          // apartment block, and a house never has one.
+          piped: addresses.filter((a) => a.includes("|")).length,
+          sample: addresses.slice(0, 5),
+        };
+      } catch (error) {
+        return {
+          label,
+          url,
+          rows: 0,
+          error: error instanceof RedfinError ? error.reason : "failed",
+        };
+      }
+    })
+  );
+
+  const control = results[0];
+  return {
+    market: market.slug,
+    results,
+    verdict:
+      "Compare each candidate's `sample` and `piped` against the control. " +
+      "A form that filters shows FEWER piped addresses and different " +
+      "streets; a form the vendor ignores looks identical to the control " +
+      `(rows ${control.rows}, piped ${"piped" in control ? control.piped : "?"}).`,
+  };
+}
+
 export interface RedfinPhotoIndex {
-  /** Normalised address → photo, keyed both exactly and by building. */
+  /** Address → photo, exact. Consulted first. */
   index: Map<string, string>;
+  /** Building → photo, for a flat in a block photographed once. Kept
+   *  apart from the exact map rather than merged into it: one shared
+   *  map with first-writer-wins meant a building entry could shadow the
+   *  unit's own photo, which is the opposite of the stated rule. */
+  buildings: Map<string, string>;
   /** Where the rows went, so a thin index can be explained rather than
    *  guessed at. The first cut of this returned five keys for a city
    *  and there was no way to see which step lost them. */
@@ -444,12 +525,24 @@ export interface RedfinPhotoIndex {
      *  default pass means the property-type filter is not biting and
      *  the URL form needs changing — not that the city has no houses. */
     housePassRows: number;
+    /** Distinct keys the house pass ADDED. A filter Redfin ignores does
+     *  not come back empty — it comes back with the default result set,
+     *  which reads as success from a row count alone. This is the number
+     *  that tells the two apart. */
+    housePassNewKeys: number;
+    /** True when the page cap stopped us rather than the vendor running
+     *  out of results. */
+    morePages: boolean;
     /** The URL the house pass asked for, so a filter that Redfin
      *  ignores can be read rather than inferred from a zero. */
     housePassUrl: string | null;
     /** Raw, as the vendor wrote them — the pipe-separated community
      *  names only became visible once these were printed. */
     sampleAddresses: string[];
+    /** The house pass's OWN rows. Kept separate because the last probe
+     *  read the merged list and could not see that the house pass was
+     *  serving apartment communities. */
+    houseSampleAddresses: string[];
   };
 }
 
@@ -473,19 +566,23 @@ export async function fetchRedfinPhotoIndex(
   market: Market
 ): Promise<RedfinPhotoIndex> {
   const index = new Map<string, string>();
+  const buildings = new Map<string, string>();
   const stats = {
     pages: 0,
     rows: 0,
     withAddress: 0,
     withPhoto: 0,
     housePassRows: 0,
+    housePassNewKeys: 0,
+    morePages: false,
     housePassUrl: null as string | null,
     sampleAddresses: [] as string[],
+    houseSampleAddresses: [] as string[],
   };
   // Seeded ids only. Photos are decoration, and resolving an unknown id
   // costs two proxy round trips before it can even fail — latency spent
   // on the one part of the row a student can do without.
-  if (!redfinCoversMarket(market)) return { index, stats };
+  if (!redfinCoversMarket(market)) return { index, buildings, stats };
 
   const pages = photoPages();
   const [everything, houses] = await Promise.all([
@@ -502,28 +599,36 @@ export async function fetchRedfinPhotoIndex(
   stats.pages = everything.pages + (houses?.pages ?? 0);
   stats.housePassRows = houses?.raw.length ?? 0;
   stats.housePassUrl = houses?.searchUrl ?? null;
+  stats.morePages = everything.morePages || Boolean(houses?.morePages);
 
-  // Houses first: they are the rows the feed is full of, and the first
-  // writer of a key wins.
-  for (const row of [...(houses?.raw ?? []), ...everything.raw]) {
-    stats.rows += 1;
-    const address = pickString(row, ADDRESS_KEYS);
-    const photo = pickString(row, PHOTO_KEYS);
-    if (address) {
-      stats.withAddress += 1;
-      if (stats.sampleAddresses.length < 8) stats.sampleAddresses.push(address);
+  const absorb = (rows: readonly Row[], samples: string[]) => {
+    for (const row of rows) {
+      stats.rows += 1;
+      const address = pickString(row, ADDRESS_KEYS);
+      // Some rows carry the thumbnail somewhere the key list doesn't
+      // name; harvesting finds an image URL wherever it sits.
+      const photo = pickString(row, PHOTO_KEYS) ?? harvestPhotos(row)[0];
+      if (address) {
+        stats.withAddress += 1;
+        if (samples.length < 8) samples.push(address);
+      }
+      if (photo) stats.withPhoto += 1;
+      if (!address || !photo) continue;
+      const key = addressKey(address);
+      if (key && !index.has(key)) index.set(key, photo);
+      const building = buildingKey(address);
+      if (building && !buildings.has(building)) buildings.set(building, photo);
     }
-    if (photo) stats.withPhoto += 1;
-    if (!address || !photo) continue;
-    // Both granularities. The exact key is preferred at lookup; the
-    // building key is what lets a block's photo reach the flats inside
-    // it, which is most of the rows in any city.
-    const key = addressKey(address);
-    if (key && !index.has(key)) index.set(key, photo);
-    const building = buildingKey(address);
-    if (building && !index.has(building)) index.set(building, photo);
-  }
-  return { index, stats };
+  };
+
+  // The default pass first, so the house pass's contribution can be
+  // counted rather than assumed.
+  absorb(everything.raw, stats.sampleAddresses);
+  const beforeHouses = index.size;
+  absorb(houses?.raw ?? [], stats.houseSampleAddresses);
+  stats.housePassNewKeys = index.size - beforeHouses;
+
+  return { index, buildings, stats };
 }
 
 /* ------------------------------------------------------------------ */
@@ -798,30 +903,40 @@ export async function fetchRedfinRentals(
   let bytes = 0;
   let credits: number | null = null;
 
-  // The first page lists every other page, so only IT has to be waited
-  // for: the rest go together. Walking them one at a time made a search
-  // cost four proxied scrapes end to end instead of two.
-  const head = await fetchPage(searchUrl);
-  // Diagnostics describe the FIRST page; later ones share its shape.
-  const body = head.body;
-  const parsed = head.parsed;
-  bytes += head.bytes;
-  if (head.credits !== null) credits = (credits ?? 0) + head.credits;
+  // Breadth-first, a wave at a time. Walking pages one by one made a
+  // search cost its whole page count end to end; taking only the links
+  // the FIRST page happened to list caps the depth wherever the vendor
+  // shows a window of page numbers rather than all of them. Waves keep
+  // the parallelism and keep discovering.
+  const seen = new Set<string>([searchUrl]);
+  let queue = [searchUrl];
+  let body: unknown = null;
+  let parsed = true;
+  let pages = 0;
 
-  const rest = nextPageUrls(head.body).filter(
-    (url, i, all) => url !== searchUrl && all.indexOf(url) === i
-  );
-  const take = rest.slice(0, Math.max(0, limit - 1));
-  const tail = await Promise.all(take.map((url) => fetchPage(url)));
-
-  raw.push(...head.rows);
-  for (const page of tail) {
-    raw.push(...page.rows);
-    bytes += page.bytes;
-    if (page.credits !== null) credits = (credits ?? 0) + page.credits;
+  while (queue.length > 0 && pages < limit) {
+    const wave = queue.slice(0, limit - pages);
+    queue = queue.slice(wave.length);
+    const fetched = await Promise.all(wave.map((url) => fetchPage(url)));
+    for (const page of fetched) {
+      pages += 1;
+      raw.push(...page.rows);
+      bytes += page.bytes;
+      if (page.credits !== null) credits = (credits ?? 0) + page.credits;
+      // Diagnostics describe the FIRST page; later ones share its shape.
+      if (body === null) {
+        body = page.body;
+        parsed = page.parsed;
+      }
+      for (const next of nextPageUrls(page.body)) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
   }
-  const pages = 1 + tail.length;
-  const morePages = rest.length > take.length;
+  const morePages = queue.length > 0;
   const furnished = Boolean(opts.furnished);
   const skipped: Record<string, number> = {};
   const geocodedBy: Record<string, number> = {};
