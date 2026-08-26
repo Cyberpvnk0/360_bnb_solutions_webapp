@@ -20,6 +20,7 @@
  */
 
 import { addressKey, buildingKey } from "@/lib/live/address";
+import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
 import { cityIdFor, REDFIN_CITY_ID } from "@/lib/live/redfin-city";
@@ -535,6 +536,11 @@ export interface RedfinPhotoIndex {
      *  which reads as success from a row count alone. This is the number
      *  that tells the two apart. */
     housePassNewKeys: number;
+    /** Why a house pass died, when one did. The throttle was silently
+     *  eaten by a catch and reported as "no houses" until this. */
+    housePassError: string | null;
+    /** Pages lost to throttling or network across all passes. */
+    failedPages: number;
     /** True when the page cap stopped us rather than the vendor running
      *  out of results. */
     morePages: boolean;
@@ -593,6 +599,8 @@ export async function fetchRedfinPhotoIndex(
     withPhoto: 0,
     housePassRows: 0,
     housePassNewKeys: 0,
+    housePassError: null as string | null,
+    failedPages: 0,
     morePages: false,
     housePassUrl: null as string | null,
     sampleAddresses: [] as string[],
@@ -606,14 +614,23 @@ export async function fetchRedfinPhotoIndex(
   const pages = photoPages();
   const [everything, ...typed] = await Promise.all([
     fetchRedfinRentals(market, { furnished: false, map: false, pages }),
-    // Never let a narrower pass sink the search it is supplementing.
+    // A narrower pass must not sink the search it supplements — but its
+    // failure gets NAMED, not eaten. A bare catch here reported a
+    // vendor throttle as "this city has no houses".
     ...photoTypes().map((propertyType) =>
       fetchRedfinRentals(market, {
         furnished: false,
         map: false,
         pages,
         propertyType,
-      }).catch(() => null)
+      }).catch((error: unknown) => {
+        const reason =
+          error instanceof RedfinError ? error.reason : "failed";
+        stats.housePassError = stats.housePassError
+          ? `${stats.housePassError}, ${propertyType}: ${reason}`
+          : `${propertyType}: ${reason}`;
+        return null;
+      })
     ),
   ]);
   const houses = typed.filter((r) => r !== null);
@@ -624,6 +641,8 @@ export async function fetchRedfinPhotoIndex(
   stats.housePassUrl = houses.map((h) => h.searchUrl).join(" | ") || null;
   stats.morePages =
     everything.morePages || houses.some((h) => h.morePages);
+  stats.failedPages =
+    everything.failedPages + houses.reduce((n, h) => n + h.failedPages, 0);
 
   const absorb = (rows: readonly Row[], samples: string[]) => {
     for (const row of rows) {
@@ -772,9 +791,11 @@ export async function fetchRedfinListing(
   const params = new URLSearchParams({ api_key: key, url: listingUrl });
   let res: Response;
   try {
-    res = await fetch(`${REDFIN_LISTING_ENDPOINT}?${params}`, {
-      next: { revalidate: LISTING_REVALIDATE_SECONDS },
-    });
+    res = await withScraperSlot(() =>
+      fetch(`${REDFIN_LISTING_ENDPOINT}?${params}`, {
+        next: { revalidate: LISTING_REVALIDATE_SECONDS },
+      })
+    );
   } catch {
     throw new RedfinError("network");
   }
@@ -824,6 +845,8 @@ export interface RedfinFetch {
   /** How many pages were read, and whether more were left. */
   pages: number;
   morePages: boolean;
+  /** Pages lost mid-pass (throttle, network) rather than absent. */
+  failedPages: number;
   /** The WHOLE parsed response. A probe that only ever sees the rows we
    *  already extracted cannot explain an extraction that found none. */
   body: unknown;
@@ -863,9 +886,14 @@ async function fetchPage(pageUrl: string): Promise<{
 
   let res: Response;
   try {
-    res = await fetch(`${REDFIN_SEARCH_ENDPOINT}?${params}`, {
-      next: { revalidate: REDFIN_REVALIDATE_SECONDS },
-    });
+    // Through the shared gate: the vendor meters requests IN FLIGHT,
+    // and two paginated passes running their waves side by side is how
+    // one of them came back 429 and read as "no houses".
+    res = await withScraperSlot(() =>
+      fetch(`${REDFIN_SEARCH_ENDPOINT}?${params}`, {
+        next: { revalidate: REDFIN_REVALIDATE_SECONDS },
+      })
+    );
   } catch {
     throw new RedfinError("network");
   }
@@ -938,12 +966,24 @@ export async function fetchRedfinRentals(
   let body: unknown = null;
   let parsed = true;
   let pages = 0;
+  let failedPages = 0;
 
   while (queue.length > 0 && pages < limit) {
     const wave = queue.slice(0, limit - pages);
     queue = queue.slice(wave.length);
-    const fetched = await Promise.all(wave.map((url) => fetchPage(url)));
-    for (const page of fetched) {
+    const settled = await Promise.allSettled(wave.map((url) => fetchPage(url)));
+    // The OPENING page failing is the search failing — surface why.
+    // A later page lost to a throttle costs its rows, not the pass:
+    // all-or-nothing here is how one 429 turned into "no houses".
+    if (pages === 0 && settled.every((r) => r.status === "rejected")) {
+      throw (settled[0] as PromiseRejectedResult).reason;
+    }
+    for (const result of settled) {
+      if (result.status === "rejected") {
+        failedPages += 1;
+        continue;
+      }
+      const page = result.value;
       pages += 1;
       raw.push(...page.rows);
       bytes += page.bytes;
@@ -961,7 +1001,8 @@ export async function fetchRedfinRentals(
       }
     }
   }
-  const morePages = queue.length > 0;
+  // Pages we failed to read still exist, so a lossy pass reports both.
+  const morePages = queue.length > 0 || failedPages > 0;
   const furnished = Boolean(opts.furnished);
   const skipped: Record<string, number> = {};
   const geocodedBy: Record<string, number> = {};
@@ -1009,6 +1050,7 @@ export async function fetchRedfinRentals(
     geocodedBy,
     pages,
     morePages,
+    failedPages,
     body,
     parsed,
     bytes,
