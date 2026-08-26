@@ -15,7 +15,11 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { BASEMAP_FALLBACK, BASEMAP_STYLE } from "@/lib/map/basemap";
+import {
+  basemapName,
+  basemapStyle,
+  describeMapError,
+} from "@/lib/map/basemap";
 import { ArrowUpRight, X } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
@@ -99,7 +103,10 @@ export function CompsStreetMap({
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [tilesBlocked, setTilesBlocked] = React.useState(false);
+  /** The last thing MapLibre complained about, or null once a frame
+   *  has actually rendered. Named rather than counted: a blank map
+   *  should say whose tiles didn't arrive. */
+  const [tileError, setTileError] = React.useState<string | null>(null);
 
   const placed = React.useMemo(
     () => placeComps(subject, comps),
@@ -119,7 +126,7 @@ export function CompsStreetMap({
     if (!container) return;
     const map = new maplibregl.Map({
       container,
-      style: BASEMAP_STYLE,
+      style: basemapStyle(),
       center: [subject.lon, subject.lat],
       zoom: 12,
       attributionControl: { compact: true },
@@ -132,15 +139,13 @@ export function CompsStreetMap({
     );
 
     // Tiles can't load in offline previews — pins still place to scale.
-    // The style is fetched from its host, so we don't own the source
-    // ids any more: anything that fails before the first successful
-    // render means no basemap, and the pins carry the view alone.
-    map.on("error", () => {
-      if (!map.isStyleLoaded()) {
-        map.setStyle(BASEMAP_FALLBACK);
-        setTilesBlocked(true);
-      }
-    });
+    // Report, never intervene. An earlier cut swapped in an empty
+    // style on the first error, which could blank a map whose tiles
+    // were about to arrive; MapLibre already draws whatever it has.
+    map.on("error", (event) => setTileError(describeMapError(event)));
+    // Tiles for the opening view are in. Anything logged before this
+    // was transient, so the notice clears with them.
+    map.on("idle", () => setTileError(null));
 
     // Subject pin — brand red diamond in a gold ring.
     const subjectEl = document.createElement("div");
@@ -215,9 +220,10 @@ export function CompsStreetMap({
       <div className="relative overflow-hidden rounded-lg border border-border bg-secondary/60">
         <div ref={containerRef} className="h-[440px] w-full" />
 
-        {tilesBlocked ? (
-          <p className="pointer-events-none absolute left-3 top-3 z-20 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
-            Street tiles unavailable here — pins are still placed to scale.
+        {tileError ? (
+          <p className="pointer-events-none absolute left-3 top-3 z-20 max-w-[min(28rem,90%)] rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
+            Street tiles unavailable from {basemapName()} ({tileError}) — pins
+            are still placed to scale.
           </p>
         ) : null}
 
