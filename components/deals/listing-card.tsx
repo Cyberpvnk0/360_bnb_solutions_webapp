@@ -32,6 +32,9 @@ interface ListingCardProps {
    *  are UNKNOWN then has to say so — otherwise sitting in a Furnished
    *  list with no tag reads as "checked and fine". */
   featureFilterActive?: boolean;
+  /** Set on the cards that open on screen. Their images load eagerly
+   *  and at high priority; everything below stays lazy. */
+  priority?: boolean;
 }
 
 export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
@@ -44,6 +47,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
       onHoverChange,
       onOpen,
       featureFilterActive = false,
+      priority = false,
     },
     ref
   ) {
@@ -70,6 +74,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
         <div className="relative">
           <PropertyImage
             listing={l}
+            priority={priority}
             className="h-28 w-full border-b border-border"
           />
           {l.daysOnMarket !== undefined && l.daysOnMarket < 5 ? (

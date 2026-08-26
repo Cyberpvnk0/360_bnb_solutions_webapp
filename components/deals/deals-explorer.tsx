@@ -65,6 +65,16 @@ import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 24;
 
+/**
+ * How many cards load their picture eagerly.
+ *
+ * Two columns of roughly-112px cards: six covers the opening viewport
+ * with one row of headroom. The rest stay lazy, which is right for
+ * them and wrong for these — marking an on-screen image lazy asks the
+ * browser to deprioritise the very thing the student is waiting on.
+ */
+const EAGER_IMAGES = 6;
+
 /** One-tap starts on the opening screen — the markets a coaching
  *  student is most likely hunting first. */
 const STARTER_MARKETS = [
@@ -863,11 +873,12 @@ export function DealsExplorer({ markets, states, totals }: DealsExplorerProps) {
           ) : (
             <>
               <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-2">
-                {visible.map((r) => (
+                {visible.map((r, i) => (
                   <ListingCard
                     key={r.listing.id}
                     ref={setRef(r.listing.id)}
                     listing={r.listing}
+                    priority={i < EAGER_IMAGES}
                     cushionPts={r.cushionPts}
                     selected={r.listing.id === selectedId}
                     hovered={r.listing.id === hoveredId}

@@ -414,7 +414,10 @@ export async function fetchRedfinPhotoIndex(
   // on the one part of the row a student can do without.
   if (!redfinCoversMarket(market)) return index;
 
-  const { raw } = await fetchRedfinRentals(market, { furnished: false });
+  const { raw } = await fetchRedfinRentals(market, {
+    furnished: false,
+    map: false,
+  });
   for (const row of raw) {
     const address = pickString(row, ADDRESS_KEYS);
     const photo = pickString(row, PHOTO_KEYS);
@@ -678,40 +681,41 @@ async function fetchPage(pageUrl: string): Promise<{
  */
 export async function fetchRedfinRentals(
   market: Market,
-  opts: { furnished?: boolean } = {}
+  opts: { furnished?: boolean; /** Set false to skip geocoding and
+    mapping and return only the raw rows. */ map?: boolean } = {}
 ): Promise<RedfinFetch> {
   const searchUrl = await redfinRentalsUrl(market, opts);
   if (!searchUrl) throw new RedfinError("no-city");
 
   const limit = maxPages();
-  const seen = new Set<string>([searchUrl]);
-  const queue = [searchUrl];
   const raw: Row[] = [];
-  let body: unknown = null;
-  let parsed = true;
   let bytes = 0;
   let credits: number | null = null;
-  let pages = 0;
 
-  while (queue.length > 0 && pages < limit) {
-    const pageUrl = queue.shift()!;
-    const page = await fetchPage(pageUrl);
-    pages += 1;
+  // The first page lists every other page, so only IT has to be waited
+  // for: the rest go together. Walking them one at a time made a search
+  // cost four proxied scrapes end to end instead of two.
+  const head = await fetchPage(searchUrl);
+  // Diagnostics describe the FIRST page; later ones share its shape.
+  const body = head.body;
+  const parsed = head.parsed;
+  bytes += head.bytes;
+  if (head.credits !== null) credits = (credits ?? 0) + head.credits;
+
+  const rest = nextPageUrls(head.body).filter(
+    (url, i, all) => url !== searchUrl && all.indexOf(url) === i
+  );
+  const take = rest.slice(0, Math.max(0, limit - 1));
+  const tail = await Promise.all(take.map((url) => fetchPage(url)));
+
+  raw.push(...head.rows);
+  for (const page of tail) {
     raw.push(...page.rows);
     bytes += page.bytes;
     if (page.credits !== null) credits = (credits ?? 0) + page.credits;
-    // Diagnostics describe the FIRST page; later ones share its shape.
-    if (pages === 1) {
-      body = page.body;
-      parsed = page.parsed;
-    }
-    for (const next of nextPageUrls(page.body)) {
-      if (!seen.has(next)) {
-        seen.add(next);
-        queue.push(next);
-      }
-    }
   }
+  const pages = 1 + tail.length;
+  const morePages = rest.length > take.length;
   const furnished = Boolean(opts.furnished);
   const skipped: Record<string, number> = {};
   const geocodedBy: Record<string, number> = {};
@@ -720,16 +724,24 @@ export async function fetchRedfinRentals(
   // Redfin's search rows carry no coordinates, so every address is
   // placed before it can be shown. Cached 30 days per address, so a
   // market costs this once and every student after that rides it free.
-  const points = await geocodeAll(
-    raw.map((row) => {
-      const line = pickString(row, ADDRESS_KEYS) ?? "";
-      // Census wants a complete one-line address; Redfin's already
-      // carries city and state, but a bare street needs help.
-      return /,/.test(line) ? line : `${line}, ${market.name}, ${market.stateCode}`;
-    })
-  );
+  //
+  // Skipped entirely for callers that only want the raw rows — placing
+  // eighty addresses to then discard every one of them is pure latency,
+  // and the photo index was paying it on every market.
+  const points = opts.map === false
+    ? []
+    : await geocodeAll(
+        raw.map((row) => {
+          const line = pickString(row, ADDRESS_KEYS) ?? "";
+          // Census wants a complete one-line address; Redfin's already
+          // carries city and state, but a bare street needs help.
+          return /,/.test(line)
+            ? line
+            : `${line}, ${market.name}, ${market.stateCode}`;
+        })
+      );
 
-  raw.forEach((row, index) => {
+  if (opts.map !== false) raw.forEach((row, index) => {
     const found = points[index];
     if (found?.source) {
       geocodedBy[found.source] = (geocodedBy[found.source] ?? 0) + 1;
@@ -750,7 +762,7 @@ export async function fetchRedfinRentals(
     skipped,
     geocodedBy,
     pages,
-    morePages: queue.length > 0,
+    morePages,
     body,
     parsed,
     bytes,

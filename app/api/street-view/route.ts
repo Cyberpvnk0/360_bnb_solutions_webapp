@@ -14,6 +14,16 @@ export async function GET(request: Request) {
   const lat = Number(searchParams.get("lat"));
   const lon = Number(searchParams.get("lon"));
 
+  // Asked once per session before any card tries: without this the
+  // answer costs one request per photo-less listing, and a page of
+  // twenty-four learns the same thing twenty-four times.
+  if (searchParams.get("probe")) {
+    return Response.json(
+      { configured: hasGoogleKey() },
+      { headers: { "cache-control": "public, max-age=3600" } }
+    );
+  }
+
   if (!hasGoogleKey()) {
     return new Response("Street View not configured", { status: 503 });
   }
