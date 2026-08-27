@@ -7,16 +7,30 @@
  * a market's trailing-12 ADR doesn't move hourly) and the same daily cap
  * that guards the rental feed guards this one.
  *
- * FIELD MAPPING IS PROVISIONAL. The normalizers below accept several
- * plausible spellings for each figure because the exact payload keys
- * haven't been observed yet. Hit /api/str?shape=1 with a real key once
- * and pin `pick()` to the actual names — the rest of the file, and every
- * caller, stays exactly as it is.
+ * Endpoint paths are the vendor's real ones, taken from their published
+ * examples: no version prefix, `x-api-key` for auth, coordinates as
+ * `latitude`/`longitude` on listings and `lat`/`lng` on markets. An
+ * earlier draft of this file invented a `/v1/` prefix and would have
+ * 404'd on the first real call.
+ *
+ * FIELD NAMES ARE STILL PARTLY PROVISIONAL. The normalizers accept
+ * several plausible spellings per figure, now including the ones their
+ * market payload is documented to use. Hit /api/str?shape=1 with a real
+ * key once and pin them to what actually arrives — the rest of the
+ * file, and every caller, stays exactly as it is.
+ *
+ * Billing is per call, between $0.01 and $1.00 depending on endpoint,
+ * which is the whole reason the revalidate windows below are long.
  */
 
 import type { StrComp } from "@/lib/mock/types";
 
 const BASE = "https://api.airroi.com";
+
+/** Comparable listings around a point — the comps behind a projection. */
+export const COMPS_PATH = "/listings/comparables";
+/** A coordinate's market, with its headline KPIs. */
+export const MARKET_PATH = "/markets/lookup";
 
 /** Comps move with new bookings; market aggregates barely move at all. */
 export const COMPS_REVALIDATE_SECONDS = 86_400; // 1 day
@@ -71,9 +85,9 @@ export function toFraction(value: number | null): number | null {
   return f >= 0 && f <= 1 ? f : null;
 }
 
-const ADR_KEYS = ["adr", "averageDailyRate", "average_daily_rate", "avgDailyRate", "nightlyRate", "price"];
-const OCC_KEYS = ["occupancy", "occupancyRate", "occupancy_rate", "occ"];
-const REV_KEYS = ["annualRevenue", "annual_revenue", "revenueLtm", "revenue_ltm", "revenue"];
+const ADR_KEYS = ["adr", "avg_daily_rate", "averageDailyRate", "average_daily_rate", "avgDailyRate", "nightlyRate", "price"];
+const OCC_KEYS = ["occupancy", "avg_occupancy", "occupancyRate", "occupancy_rate", "occ"];
+const REV_KEYS = ["annualRevenue", "annual_revenue", "revenueLtm", "revenue_ltm", "avg_revpar", "revpar", "revenue"];
 const BEDS_KEYS = ["bedrooms", "beds", "bedroomCount"];
 const BATHS_KEYS = ["bathrooms", "baths", "bathroomCount"];
 const DIST_KEYS = ["distanceMiles", "distance_miles", "distance"];
@@ -133,7 +147,7 @@ export function mapMarketAnalytics(raw: unknown): MarketAnalytics | null {
     adr: Math.round(adr),
     occupancy: Math.round(occupancy * 100) / 100,
     annualRevenue: pickNumber(row, REV_KEYS),
-    activeListings: pickNumber(row, ["activeListings", "active_listings", "listingCount", "supply"]),
+    activeListings: pickNumber(row, ["active_listings", "activeListings", "listingCount", "supply"]),
   };
 }
 
@@ -164,9 +178,11 @@ async function call(
   try {
     res = await fetch(`${BASE}${path}?${new URLSearchParams(params)}`, {
       headers: {
-        // Sent both ways so whichever scheme AirROI expects is satisfied.
-        "X-Api-Key": key,
-        Authorization: `Bearer ${key}`,
+        // Their documented scheme, singular. An earlier version also
+        // sent a Bearer token on the guess that one of the two would
+        // land; the docs settle it, and a stray credential header is
+        // not a free thing to send.
+        "x-api-key": key,
         Accept: "application/json",
       },
       next: { revalidate },
@@ -192,24 +208,29 @@ export async function fetchComps(opts: {
   lat: number;
   lon: number;
   bedrooms?: number;
-  radiusMiles?: number;
+  baths?: number;
+  guests?: number;
   limit?: number;
 }): Promise<StrComp[]> {
   const body = await call(
-    "/v1/listings/search",
+    COMPS_PATH,
     {
       latitude: String(opts.lat),
       longitude: String(opts.lon),
-      radius: String(opts.radiusMiles ?? 3),
       ...(opts.bedrooms ? { bedrooms: String(opts.bedrooms) } : {}),
-      limit: String(opts.limit ?? 12),
+      ...(opts.baths ? { baths: opts.baths.toFixed(1) } : {}),
+      ...(opts.guests ? { guests: String(opts.guests) } : {}),
+      // Prices in the listing's own currency; these are US markets, so
+      // this keeps them dollars rather than a converted figure.
+      currency: "native",
     },
     COMPS_REVALIDATE_SECONDS
   );
   return extractArray(body)
     .map(mapComp)
     .filter((c): c is StrComp => c !== null)
-    .sort((a, b) => a.distanceMiles - b.distanceMiles);
+    .sort((a, b) => a.distanceMiles - b.distanceMiles)
+    .slice(0, opts.limit ?? 12);
 }
 
 /** Trailing-twelve ADR, occupancy and supply for a point. */
@@ -217,9 +238,12 @@ export async function fetchMarketAnalytics(opts: {
   lat: number;
   lon: number;
 }): Promise<MarketAnalytics | null> {
+  // Markets take lat/lng, not latitude/longitude — the two families of
+  // endpoint genuinely differ, which is exactly the kind of thing that
+  // only shows up against the real service.
   const body = await call(
-    "/v1/market/analytics",
-    { latitude: String(opts.lat), longitude: String(opts.lon) },
+    MARKET_PATH,
+    { lat: String(opts.lat), lng: String(opts.lon) },
     MARKET_REVALIDATE_SECONDS
   );
   return mapMarketAnalytics(body);
@@ -232,4 +256,47 @@ export async function probeShape(
   params: Record<string, string>
 ): Promise<unknown> {
   return call(path, params, 60);
+}
+
+/**
+ * Candidate endpoints, for the discovery sweep.
+ *
+ * Their documented examples name these paths, but "documented" and
+ * "what this key can reach" are different claims, and neither the docs
+ * nor the service are reachable from where this was written. So the
+ * sweep asks the service itself and reports what each one said.
+ *
+ * Every row costs a call — a cent to a dollar each, per their pricing
+ * — which is why this is a deliberate diagnostic and not something a
+ * page ever triggers.
+ */
+export const PROBE_TARGETS: { path: string; params: (lat: number, lon: number) => Record<string, string> }[] = [
+  { path: COMPS_PATH, params: (lat, lon) => ({ latitude: String(lat), longitude: String(lon), bedrooms: "2", currency: "native" }) },
+  { path: MARKET_PATH, params: (lat, lon) => ({ lat: String(lat), lng: String(lon) }) },
+  { path: "/markets/search", params: () => ({ query: "jacksonville" }) },
+  { path: "/markets/overview", params: (lat, lon) => ({ lat: String(lat), lng: String(lon) }) },
+];
+
+export interface ProbeOutcome {
+  path: string;
+  ok: boolean;
+  status: number | null;
+  reason: string | null;
+}
+
+/** One candidate, reporting rather than throwing — a 404 is the answer
+ *  the sweep is looking for, not a failure of the sweep. */
+export async function probeEndpoint(
+  path: string,
+  params: Record<string, string>
+): Promise<ProbeOutcome & { shape: unknown }> {
+  try {
+    const body = await call(path, params, 60);
+    return { path, ok: true, status: 200, reason: null, shape: body };
+  } catch (error) {
+    if (error instanceof AirRoiError) {
+      return { path, ok: false, status: error.status ?? null, reason: error.reason, shape: null };
+    }
+    return { path, ok: false, status: null, reason: "network", shape: null };
+  }
 }

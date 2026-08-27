@@ -2,6 +2,7 @@
  * Short-term-rental data for a point:
  *   /api/str?lat=30.33&lon=-81.66&bedrooms=2   → comps + market analytics
  *   /api/str?lat=…&lon=…&shape=comps           → raw payload, keys only
+ *   /api/str?lat=…&lon=…&shape=all             → sweep every candidate path
  *
  * The AirROI key stays server-side. Calls are billed per request, so
  * each point spends at most one slot of the same daily cap that guards
@@ -15,10 +16,14 @@
 import { NextResponse } from "next/server";
 import {
   AirRoiError,
+  COMPS_PATH,
   fetchComps,
   fetchMarketAnalytics,
   hasAirRoiKey,
+  MARKET_PATH,
+  probeEndpoint,
   probeShape,
+  PROBE_TARGETS,
 } from "@/lib/live/airroi";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 
@@ -74,15 +79,40 @@ export async function GET(request: Request) {
     );
   }
 
+  // shape=all sweeps every candidate endpoint and reports what each one
+  // answered. It costs one billed call per row, so it is a deliberate
+  // setup step rather than anything a page reaches.
+  if (shape === "all") {
+    const results = [];
+    for (const target of PROBE_TARGETS) {
+      const outcome = await probeEndpoint(target.path, target.params(lat, lon));
+      results.push({
+        path: outcome.path,
+        ok: outcome.ok,
+        status: outcome.status,
+        reason: outcome.reason,
+        shape: outcome.ok ? describe(outcome.shape) : null,
+      });
+    }
+    return NextResponse.json({
+      swept: results.length,
+      results,
+      howToRead:
+        "Key names and value types only — no listing data leaves this route. " +
+        "A 404 means the path is wrong and wants correcting in lib/live/airroi.ts; " +
+        "auth means the key is not active yet; quota means it is active but out of credit. " +
+        "Whichever paths answer 200, read their key names and pin ADR_KEYS / OCC_KEYS / REV_KEYS to them.",
+    });
+  }
+
   if (shape) {
     try {
-      const path =
-        shape === "market" ? "/v1/market/analytics" : "/v1/listings/search";
-      const body = await probeShape(path, {
-        latitude: String(lat),
-        longitude: String(lon),
-        limit: "3",
-      });
+      const path = shape === "market" ? MARKET_PATH : COMPS_PATH;
+      const params: Record<string, string> =
+        shape === "market"
+          ? { lat: String(lat), lng: String(lon) }
+          : { latitude: String(lat), longitude: String(lon), bedrooms: "2", currency: "native" };
+      const body = await probeShape(path, params);
       return NextResponse.json({ path, shape: describe(body) });
     } catch (error) {
       return failure(error);
