@@ -73,9 +73,25 @@ export function compsParams(
  */
 export const MARKET_PATH = "/markets/lookup";
 
-/** Where the market's actual numbers live, keyed by the full_name that
- *  lookup hands back. */
+/**
+ * The market's headline figures — occupancy, ADR, RevPAR, revenue,
+ * active listings. POST, with the market object lookup returns.
+ */
+export const MARKET_SUMMARY_PATH = "/markets/summary";
+
+/** The same figures as a monthly series with percentiles. POST. */
 export const MARKET_METRICS_PATH = "/markets/metrics/all";
+
+/**
+ * Their own revenue model for a specific property.
+ *
+ * Takes the property (bedrooms, baths, guests, a point) and returns a
+ * revenue estimate, an ADR, an occupancy, percentiles for each, a
+ * monthly revenue distribution AND the comparable listings it used —
+ * all in one billed call. Everything the analyzer fetches separately,
+ * plus the percentiles the revenue range currently has to invent.
+ */
+export const ESTIMATE_PATH = "/calculator/estimate";
 
 /** Comps move with new bookings; market aggregates barely move at all. */
 export const COMPS_REVALIDATE_SECONDS = 86_400; // 1 day
@@ -224,6 +240,50 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   };
 }
 
+/** avg / p25 / p50 / p75 / p90, as their percentile blocks arrive. */
+export interface Percentiles {
+  avg: number | null;
+  p25: number | null;
+  p50: number | null;
+  p75: number | null;
+  p90: number | null;
+}
+
+function mapPercentiles(raw: unknown): Percentiles | null {
+  const g = raw && typeof raw === "object" ? (raw as Row) : null;
+  if (!g) return null;
+  const read = (k: string) => pickNumber(g, [k]);
+  return { avg: read("avg"), p25: read("p25"), p50: read("p50"), p75: read("p75"), p90: read("p90") };
+}
+
+export interface PropertyEstimate {
+  /** Their projected annual revenue for this property. */
+  revenue: number | null;
+  adr: number | null;
+  /** Fraction. */
+  occupancy: number | null;
+  percentiles: {
+    revenue: Percentiles | null;
+    adr: Percentiles | null;
+    occupancy: Percentiles | null;
+  };
+  /** Twelve numbers, one per month — the seasonality of this address. */
+  monthlyRevenue: number[] | null;
+  /** The listings their estimate was built from. */
+  comps: StrComp[];
+}
+
+export interface MarketSummary {
+  adr: number | null;
+  /** Fraction. */
+  occupancy: number | null;
+  revpar: number | null;
+  revenue: number | null;
+  activeListings: number | null;
+  bookingLeadTime: number | null;
+  lengthOfStay: number | null;
+}
+
 export interface MarketAnalytics {
   adr: number;
   /** Fraction, whole-point precision. */
@@ -283,15 +343,32 @@ export function extractArray(body: unknown): unknown[] {
 async function call(
   path: string,
   params: Record<string, string>,
-  revalidate: number
+  revalidate: number,
+  /** Their market endpoints are POST with a JSON body; the listing and
+   *  calculator ones are GET with a query string. Probing the POST
+   *  paths with GET is what produced three 404s reading "Invalid
+   *  endpoint path", and the conclusion that market metrics did not
+   *  exist. They exist. */
+  body?: unknown
 ): Promise<unknown> {
   const key = process.env.AIRROI_API_KEY;
   if (!key) throw new AirRoiError("no-key");
 
+  const url = body
+    ? `${BASE}${path}`
+    : `${BASE}${path}?${new URLSearchParams(params)}`;
+
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}?${new URLSearchParams(params)}`, {
+    res = await fetch(url, {
+      ...(body
+        ? {
+            method: "POST",
+            body: JSON.stringify(body),
+          }
+        : {}),
       headers: {
+        ...(body ? { "content-type": "application/json" } : {}),
         // Their documented scheme, singular. An earlier version also
         // sent a Bearer token on the guess that one of the two would
         // land; the docs settle it, and a stray credential header is
@@ -346,6 +423,22 @@ function milesBetween(
   return 2 * EARTH_RADIUS_MILES * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+/** Comps with a distance filled in, nearest first. Shared by the
+ *  comparables endpoint and the calculator's own comp set. */
+function withDistance(comps: StrComp[], subject: { lat: number; lon: number }): StrComp[] {
+  return comps
+    .map((c) =>
+      c.distanceMiles > 0 || c.lat === undefined || c.lon === undefined
+        ? c
+        : {
+            ...c,
+            distanceMiles:
+              Math.round(milesBetween(subject, { lat: c.lat, lon: c.lon }) * 10) / 10,
+          }
+    )
+    .sort((a, b) => a.distanceMiles - b.distanceMiles);
+}
+
 /** Nearby active short-term rentals, closest first. */
 export async function fetchComps(opts: {
   lat: number;
@@ -377,21 +470,102 @@ export async function fetchComps(opts: {
     compsParams(opts.lat, opts.lon, opts),
     COMPS_REVALIDATE_SECONDS
   );
+  return withDistance(
+    extractArray(body).map(mapComp).filter((c): c is StrComp => c !== null),
+    { lat: opts.lat, lon: opts.lon }
+  ).slice(0, opts.limit ?? 12);
+}
+
+/**
+ * Their revenue model for one property, and the comps behind it.
+ *
+ * One call where the analyzer previously made one for comps and then
+ * derived everything itself. The derivation stays — the projection is
+ * still computed from the comp set displayed beside it, which is the
+ * one invariant this product cannot give up — but their figures come
+ * along as an independent read, and their percentiles are real where
+ * the revenue range previously had to spread a band around a point.
+ */
+export async function fetchEstimate(opts: {
+  lat: number;
+  lon: number;
+  bedrooms?: number;
+  baths?: number;
+  guests?: number;
+  radiusMiles?: number;
+}): Promise<PropertyEstimate> {
+  const params = compsParams(opts.lat, opts.lon, opts);
+  // The calculator names its coordinates lat/lng where comparables says
+  // latitude/longitude. Same service, two conventions.
+  const body = await call(
+    ESTIMATE_PATH,
+    {
+      lat: String(opts.lat),
+      lng: String(opts.lon),
+      bedrooms: params.bedrooms,
+      baths: params.baths,
+      guests: params.guests,
+      ...(opts.radiusMiles ? { radius: String(opts.radiusMiles) } : {}),
+      currency: "native",
+    },
+    COMPS_REVALIDATE_SECONDS
+  );
+
+  const row = (body && typeof body === "object" ? body : {}) as Row;
+  const pct = group(row, "percentiles");
+  const monthly = row.monthly_revenue_distributions;
   const subject = { lat: opts.lat, lon: opts.lon };
-  return extractArray(body)
-    .map(mapComp)
-    .filter((c): c is StrComp => c !== null)
-    .map((c) =>
-      c.distanceMiles > 0 || c.lat === undefined || c.lon === undefined
-        ? c
-        : {
-            ...c,
-            distanceMiles:
-              Math.round(milesBetween(subject, { lat: c.lat, lon: c.lon }) * 10) / 10,
-          }
-    )
-    .sort((a, b) => a.distanceMiles - b.distanceMiles)
-    .slice(0, opts.limit ?? 12);
+
+  return {
+    revenue: pickNumber(row, ["revenue"]),
+    adr: pickNumber(row, ["average_daily_rate"]),
+    occupancy: toFraction(pickNumber(row, ["occupancy"])),
+    percentiles: {
+      revenue: mapPercentiles(pct?.revenue),
+      adr: mapPercentiles(pct?.average_daily_rate),
+      occupancy: mapPercentiles(pct?.occupancy),
+    },
+    monthlyRevenue: Array.isArray(monthly)
+      ? monthly.filter((n): n is number => typeof n === "number")
+      : null,
+    comps: withDistance(
+      extractArray({ listings: row.comparable_listings })
+        .map(mapComp)
+        .filter((c): c is StrComp => c !== null),
+      subject
+    ),
+  };
+}
+
+/**
+ * A market's headline figures.
+ *
+ * POST, with the market object /markets/lookup returns. Getting the
+ * method wrong is what made three probes answer 404 "Invalid endpoint
+ * path" and produced the conclusion that market metrics were simply
+ * unavailable. They were available the whole time.
+ */
+export async function fetchMarketSummary(market: {
+  country?: string;
+  region?: string;
+  locality?: string;
+  district?: string;
+}): Promise<MarketSummary | null> {
+  const body = await call(MARKET_SUMMARY_PATH, {}, MARKET_REVALIDATE_SECONDS, {
+    market,
+    currency: "native",
+  });
+  const row = (body && typeof body === "object" ? body : null) as Row | null;
+  if (!row) return null;
+  return {
+    adr: pickNumber(row, ["average_daily_rate"]),
+    occupancy: toFraction(pickNumber(row, ["occupancy"])),
+    revpar: pickNumber(row, ["rev_par", "revpar"]),
+    revenue: pickNumber(row, ["revenue"]),
+    activeListings: pickNumber(row, ["active_listings_count"]),
+    bookingLeadTime: pickNumber(row, ["booking_lead_time"]),
+    lengthOfStay: pickNumber(row, ["length_of_stay"]),
+  };
 }
 
 /**
@@ -417,13 +591,29 @@ export async function fetchComps(opts: {
 export async function fetchMarketIdentity(opts: {
   lat: number;
   lon: number;
-}): Promise<{ fullName: string | null }> {
+}): Promise<{
+  fullName: string | null;
+  /** Exactly the shape /markets/summary wants as its `market`. */
+  market: { country?: string; region?: string; locality?: string; district?: string } | null;
+}> {
   const body = await call(
     MARKET_PATH,
     { lat: String(opts.lat), lng: String(opts.lon) },
     MARKET_REVALIDATE_SECONDS
   );
-  return { fullName: fullNameOf(body) };
+  const row = (body && typeof body === "object" ? body : null) as Row | null;
+  const part = (k: string) => (row ? pickString(row, [k]) ?? undefined : undefined);
+  return {
+    fullName: fullNameOf(body),
+    market: row
+      ? {
+          country: part("country"),
+          region: part("region"),
+          locality: part("locality"),
+          district: part("district"),
+        }
+      : null,
+  };
 }
 
 /**

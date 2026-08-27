@@ -3,6 +3,7 @@
  *   /api/str?lat=30.33&lon=-81.66&bedrooms=2   → comps for that point
  *     …&baths=2&guests=4                       → optional; defaulted from bedrooms
  *   /api/str?lat=…&lon=…&shape=comps           → raw payload, keys only
+ *   /api/str?lat=…&lon=…&estimate=1            → their revenue model beside ours
  *   /api/str?lat=…&lon=…&shape=all             → sweep every candidate path
  *   …&depth=5                                  → how far into nested payloads to look
  *
@@ -16,10 +17,14 @@
  */
 
 import { NextResponse } from "next/server";
+import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import {
   AirRoiError,
   COMPS_PATH,
   fetchComps,
+  fetchEstimate,
+  fetchMarketIdentity,
+  fetchMarketSummary,
   fullNameOf,
   hasAirRoiKey,
   MARKET_PATH,
@@ -154,6 +159,58 @@ export async function GET(request: Request) {
       { live: false, reason: "bad-point", status: null },
       { status: 400 }
     );
+  }
+
+  // estimate=1 runs their own revenue model for this property and puts
+  // it beside ours. Two billed calls: the estimate, and the market
+  // summary its lookup unlocks.
+  if (searchParams.get("estimate")) {
+    try {
+      const estimate = await fetchEstimate({ lat, lon, bedrooms, baths, guests });
+      const identity = await fetchMarketIdentity({ lat, lon }).catch(() => null);
+      const summary = identity?.market
+        ? await fetchMarketSummary(identity.market).catch(() => null)
+        : null;
+
+      const derived = deriveMarketAssumptions(estimate.comps);
+      const modelled =
+        derived.adr > 0 ? Math.round(derived.adr * derived.marketOccupancy * 365) : null;
+
+      return NextResponse.json({
+        market: identity?.fullName ?? null,
+        marketSummary: summary,
+        theirs: {
+          revenue: estimate.revenue,
+          adr: estimate.adr,
+          occupancy: estimate.occupancy,
+          percentiles: estimate.percentiles,
+          monthlyRevenue: estimate.monthlyRevenue,
+        },
+        ours: {
+          adr: derived.adr,
+          occupancy: derived.marketOccupancy,
+          modelledRevenue: modelled,
+          comps: estimate.comps.length,
+        },
+        /**
+         * The whole question, in one number. Our projection multiplies
+         * a mean rate by a mean occupancy; theirs is a model with the
+         * same comps behind it. A ratio near 1.00 says the two agree
+         * and the projection needs nothing.
+         */
+        agreement:
+          modelled && estimate.revenue
+            ? Number((estimate.revenue / modelled).toFixed(3))
+            : null,
+        howToRead:
+          "`ours` is what the analyzer shows today: mean comp ADR times mean comp occupancy times 365. " +
+          "`theirs` is the vendor's own model over the same comps, with real percentiles. " +
+          "agreement = theirs / ours. Near 1.00 means the projection is sound as it stands. " +
+          "Away from 1.00 is the calibration, and its direction says which way the simple product errs.",
+      });
+    } catch (error) {
+      return failure(error);
+    }
   }
 
   // shape=all sweeps every candidate endpoint and reports what each one
