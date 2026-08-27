@@ -125,14 +125,32 @@ function headers(key: string): Record<string, string> {
   };
 }
 
+/** The columns every deployment has had since the table was created. */
+const CORE_COLUMNS = "listings,listings_at,photo_merge,photo_merge_at";
+/** Added later; a database that predates the migration lacks them. */
+const STATS_COLUMNS = "stats,stats_at";
+
+/**
+ * Read a market's row.
+ *
+ * Two attempts, and the reason is worth stating: asking for a column
+ * the table does not have makes PostgREST reject the WHOLE select, so
+ * adding `stats` to this list would have taken the listings and photo
+ * caches down with it on any deployment whose migration had not run
+ * yet. A new column must never be able to break the old ones. So the
+ * wide read is tried once and a narrow read answers if the schema is
+ * behind — degraded, not broken, and self-healing the moment the
+ * migration lands.
+ */
 export async function readMarketStore(
   slug: string
 ): Promise<StoredMarket | null> {
   const cfg = config();
   if (!cfg) return null;
-  try {
-    const res = await fetch(
-      `${cfg.url}/rest/v1/market_cache?market_slug=eq.${encodeURIComponent(slug)}&select=listings,listings_at,photo_merge,photo_merge_at,stats,stats_at`,
+
+  const read = (columns: string) =>
+    fetch(
+      `${cfg.url}/rest/v1/market_cache?market_slug=eq.${encodeURIComponent(slug)}&select=${columns}`,
       {
         headers: headers(cfg.key),
         signal: AbortSignal.timeout(READ_TIMEOUT_MS),
@@ -140,6 +158,10 @@ export async function readMarketStore(
         cache: "no-store",
       }
     );
+
+  try {
+    let res = await read(`${CORE_COLUMNS},${STATS_COLUMNS}`);
+    if (!res.ok) res = await read(CORE_COLUMNS);
     if (!res.ok) return null;
     const rows = (await res.json()) as {
       listings?: RentalListing[] | null;
