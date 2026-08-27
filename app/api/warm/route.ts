@@ -52,6 +52,8 @@ export async function GET(request: Request) {
     ms: number;
     matched?: number;
     extras?: number;
+    /** Measured, from the vendor's headers — not an estimate. */
+    credits?: number | null;
     skipped?: string;
     error?: string;
   }[] = [];
@@ -106,6 +108,7 @@ export async function GET(request: Request) {
         ms: Date.now() - started,
         matched: Object.keys(merge.photos).length,
         extras: merge.extras.length,
+        credits: merge.stats?.credits ?? null,
       });
     } catch (error) {
       results.push({

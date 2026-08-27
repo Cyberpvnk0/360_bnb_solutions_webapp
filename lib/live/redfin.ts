@@ -550,6 +550,16 @@ export interface RedfinPhotoIndex {
     housePassError: string | null;
     /** Pages lost to throttling or network across all passes. */
     failedPages: number;
+    /**
+     * What this market actually cost, from the vendor's own headers.
+     *
+     * Reported because estimating it went wrong by a factor of ten: the
+     * structured endpoints bill 1 credit a request, not the 10 a
+     * premium proxy request costs, and a budget built on the wrong one
+     * sizes the warm list wrong in whichever direction it errs. Null
+     * when the vendor sent no cost header.
+     */
+    credits: number | null;
     /** True when the page cap stopped us rather than the vendor running
      *  out of results. */
     morePages: boolean;
@@ -610,6 +620,7 @@ export async function fetchRedfinPhotoIndex(
     housePassNewKeys: 0,
     housePassError: null as string | null,
     failedPages: 0,
+    credits: null as number | null,
     morePages: false,
     housePassUrl: null as string | null,
     sampleAddresses: [] as string[],
@@ -653,6 +664,11 @@ export async function fetchRedfinPhotoIndex(
     everything.morePages || houses.some((h) => h.morePages);
   stats.failedPages =
     everything.failedPages + houses.reduce((n, h) => n + h.failedPages, 0);
+  const billed = [everything, ...houses]
+    .map((r) => r.credits)
+    .filter((c): c is number => c !== null);
+  stats.credits =
+    billed.length > 0 ? billed.reduce((a, b) => a + b, 0) : null;
 
   const absorb = (rows: readonly Row[], samples: string[]) => {
     for (const row of rows) {
