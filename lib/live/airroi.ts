@@ -363,7 +363,43 @@ export async function fetchComps(opts: {
     .slice(0, opts.limit ?? 12);
 }
 
-/** Trailing-twelve ADR, occupancy and supply for a point. */
+/**
+ * A point's market IDENTITY. Not its numbers.
+ *
+ * Measured against the live service: /markets/lookup returns full_name,
+ * country, region, locality and district, and nothing else. There is no
+ * ADR here, no occupancy, no revenue. /markets/metrics/all,
+ * /markets/metrics/occupancy and /markets/overview all answer 404
+ * "Invalid endpoint path", so whatever serves market-level aggregates
+ * is not at any address we have found.
+ *
+ * That turns out not to matter. The projection derives its ADR and
+ * occupancy from the comp set through lib/calc/comps, and comps drawn
+ * around the actual property are a better basis than a ZIP-wide mean
+ * would have been — their market identifier resolves to ZIP granularity
+ * anyway ("32202, Jacksonville, Florida, United States").
+ *
+ * Kept because the market name is worth having and the call is cheap,
+ * but nothing on a page requests it: an endpoint that cannot answer the
+ * question it was written for should not be billed on every analysis.
+ */
+export async function fetchMarketIdentity(opts: {
+  lat: number;
+  lon: number;
+}): Promise<{ fullName: string | null }> {
+  const body = await call(
+    MARKET_PATH,
+    { lat: String(opts.lat), lng: String(opts.lon) },
+    MARKET_REVALIDATE_SECONDS
+  );
+  return { fullName: fullNameOf(body) };
+}
+
+/**
+ * Retained for the shape of a market payload we have not found yet.
+ * Nothing calls it; if a metrics endpoint turns up, this is where its
+ * response gets normalised.
+ */
 export async function fetchMarketAnalytics(opts: {
   lat: number;
   lon: number;

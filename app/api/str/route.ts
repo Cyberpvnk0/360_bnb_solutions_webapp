@@ -19,7 +19,6 @@ import {
   AirRoiError,
   COMPS_PATH,
   fetchComps,
-  fetchMarketAnalytics,
   fullNameOf,
   hasAirRoiKey,
   MARKET_PATH,
@@ -176,10 +175,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [comps, market] = await Promise.all([
-      fetchComps({ lat, lon, bedrooms }),
-      fetchMarketAnalytics({ lat, lon }).catch(() => null),
-    ]);
+    // Comps only. The market endpoints carry no figures — lookup
+    // returns a name, the metrics paths 404 — so pairing every analysis
+    // with a second billed call bought a null and some latency.
+    const comps = await fetchComps({ lat, lon, bedrooms });
     // Too thin to underwrite on is the same as no answer — the seeded
     // comp set is a better read than three strangers' nightly rates.
     if (comps.length < 4) {
@@ -193,7 +192,6 @@ export async function GET(request: Request) {
       live: true,
       asOf: new Date().toISOString(),
       comps,
-      market,
       remaining: spent.remaining,
     });
   } catch (error) {
