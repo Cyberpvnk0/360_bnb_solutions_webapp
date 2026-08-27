@@ -47,6 +47,57 @@ const CARD_PATTERNS: Record<string, RegExp> = {
   zillow: /"detailUrl"|"addressStreet"/g,
 };
 
+/**
+ * The site's OWN total, which is the only honest basis for comparing a
+ * filtered search with an unfiltered one.
+ *
+ * Counting cards cannot do it: every one of these sites paginates at
+ * roughly forty, so both pages fill and both counts match no matter how
+ * well the filter works. The first run of this probe read that as
+ * "Redfin's furnished filter is ignored" — about a filter we had
+ * already watched working — purely because 41 is a page, not a total.
+ *
+ * Several patterns per site, all reported, because guessing which one
+ * a page uses is the same mistake in a new place.
+ */
+const TOTAL_PATTERNS: Record<string, RegExp[]> = {
+  redfin: [
+    /"totalHomes"\s*:\s*(\d+)/,
+    /"numHomes"\s*:\s*(\d+)/,
+    /([\d,]+)\s+(?:rentals?|homes?)\s+(?:available|for rent)/i,
+  ],
+  realtor: [
+    /"totalMatchingRowsCount"\s*:\s*(\d+)/,
+    /"total"\s*:\s*(\d+)/,
+    /([\d,]+)\s+(?:apartments?|rentals?|homes?)\s+for rent/i,
+  ],
+  zillow: [
+    /"totalResultCount"\s*:\s*(\d+)/,
+    /"categoryTotals".{0,80}?(\d+)/,
+    /([\d,]+)\s+(?:results?|rentals?)/i,
+  ],
+};
+
+/** Every total a page admits to, so a wrong pattern is visible rather
+ *  than silently standing in for the right one. */
+function totalsIn(text: string, source: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const pattern of TOTAL_PATTERNS[source] ?? []) {
+    const hit = text.match(pattern);
+    if (hit?.[1]) {
+      const n = Number(hit[1].replace(/,/g, ""));
+      if (Number.isFinite(n)) out[pattern.source.slice(0, 34)] = n;
+    }
+  }
+  return out;
+}
+
+/** The lowest plausible total, as the comparison figure. */
+function pickTotal(totals: Record<string, number>): number | null {
+  const values = Object.values(totals).filter((n) => n > 0);
+  return values.length > 0 ? Math.min(...values) : null;
+}
+
 interface Target {
   source: string;
   plain: string;
@@ -106,6 +157,11 @@ export async function GET(request: Request) {
     );
   }
   const renderJs = searchParams.get("render") === "1";
+  // Anti-bot bypass is the expensive setting — a measured 38 credits a
+  // page against 1 for a plain fetch. Off-able, because whether these
+  // sites actually need it is worth knowing before sizing a plan
+  // around the assumption that they do.
+  const asp = searchParams.get("asp") !== "0";
 
   const results = [];
   let spent = 0;
@@ -118,9 +174,9 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const plain = await scrapflyPage(target.plain, { renderJs });
+    const plain = await scrapflyPage(target.plain, { renderJs, asp });
     const furnished = target.furnished
-      ? await scrapflyPage(target.furnished, { renderJs })
+      ? await scrapflyPage(target.furnished, { renderJs, asp })
       : null;
     spent += (plain.credits ?? 0) + (furnished?.credits ?? 0);
 
@@ -129,6 +185,12 @@ export async function GET(request: Request) {
     const furnishedCards = furnished?.ok
       ? count(furnished.content, CARD_PATTERNS[target.source])
       : null;
+    const plainTotals = totalsIn(plain.content, target.source);
+    const furnishedTotals = furnished?.ok
+      ? totalsIn(furnished.content, target.source)
+      : {};
+    const plainTotal = pickTotal(plainTotals);
+    const furnishedTotal = pickTotal(furnishedTotals);
 
     results.push({
       source: target.source,
@@ -140,6 +202,12 @@ export async function GET(request: Request) {
         bytes: plain.bytes,
         cards,
         photoUrls: photos,
+        /** Photos per listing — the comparison that decides which
+         *  source dresses a card best. */
+        photosPerCard: cards > 0 ? Number((photos / cards).toFixed(1)) : null,
+        totals: plainTotals,
+        total: plainTotal,
+        credits: plain.credits,
         error: plain.error,
       },
       furnished: furnished && {
@@ -148,17 +216,24 @@ export async function GET(request: Request) {
         status: furnished.status,
         bytes: furnished.bytes,
         cards: furnishedCards,
+        totals: furnishedTotals,
+        total: furnishedTotal,
+        credits: furnished.credits,
         error: furnished.error,
       },
-      /** The only reading that matters, and it needs no interpretation:
-       *  a filter that narrows returns fewer cards than the plain page.
-       *  Equal counts mean the filter did nothing. */
+      /**
+       * Totals first, cards only as a fallback — and when the fallback
+       * is all there is, it can say "narrows" but never "ignored",
+       * because two full pages look identical however good the filter.
+       */
       filterNarrows:
-        furnishedCards === null || cards === 0
-          ? null
-          : furnishedCards < cards
-            ? `yes — ${furnishedCards} of ${cards}`
-            : `NO — ${furnishedCards} vs ${cards}, the filter is being ignored`,
+        plainTotal !== null && furnishedTotal !== null
+          ? furnishedTotal < plainTotal
+            ? `yes — ${furnishedTotal} of ${plainTotal} total`
+            : `NO — ${furnishedTotal} vs ${plainTotal} total, the filter is being ignored`
+          : furnishedCards !== null && cards > 0 && furnishedCards < cards
+            ? `yes — ${furnishedCards} of ${cards} on page one`
+            : "unknown — no total found, and one page of results looks the same filtered or not",
     });
   }
 
@@ -168,8 +243,10 @@ export async function GET(request: Request) {
     creditsSpent: spent || null,
     results,
     howToRead:
-      "cards and photoUrls are raw pattern counts, comparable BETWEEN sources on the same market rather than exact inventory. " +
-      "filterNarrows is the decisive one: a furnished filter that returns the same card count as the plain page is not filtering. " +
-      "A source with cards:0 was blocked or renders its listings in JavaScript — retry with &render=1 before concluding it has no data.",
+      "filterNarrows now compares the site's OWN totals, not page-one cards — every one of these paginates near forty, so card counts match whether the filter works or not. That flaw made the first run report Redfin's furnished filter as ignored, which it is not. " +
+      "photosPerCard is the photo-quality comparison. " +
+      "`totals` lists every count each pattern found, so a wrong pattern is visible instead of quietly standing in for the right one. " +
+      "cards:0 means blocked or JavaScript-rendered, not empty — retry with &render=1. " +
+      "&asp=0 turns off the anti-bot bypass: it is the expensive setting, and whether these sites need it is worth measuring rather than assuming.",
   });
 }
