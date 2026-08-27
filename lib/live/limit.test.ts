@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { withScraperSlot } from "./limit";
+import { scraperConcurrency, withScraperSlot } from "./limit";
 
 describe("withScraperSlot", () => {
   it("never lets more than the cap run at once", async () => {
@@ -13,10 +13,19 @@ describe("withScraperSlot", () => {
         await new Promise((r) => setTimeout(r, 5));
         active -= 1;
       });
-    // Twelve at once — the exact shape that produced six concurrent
-    // vendor requests and a 429ed pass.
-    await Promise.all(Array.from({ length: 12 }, job));
-    expect(peak).toBeLessThanOrEqual(3);
+    // Well past the cap at once — the shape that once produced more
+    // concurrent vendor requests than the plan allowed and got a whole
+    // pass 429ed.
+    await Promise.all(Array.from({ length: scraperConcurrency * 4 }, job));
+    expect(peak).toBeLessThanOrEqual(scraperConcurrency);
+    // And it really did saturate, or the assertion above proves nothing.
+    expect(peak).toBe(scraperConcurrency);
+  });
+
+  it("stays under the plan's thread count even if misconfigured", async () => {
+    // Per-instance counter, fleet-wide limit: a value at or above the
+    // plan's threads breaches it the moment a second instance is warm.
+    expect(scraperConcurrency).toBeLessThanOrEqual(20);
   });
 
   it("keeps serving after a job throws", async () => {
