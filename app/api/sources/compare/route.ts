@@ -36,6 +36,7 @@ import {
   hasZyteKey,
   zyteKeyMissingMessage,
   zytePage,
+  type ZyteExtractFrom,
   type ZyteMode,
   type ZyteProduct,
 } from "@/lib/live/zyte";
@@ -233,6 +234,16 @@ export async function GET(request: Request) {
         ? "browser"
         : "http";
 
+  // Where the extractor reads from, and the setting that decided the
+  // first run: asking for the cheap HTTP path against Realtor returned
+  // a ban, so extraction never ran and the run measured nothing except
+  // that choice. Browser by default now; &extract=http to price the
+  // cheap path deliberately rather than by accident.
+  const zyteExtractFrom: ZyteExtractFrom =
+    (searchParams.get("extract") ?? "").toLowerCase() === "http"
+      ? "httpResponseBody"
+      : "browserHtml";
+
   // Six fetches inside a five-minute ceiling is tight once a vendor
   // renders JavaScript, so one source at a time has to be possible or
   // the slow configurations can never be measured at all.
@@ -243,7 +254,10 @@ export async function GET(request: Request) {
 
   const fetchPage = (url: string): Promise<Fetched> =>
     vendor === "zyte"
-      ? zytePage(url, zyteMode).then((page) => ({
+      ? zytePage(url, zyteMode, {
+          extractFrom: zyteExtractFrom,
+          geolocation: "US",
+        }).then((page) => ({
           ok: page.ok,
           status: page.status,
           content: page.content,
@@ -352,7 +366,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     market: market.slug,
     vendor,
-    ...(vendor === "zyte" ? { mode: zyteMode } : { renderJs, asp }),
+    ...(vendor === "zyte"
+      ? { mode: zyteMode, extractFrom: zyteExtractFrom, geolocation: "US" }
+      : { renderJs, asp }),
     /** Verbatim, per request, in whatever unit the vendor quoted. */
     costs: costs.length > 0 ? costs : null,
     results,

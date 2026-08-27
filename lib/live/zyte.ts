@@ -24,11 +24,14 @@ const ENDPOINT = "https://api.zyte.com/v1/extract";
 const REVALIDATE_SECONDS = 86_400;
 
 /**
- * Short on purpose. Six of these run in sequence inside a route capped
- * at five minutes, so a per-request ceiling that looks generous alone
- * is what makes the whole probe die with nothing to show.
+ * Two ceilings, because a browser fetch is a different animal from an
+ * HTTP one and a single number has to be wrong for one of them. Six
+ * requests run in sequence inside a route capped at five minutes, so
+ * the generous figure is only affordable when a run is narrowed to one
+ * site — which is what `&sources=` exists for.
  */
-const TIMEOUT_MS = 45_000;
+const HTTP_TIMEOUT_MS = 45_000;
+const BROWSER_TIMEOUT_MS = 90_000;
 
 /** Every spelling this key might have been saved under. Names are
  *  cheap; a silent miss because the variable was called something
@@ -69,6 +72,20 @@ export function zyteKeyMissingMessage(): string {
 
 export type ZyteMode = "http" | "browser" | "productList";
 
+/** Which fetch the extractor reads from. The whole reason this is a
+ *  knob: httpResponseBody is the cheap path and browserHtml is the one
+ *  that gets past a site that fights back. Guessing wrong doesn't
+ *  return worse data, it returns a ban and no data at all. */
+export type ZyteExtractFrom = "httpResponseBody" | "browserHtml";
+
+export interface ZyteOptions {
+  extractFrom?: ZyteExtractFrom;
+  /** Exit country for the request. These are US-only sites, and a
+   *  request arriving from elsewhere is a cheap way to look wrong
+   *  before anything else about it is examined. */
+  geolocation?: string | null;
+}
+
 export interface ZyteProduct {
   name?: string;
   price?: string;
@@ -93,7 +110,8 @@ export interface ZytePage {
 
 export async function zytePage(
   url: string,
-  mode: ZyteMode = "http"
+  mode: ZyteMode = "http",
+  opts: ZyteOptions = {}
 ): Promise<ZytePage> {
   const key = zyteKey();
   const miss: ZytePage = {
@@ -109,15 +127,28 @@ export async function zytePage(
 
   // Basic auth, key as the username and no password — their scheme.
   const auth = Buffer.from(`${key}:`).toString("base64");
+  // Browser rendering is the default for extraction, having learned
+  // it the expensive way: asking for the cheap HTTP path against a
+  // site that fights back returns a ban, and a ban tells you nothing
+  // about whether the extractor could have read the page.
+  const extractFrom: ZyteExtractFrom = opts.extractFrom ?? "browserHtml";
+  const browser = mode === "browser" || (mode === "productList" && extractFrom === "browserHtml");
+
   const body: Record<string, unknown> = { url };
+  if (opts.geolocation) body.geolocation = opts.geolocation;
   if (mode === "productList") {
     // Ask for the page as well as the extraction. An empty extraction
     // over good HTML is a completely different finding from a page
     // that never loaded, and only having both tells them apart — it is
     // also what lets the totals patterns still read the raw page.
+    //
+    // Which page, though, is not a free choice: httpResponseBody and
+    // browserHtml are two different ways of fetching and cannot both
+    // be asked for at once, so the extraction source picks it.
     body.productList = true;
-    body.productListOptions = { extractFrom: "httpResponseBody" };
-    body.httpResponseBody = true;
+    body.productListOptions = { extractFrom };
+    if (extractFrom === "browserHtml") body.browserHtml = true;
+    else body.httpResponseBody = true;
   } else if (mode === "browser") {
     body.browserHtml = true;
   } else {
@@ -135,7 +166,7 @@ export async function zytePage(
         },
         body: JSON.stringify(body),
         next: { revalidate: REVALIDATE_SECONDS },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(browser ? BROWSER_TIMEOUT_MS : HTTP_TIMEOUT_MS),
       })
     );
   } catch {
