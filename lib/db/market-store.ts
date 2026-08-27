@@ -46,6 +46,22 @@ export interface StoredPhotoMerge {
   rows: number;
 }
 
+/**
+ * One listing's mined detail, durably.
+ *
+ * Photos and flags only — never the vendor's paragraph. The prose is
+ * mined for facts inside the fetch and dropped there, and a store that
+ * quietly kept a copy would undo that rule in the one place nobody
+ * looks.
+ */
+export interface StoredListingDetail {
+  photos: string[];
+  amenities: string[];
+  features: string[];
+  depositMin?: number;
+  depositMax?: number;
+}
+
 export interface StoredMarket {
   listings: RentalListing[] | null;
   listingsAt: string | null;
@@ -167,6 +183,80 @@ export async function writeMarketPhotoMerge(
     photo_merge: merge,
     photo_merge_at: new Date().toISOString(),
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Listing details — the expensive rows                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A listing detail costs ten credits, against one for a whole page of
+ * search results. It was the last thing in the system cached only by
+ * the framework, which means bound to a deployment: every push threw
+ * the lot away and the next student to open the same listing bought it
+ * again. On a day of active deploys that is the entire credit bill,
+ * spent on pages already paid for.
+ *
+ * Keyed by listing URL rather than market, because a detail belongs to
+ * a property and students open the same handful across every market.
+ *
+ * Same posture as the rest of this file: degrade to null, never throw,
+ * never fail a request that could still be served live.
+ */
+export async function readListingDetail(
+  listingUrl: string
+): Promise<{ detail: StoredListingDetail; at: string | null } | null> {
+  const cfg = config();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/listing_cache?listing_url=eq.${encodeURIComponent(listingUrl)}&select=detail,detail_at`,
+      {
+        headers: headers(cfg.key),
+        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as {
+      detail?: StoredListingDetail | null;
+      detail_at?: string | null;
+    }[];
+    const row = rows?.[0];
+    if (!row?.detail || !Array.isArray(row.detail.photos)) return null;
+    return { detail: row.detail, at: row.detail_at ?? null };
+  } catch {
+    return null;
+  }
+}
+
+export async function writeListingDetail(
+  listingUrl: string,
+  detail: StoredListingDetail
+): Promise<void> {
+  const cfg = config();
+  if (!cfg) return;
+  try {
+    await fetch(`${cfg.url}/rest/v1/listing_cache`, {
+      method: "POST",
+      headers: {
+        ...headers(cfg.key),
+        prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify([
+        {
+          listing_url: listingUrl,
+          detail,
+          detail_at: new Date().toISOString(),
+        },
+      ]),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+      cache: "no-store",
+    });
+  } catch {
+    // Same as above: a failed write costs only the saving it would
+    // have made.
+  }
 }
 
 /**

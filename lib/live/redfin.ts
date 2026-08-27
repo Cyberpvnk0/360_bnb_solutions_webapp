@@ -72,7 +72,7 @@ function maxPages(override?: number): number {
  * a per-market-per-day cost on somebody's plan, not a free dial.
  * REDFIN_PHOTO_PAGES turns it up; the diagnostic reports what it buys.
  */
-function photoPages(): number {
+export function photoPages(): number {
   const raw = Number(process.env.REDFIN_PHOTO_PAGES);
   return Number.isFinite(raw) && raw > 0 ? maxPages(raw) : maxPages();
 }

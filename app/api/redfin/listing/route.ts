@@ -7,14 +7,35 @@
  * cards must never become twenty-four billed requests, so nothing here
  * runs while browsing a list.
  *
+ * And once bought, a detail is kept. At ten credits it is the most
+ * expensive call in the system — ten times a whole page of search
+ * results — and until now the only thing holding it was the framework's
+ * own cache, which is bound to a deployment. Every push discarded the
+ * lot, so the next student to open a listing paid for it again. The
+ * store outlives deploys, so the second purchase never happens.
+ *
  * The url parameter arrives from the browser and is checked against
  * redfin.com before anything is fetched — an unchecked fetcher would
  * happily proxy whatever it was handed.
  */
 
 import { NextResponse } from "next/server";
-import { fetchRedfinListing, RedfinError } from "@/lib/live/redfin";
+import {
+  fetchRedfinListing,
+  LISTING_REVALIDATE_SECONDS,
+  RedfinError,
+} from "@/lib/live/redfin";
+import {
+  isFresh,
+  readListingDetail,
+  writeListingDetail,
+} from "@/lib/db/market-store";
 import { arrayPaths, describeFields, statusStrings } from "@/lib/live/shape";
+
+/** A listing's photos and amenities don't change once it's posted;
+ *  only its availability does, and that comes from the feed. Matches
+ *  the framework cache window this replaces. */
+const DETAIL_TTL_MS = LISTING_REVALIDATE_SECONDS * 1000;
 
 /** A parsed listing page is slower than a plain fetch. */
 export const maxDuration = 60;
@@ -29,6 +50,20 @@ export async function GET(request: Request) {
       { ok: false, reason: "missing-url" },
       { status: 400 }
     );
+  }
+
+  // The shape probe needs the vendor's raw payload, which is
+  // deliberately not stored, so it always goes live.
+  if (!shape) {
+    const stored = await readListingDetail(url);
+    if (stored && isFresh(stored.at, DETAIL_TTL_MS)) {
+      return NextResponse.json({
+        ok: true,
+        ...stored.detail,
+        credits: 0,
+        cached: true,
+      });
+    }
   }
 
   try {
@@ -48,6 +83,17 @@ export async function GET(request: Request) {
         samplePhotos: photos.slice(0, 3),
       });
     }
+    // Ten credits just left the account; make it the last time.
+    // Photos and flags only — the vendor's prose was mined for facts
+    // inside the fetch and dropped there, and it stays dropped.
+    await writeListingDetail(url, {
+      photos,
+      amenities,
+      features,
+      depositMin,
+      depositMax,
+    });
+
     return NextResponse.json({
       ok: true,
       photos,
@@ -56,6 +102,7 @@ export async function GET(request: Request) {
       depositMin,
       depositMax,
       credits,
+      cached: false,
     });
   } catch (error) {
     if (error instanceof RedfinError) {
