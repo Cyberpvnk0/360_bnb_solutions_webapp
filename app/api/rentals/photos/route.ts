@@ -173,7 +173,9 @@ export async function GET(request: Request) {
               ? "The photo source returned nothing for this market — read photoSource: pages and rows say whether the fetch worked, withAddress and withPhoto whether the rows were readable."
               : Object.keys(photos).length === 0
                 ? "Both sides have rows and NOTHING matched: compare sampleIndexKeys with sampleUnmatchedRowKeys — the two are writing addresses differently."
-                : merge.stats?.housePassError
+                : merge.stats?.housePassError?.includes("no-credits")
+                  ? "The scraping plan's credits are spent for this cycle — nothing here is broken and no code change will help. Stored markets keep serving (stale: true); the rest wait for the reset or a plan with credits in it."
+                  : merge.stats?.housePassError
                   ? `Matching works, but the house pass DIED: ${merge.stats?.housePassError}. "quota" is the vendor's concurrency throttle, not the filter — the filter itself was measured working. Retry; the shared request gate should hold every pass under the limit now.`
                   : (merge.stats?.housePassNewKeys ?? 0) < 20
                     ? "Matching works, but the house pass is INERT — it returned rows and added almost no new keys, which is what a filter the vendor ignores looks like. Compare houseSampleAddresses with sampleAddresses: if both are apartment communities, the filter is not biting. Try ?houseProbe=1."

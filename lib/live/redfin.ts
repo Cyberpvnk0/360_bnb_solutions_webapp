@@ -143,6 +143,11 @@ export class RedfinError extends Error {
       | "auth"
       | "forbidden"
       | "quota"
+      /** The scraping plan's credits are spent for this cycle. Its own
+       *  reason because the vendor answers 403 for it, and "forbidden"
+       *  sends whoever reads the log hunting for a blocked domain or a
+       *  bad key instead of a billing page. */
+      | "no-credits"
       | "http"
       | "network",
     readonly status?: number,
@@ -844,7 +849,13 @@ export async function fetchRedfinListing(
       .trim()
       .slice(0, 200);
     if (res.status === 401) throw new RedfinError("auth", 401, detail);
-    if (res.status === 403) throw new RedfinError("forbidden", 403, detail);
+    if (res.status === 403) {
+      throw new RedfinError(
+        looksSpent(detail) ? "no-credits" : "forbidden",
+        403,
+        detail
+      );
+    }
     if (res.status === 429) throw new RedfinError("quota", 429, detail);
     throw new RedfinError("http", res.status, detail);
   }
@@ -892,6 +903,20 @@ export interface RedfinFetch {
   bytes: number;
   credits: number | null;
   searchUrl: string;
+}
+
+/**
+ * Whether a refusal is really the plan running dry.
+ *
+ * The vendor says 403 for this, the same status it uses for a domain
+ * it won't fetch — so the body is the only thing that tells them
+ * apart, and they need opposite responses: one is a code problem, the
+ * other is a billing page.
+ */
+export function looksSpent(detail: string): boolean {
+  return /exhausted the API Credits|out of credits|upgrade your (plan|subscription)/i.test(
+    detail
+  );
 }
 
 function creditsFrom(res: Response): number | null {
@@ -942,7 +967,13 @@ async function fetchPage(pageUrl: string): Promise<{
       .trim()
       .slice(0, 300);
     if (res.status === 401) throw new RedfinError("auth", 401, detail);
-    if (res.status === 403) throw new RedfinError("forbidden", 403, detail);
+    if (res.status === 403) {
+      throw new RedfinError(
+        looksSpent(detail) ? "no-credits" : "forbidden",
+        403,
+        detail
+      );
+    }
     if (res.status === 429) throw new RedfinError("quota", 429, detail);
     throw new RedfinError("http", res.status, detail);
   }

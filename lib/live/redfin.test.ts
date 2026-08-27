@@ -11,6 +11,7 @@ import {
   mapRedfinListing,
   priceOf,
   redfinCoversMarket,
+  looksSpent,
   redfinRentalsUrlFor,
 } from "./redfin";
 
@@ -308,5 +309,25 @@ describe("redfinRentalsUrlFor property type", () => {
     expect(redfinRentalsUrlFor(market, 8907)).toBe(
       "https://www.redfin.com/city/8907/FL/Jacksonville/rentals"
     );
+  });
+});
+
+describe("a spent plan is not a forbidden domain", () => {
+  it("reads the vendor's own wording", () => {
+    // Both answer 403. One is a code problem, the other is a billing
+    // page, and calling the second "forbidden" sends whoever reads the
+    // log hunting for a blocked domain that was never blocked.
+    const spent =
+      "You have exhausted the API Credits available in this monthly cycle. You can upgrade your subscription or enable overages from your dashboard";
+    expect(looksSpent(spent)).toBe(true);
+    expect(looksSpent("Please upgrade your plan to gain access")).toBe(true);
+  });
+
+  it("does not claim a genuinely blocked domain is a billing problem", () => {
+    expect(
+      looksSpent("Protected domains may require adding premium=true")
+    ).toBe(false);
+    expect(looksSpent("Invalid API key")).toBe(false);
+    expect(looksSpent("")).toBe(false);
   });
 });
