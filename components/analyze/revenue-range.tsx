@@ -4,10 +4,16 @@
  * Comp revenue range: where this property's projection lands among the
  * annual revenues of the comps behind it. Pure SVG — thin gold bars,
  * tabular axis labels, the subject's bin in full gold with a marker.
+ *
+ * The bars are what the comps ACTUALLY earned wherever the feed reports
+ * it, rather than what rate times occupancy would predict for them. And
+ * the middle half is shaded, because the spread is the finding: one
+ * live pull on a single two-bedroom search ran from about five thousand
+ * a year to forty-seven. A student who reads only the projection plans
+ * around a number the market does not promise.
  */
 
-import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
-import { compSetStrength, type StrCompLike } from "@/lib/calc/comps";
+import { compSetStrength, revenueBasis, revenueQuartiles, type StrCompLike } from "@/lib/calc/comps";
 import { fmtMoneyShort } from "@/lib/format";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import type { StrComp } from "@/lib/mock/types";
@@ -27,8 +33,9 @@ export function RevenueRange({
   subjectAnnualRevenue: number;
   className?: string;
 }) {
-  const revenues = comps.map((c) => annualRevenueFromAdr(c.adr, c.occupancy));
+  const { values: revenues, basis } = revenueBasis(comps);
   if (revenues.length === 0) return null;
+  const q = revenueQuartiles(revenues);
 
   const lo = Math.min(...revenues, subjectAnnualRevenue);
   const hi = Math.max(...revenues, subjectAnnualRevenue);
@@ -51,6 +58,8 @@ export function RevenueRange({
   const subjectX = Math.round(((subjectAnnualRevenue - min) / span) * W * 100) / 100;
 
   const barW = (W - BAR_GAP * (BIN_COUNT - 1)) / BIN_COUNT;
+  // The middle half, as a shaded band behind the bars.
+  const xOf = (v: number) => Math.round(((v - min) / span) * W * 100) / 100;
 
   return (
     <div className={className}>
@@ -62,8 +71,24 @@ export function RevenueRange({
         viewBox={`0 0 ${W} ${H + 16}`}
         className="mt-2 block w-full"
         role="img"
-        aria-label={`This property's projected annual revenue of ${fmtMoneyShort(subjectAnnualRevenue)} shown against ${comps.length} comps ranging ${fmtMoneyShort(Math.min(...revenues))} to ${fmtMoneyShort(Math.max(...revenues))}`}
+        aria-label={
+          q
+            ? `This property's projected annual revenue of ${fmtMoneyShort(subjectAnnualRevenue)} shown against ${comps.length} comps. Half earned between ${fmtMoneyShort(q.p25)} and ${fmtMoneyShort(q.p75)}, median ${fmtMoneyShort(q.p50)}, full range ${fmtMoneyShort(q.min)} to ${fmtMoneyShort(q.max)}.`
+            : `This property's projected annual revenue of ${fmtMoneyShort(subjectAnnualRevenue)}`
+        }
       >
+        {/* The middle half of the comp set, behind everything else:
+            where half of these listings actually landed. */}
+        {q ? (
+          <rect
+            x={xOf(q.p25)}
+            y={0}
+            width={Math.max(0, xOf(q.p75) - xOf(q.p25))}
+            height={H}
+            fill="var(--gold-fill)"
+            fillOpacity={0.07}
+          />
+        ) : null}
         {/* Baseline */}
         <line x1="0" y1={H} x2={W} y2={H} stroke="var(--border)" strokeWidth="1" />
         {bins.map((count, i) => {
@@ -83,6 +108,18 @@ export function RevenueRange({
             />
           );
         })}
+        {/* Median of the comps — the middle outcome, not ours. */}
+        {q ? (
+          <line
+            x1={xOf(q.p50)}
+            y1={6}
+            x2={xOf(q.p50)}
+            y2={H}
+            stroke="var(--gold-fill)"
+            strokeWidth="1"
+            strokeOpacity="0.7"
+          />
+        ) : null}
         {/* Subject marker */}
         <line
           x1={subjectX}
@@ -120,7 +157,15 @@ export function RevenueRange({
       </svg>
       <p className="mt-1 text-[11px] text-muted-foreground">
         The dashed line is this property&apos;s projection among its {comps.length}{" "}
-        comps.
+        comps.{" "}
+        {q ? (
+          <>
+            Half of them {basis === "measured" ? "earned" : "would earn"} between{" "}
+            <span className="tabular text-foreground">{fmtMoneyShort(q.p25)}</span> and{" "}
+            <span className="tabular text-foreground">{fmtMoneyShort(q.p75)}</span>
+            {basis === "measured" ? " over the last twelve months" : ""}.
+          </>
+        ) : null}
       </p>
     </div>
   );

@@ -10,6 +10,9 @@
 export interface StrCompLike {
   adr: number;
   occupancy: number;
+  /** What the listing actually earned over twelve months, when the feed
+   *  reports it. Absent on seeded comps. */
+  annualRevenue?: number;
 }
 
 export interface LtrCompLike {
@@ -78,4 +81,84 @@ export function estimateRentFromComps(comps: LtrCompLike[]): number {
   const median =
     rents.length % 2 === 1 ? rents[mid] : (rents[mid - 1] + rents[mid]) / 2;
   return Math.round(median / 25) * 25;
+}
+
+/* ------------------------------------------------------------------ */
+/* Revenue distribution                                                */
+/* ------------------------------------------------------------------ */
+
+/** Nights in a year, matching annualRevenueFromAdr. */
+const NIGHTS_PER_YEAR = 365;
+
+/**
+ * The comp set's annual revenues, and on what basis.
+ *
+ * Two bases exist and they are NOT interchangeable. A measured figure
+ * is what a listing actually earned. A modelled one is rate times
+ * occupancy times 365, which is the same arithmetic the projection
+ * uses. Measured is the better evidence — it captures a real calendar,
+ * where rate and occupancy move together across a season, instead of
+ * multiplying two averages and hoping.
+ *
+ * All or nothing, deliberately. Mixing measured and modelled values in
+ * one distribution builds a histogram out of two different quantities
+ * and shows it as one, which reads as a spread in outcomes when part of
+ * it is a spread in methodology. Live comps all carry a measured
+ * figure; seeded ones carry none; so in practice this is a clean
+ * switch rather than a compromise.
+ */
+export function revenueBasis(comps: StrCompLike[]): {
+  values: number[];
+  basis: "measured" | "modelled";
+} {
+  const measured = comps
+    .map((c) => c.annualRevenue)
+    .filter((r): r is number => typeof r === "number" && r > 0);
+
+  if (measured.length === comps.length && comps.length > 0) {
+    return { values: measured, basis: "measured" };
+  }
+  return {
+    values: comps.map((c) => Math.round(c.adr * c.occupancy * NIGHTS_PER_YEAR)),
+    basis: "modelled",
+  };
+}
+
+/**
+ * Where a projection sits in the comp set, as quartiles.
+ *
+ * The single number a projection produces hides the thing that decides
+ * whether a deal works: the same address earns wildly different money
+ * depending on who runs it. One live pull showed comps from about
+ * five thousand to forty-seven on the same two-bedroom search. A band
+ * says that out loud; a point estimate lets a student read one number
+ * and plan around it.
+ *
+ * Linear interpolation between the two nearest ranks — the textbook
+ * definition, and stable on the small sets a comp search returns.
+ */
+export function revenueQuartiles(values: number[]): {
+  p25: number;
+  p50: number;
+  p75: number;
+  min: number;
+  max: number;
+} | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (q: number) => {
+    const pos = (sorted.length - 1) * q;
+    const lo = Math.floor(pos);
+    const hi = Math.ceil(pos);
+    return Math.round(
+      lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo)
+    );
+  };
+  return {
+    p25: at(0.25),
+    p50: at(0.5),
+    p75: at(0.75),
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+  };
 }
