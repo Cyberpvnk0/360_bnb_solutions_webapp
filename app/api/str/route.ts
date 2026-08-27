@@ -21,7 +21,6 @@ import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import {
   AirRoiError,
   COMPS_PATH,
-  fetchComps,
   fetchEstimate,
   fetchMarketIdentity,
   fetchMarketSummary,
@@ -289,10 +288,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Comps only. The market endpoints carry no figures — lookup
-    // returns a name, the metrics paths 404 — so pairing every analysis
-    // with a second billed call bought a null and some latency.
-    const comps = await fetchComps({ lat, lon, bedrooms, baths, guests });
+    /**
+     * The same call the analyzer makes.
+     *
+     * This route existed to show what the product sees, and it had
+     * quietly stopped doing that: the analyzer moved to the calculator
+     * endpoint — one billed call returning comps AND this address's own
+     * seasonality — while this kept asking for plain comparables. A
+     * diagnostic that takes a different path from the thing it
+     * diagnoses is worse than no diagnostic, because it answers
+     * confidently about code nobody runs.
+     */
+    const estimate = await fetchEstimate({ lat, lon, bedrooms, baths, guests });
+    const comps = estimate.comps;
     // Too thin to underwrite on is the same as no answer — the seeded
     // comp set is a better read than three strangers' nightly rates.
     if (comps.length < 4) {
@@ -307,6 +315,9 @@ export async function GET(request: Request) {
       asOf: new Date().toISOString(),
       comps,
       revenueCheck: revenueCheck(comps),
+      /** Twelve fractions of the year, when the feed had them — the
+       *  same weights the analyzer's month-by-month strip runs on. */
+      monthlyRevenueWeights: estimate.monthlyRevenue,
       remaining: spent.remaining,
     });
   } catch (error) {
