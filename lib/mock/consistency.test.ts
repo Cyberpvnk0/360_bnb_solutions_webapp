@@ -13,8 +13,8 @@ import { ACTIVITY } from "./user";
  */
 
 describe("markets", () => {
-  it("has exactly 387 markets within the spec's ranges", () => {
-    expect(MARKETS).toHaveLength(387);
+  it("has exactly 409 markets within the spec's ranges", () => {
+    expect(MARKETS).toHaveLength(409);
     for (const m of MARKETS) {
       expect(m.occupancy).toBeGreaterThanOrEqual(0.45);
       expect(m.occupancy).toBeLessThanOrEqual(0.72);

@@ -2,7 +2,7 @@
  * Bulk city-id discovery: /api/redfin/cities?batch=0
  *
  * Redfin publishes every city id in its state index pages, so 51 page
- * reads cover all 387 markets — instead of 387 slow, billed lookups
+ * reads cover all 409 markets — instead of 409 slow, billed lookups
  * against an undocumented endpoint.
  *
  * Run batch 0 upward until `batch + 1 === batches`, and paste each

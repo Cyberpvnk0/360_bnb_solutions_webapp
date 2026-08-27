@@ -91,8 +91,8 @@ describe("course-list names resolve", () => {
     ["Ft Lauderdale, FL", "fort-lauderdale"],
     ["Monterey Bay, CA", "monterey"],
     ["Jacksonville Beach, FL", "jacksonville"],
-    ["Longboat Key, FL", "sarasota"],
-    ["Siesta Key, FL", "sarasota"],
+    ["Longboat Key, FL", "longboat-key"],
+    ["Siesta Key, FL", "siesta-key"],
   ])("%s finds %s", (query, slug) => {
     expect(only(query)).toBe(slug);
   });

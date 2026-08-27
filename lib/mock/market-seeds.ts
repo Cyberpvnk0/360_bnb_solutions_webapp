@@ -1,7 +1,7 @@
 /**
  * Expansion market seeds: real US cities and vacation towns that extend
- * the 40 flagship markets to full coverage — 347 expansion rows for
- * 387 markets total. Every coordinate was machine-validated against
+ * the 40 flagship markets to full coverage — 369 expansion rows for
+ * 409 markets total. Every coordinate was machine-validated against
  * the actual state polygons (us-atlas states-10m) before landing here.
  * ADR / occupancy / rent / listing values derive deterministically from
  * `kind` in lib/mock/markets.ts, seeded per row by `name|code`.
@@ -375,4 +375,34 @@ export const EXPANSION_SEEDS: ExpansionSeed[] = [
   { name: "Cody", state: "Wyoming", code: "WY", lat: 44.53, lon: -109.06, kind: "small" },
   { name: "Jackson", state: "Wyoming", code: "WY", lat: 43.48, lon: -110.76, kind: "mountain", slug: "jackson-wy" },
   { name: "Laramie", state: "Wyoming", code: "WY", lat: 41.31, lon: -105.59, kind: "small" },
+  /* ------------------------------------------------------------------ */
+  /* Mentorship course city list.                                        */
+  /*                                                                     */
+  /* Students are taught a specific set of cities, and searching one of  */
+  /* them returned nothing at all — the course said Gainesville and the  */
+  /* app shrugged. Coordinates validated against the same us-atlas       */
+  /* state polygons as every row above.                                  */
+  /* ------------------------------------------------------------------ */
+  { name: "Tuscaloosa", state: "Alabama", code: "AL", lat: 33.21, lon: -87.57, kind: "mid" },
+  { name: "Cave Creek", state: "Arizona", code: "AZ", lat: 33.83, lon: -111.95, kind: "desert" },
+  { name: "Santa Clarita", state: "California", code: "CA", lat: 34.39, lon: -118.54, kind: "mid" },
+  { name: "Bailey", state: "Colorado", code: "CO", lat: 39.41, lon: -105.48, kind: "mountain" },
+  { name: "Cripple Creek", state: "Colorado", code: "CO", lat: 38.75, lon: -105.18, kind: "mountain" },
+  { name: "Cedar Key", state: "Florida", code: "FL", lat: 29.14, lon: -83.03, kind: "beach" },
+  { name: "Gainesville", state: "Florida", code: "FL", lat: 29.65, lon: -82.32, kind: "mid", slug: "gainesville-fl" },
+  { name: "Longboat Key", state: "Florida", code: "FL", lat: 27.41, lon: -82.66, kind: "beach" },
+  { name: "Siesta Key", state: "Florida", code: "FL", lat: 27.27, lon: -82.55, kind: "beach" },
+  { name: "Spring Hill", state: "Florida", code: "FL", lat: 28.48, lon: -82.53, kind: "mid" },
+  { name: "Vero Beach", state: "Florida", code: "FL", lat: 27.64, lon: -80.4, kind: "beach" },
+  { name: "Zephyrhills", state: "Florida", code: "FL", lat: 28.23, lon: -82.18, kind: "small" },
+  { name: "Ellijay", state: "Georgia", code: "GA", lat: 34.7, lon: -84.48, kind: "mountain" },
+  { name: "Stone Mountain", state: "Georgia", code: "GA", lat: 33.81, lon: -84.17, kind: "small" },
+  { name: "Elizabethtown", state: "Kentucky", code: "KY", lat: 37.69, lon: -85.86, kind: "small" },
+  { name: "Carlsbad", state: "New Mexico", code: "NM", lat: 32.42, lon: -104.23, kind: "desert", slug: "carlsbad-nm" },
+  { name: "Logan", state: "Ohio", code: "OH", lat: 39.54, lon: -82.41, kind: "mountain", slug: "logan-oh" },
+  { name: "Corvallis", state: "Oregon", code: "OR", lat: 44.56, lon: -123.26, kind: "small" },
+  { name: "Brownsville", state: "Texas", code: "TX", lat: 25.9, lon: -97.5, kind: "mid" },
+  { name: "Eagle Mountain Lake", state: "Texas", code: "TX", lat: 32.88, lon: -97.47, kind: "lake" },
+  { name: "Logan", state: "Utah", code: "UT", lat: 41.74, lon: -111.83, kind: "small", slug: "logan-ut" },
+  { name: "Berkeley Springs", state: "West Virginia", code: "WV", lat: 39.63, lon: -78.23, kind: "small" },
 ];

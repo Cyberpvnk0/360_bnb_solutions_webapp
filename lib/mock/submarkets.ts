@@ -1,6 +1,6 @@
 /**
  * Submarkets: neighborhoods inside each market, generated lazily and
- * deterministically per market slug (~15–19 each; ~17 on average, so 387
+ * deterministically per market slug (~15–19 each; ~17 on average, so 409
  * markets carry ~6.6k submarkets without materializing anything up front).
  *
  * Consistency rules:

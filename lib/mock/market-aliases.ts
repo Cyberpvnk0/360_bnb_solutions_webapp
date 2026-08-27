@@ -41,7 +41,10 @@ export const MARKET_ALIASES: Record<string, string[]> = {
   "fort-lauderdale": ["ft lauderdale"],
   monterey: ["monterey bay"],
   jacksonville: ["jacksonville beach", "jax"],
-  sarasota: ["longboat key", "siesta key"],
+  // Longboat Key and Siesta Key were aliases here until they became
+  // markets in their own right; keeping them would make each search
+  // ambiguous between the key and Sarasota, which is the exact fault
+  // the whole-word state fix removed.
 };
 
 /**
