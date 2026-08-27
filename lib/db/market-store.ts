@@ -20,8 +20,21 @@
 
 import type { RentalListing } from "@/lib/mock/types";
 
-/** Matches the vendors' own cache windows: a stored day is a day. */
-export const STORE_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long a stored day counts as current.
+ *
+ * A day by default, matching the vendors' own cache windows. Raise it
+ * with STORE_TTL_HOURS when vendor credits are scarce: every hour of
+ * TTL is a market that doesn't get re-fetched, and rental inventory
+ * does not turn over fast enough for a two- or three-day-old set to be
+ * wrong so much as slightly behind — which the honest asOf timestamp
+ * already says out loud.
+ */
+export const STORE_TTL_MS = (() => {
+  const raw = Number(process.env.STORE_TTL_HOURS);
+  const hours = Number.isFinite(raw) && raw > 0 ? Math.min(24 * 30, raw) : 24;
+  return hours * 60 * 60 * 1000;
+})();
 
 const READ_TIMEOUT_MS = 4_000;
 const WRITE_TIMEOUT_MS = 8_000;

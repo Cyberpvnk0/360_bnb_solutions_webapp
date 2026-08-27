@@ -98,7 +98,32 @@ export async function GET(request: Request) {
 
   const merge = await buildMarketPhotoMerge(market);
   const { photos, extras, index, misses } = merge;
-  if (merge.covered) {
+  const gotSomething = Object.keys(photos).length > 0 || extras.length > 0;
+
+  // A live pass that produced nothing, with a stored one sitting there,
+  // means the vendor didn't answer — exhausted credits, a throttle, an
+  // outage. Yesterday's photos are the right answer to that: the same
+  // buildings, and rental stock does not turn over overnight. Only ever
+  // a fallback, never preferred over a live result.
+  if (!shape && !gotSomething && stored?.photoMerge) {
+    const kept = stored.photoMerge;
+    return NextResponse.json({
+      market: market.slug,
+      photos: kept.photos,
+      listings: kept.extras,
+      matched: kept.matched,
+      extrasAdded: kept.extras.length,
+      rows: kept.rows,
+      /** Said plainly: this is the stored copy, and when it was taken. */
+      stale: true,
+      asOf: stored.photoMergeAt,
+    });
+  }
+
+  // Never overwrite a real answer with an empty one. A pass that failed
+  // has nothing to teach the store, and storing its emptiness would
+  // discard the copy that is still serving people.
+  if (merge.covered && gotSomething) {
     await writeMarketPhotoMerge(market.slug, {
       photos,
       extras,
