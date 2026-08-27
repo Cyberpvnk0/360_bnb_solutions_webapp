@@ -33,7 +33,14 @@ import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 function failure(error: unknown) {
   if (error instanceof AirRoiError) {
     return NextResponse.json(
-      { live: false, reason: error.reason, status: error.status ?? null },
+      {
+        live: false,
+        reason: error.reason,
+        status: error.status ?? null,
+        // The service's own words. Capturing this and then not printing
+        // it left a 400 looking like an unexplained refusal.
+        detail: error.detail ?? null,
+      },
       { status: error.reason === "no-key" ? 503 : 502 }
     );
   }
@@ -144,12 +151,15 @@ export async function GET(request: Request) {
 
   if (shape) {
     try {
-      const path = shape === "market" ? MARKET_PATH : COMPS_PATH;
-      const params: Record<string, string> =
-        shape === "market"
-          ? { lat: String(lat), lng: String(lon) }
-          : { latitude: String(lat), longitude: String(lon), bedrooms: "2", currency: "native" };
-      const body = await probeShape(path, params);
+      // The same target the sweep uses, so the two cannot disagree
+      // about what a valid request looks like — which they did, and
+      // which cost a round trip and a billed call to notice.
+      const target =
+        PROBE_TARGETS.find((t) =>
+          shape === "market" ? t.path === MARKET_PATH : t.path === COMPS_PATH
+        ) ?? PROBE_TARGETS[0];
+      const body = await probeShape(target.path, target.params(lat, lon));
+      const path = target.path;
       return NextResponse.json({ path, depth, shape: describe(body, 0, depth) });
     } catch (error) {
       return failure(error);
