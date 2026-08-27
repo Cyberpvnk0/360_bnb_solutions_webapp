@@ -13,6 +13,7 @@ import { MapPin, Search, X } from "lucide-react";
 import { fmtNum } from "@/lib/format";
 import type { Market } from "@/lib/mock/types";
 import { TERRAIN_LABEL } from "@/components/markets/market-banner";
+import { marketSearchText } from "@/lib/mock/market-aliases";
 import { marketMatchesQuery } from "./deal-filters";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +48,7 @@ export function MarketSearchBox({
     () =>
       markets.map((m) => ({
         market: m,
-        hay: `${m.name} ${m.state} ${m.stateCode}`.toLowerCase(),
+        hay: marketSearchText(m),
       })),
     [markets]
   );

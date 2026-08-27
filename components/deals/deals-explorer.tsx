@@ -32,6 +32,7 @@ import {
 import { fmtNum } from "@/lib/format";
 import { estimateCushionPts } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
+import { marketSearchText } from "@/lib/mock/market-aliases";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -241,9 +242,7 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
     if (zip) return null;
     const q = filters.query.trim();
     if (!q) return null;
-    const hits = markets.filter((m) =>
-      marketMatchesQuery(`${m.name} ${m.state} ${m.stateCode}`.toLowerCase(), q)
-    );
+    const hits = markets.filter((m) => marketMatchesQuery(marketSearchText(m), q));
     return hits.length === 1 ? hits[0] : null;
   }, [filters.query, markets, zip]);
 
@@ -399,8 +398,7 @@ export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
         {
           listing,
           cushionPts: estimateCushionPts(listing, market),
-          haystack:
-            `${market.name} ${market.state} ${market.stateCode}`.toLowerCase(),
+          haystack: marketSearchText(market),
           keywordHaystack: normalizeKeyword(
             [
               listing.address,

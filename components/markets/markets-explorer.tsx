@@ -20,6 +20,7 @@ import { annualRevenueFromAdr, revpar } from "@/lib/calc/arbitrage";
 import { getAllSubmarkets, getCoverageTotals } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
 import type { Market, MarketTerrain, Submarket } from "@/lib/mock/types";
+import { marketSearchText } from "@/lib/mock/market-aliases";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -76,8 +77,7 @@ const SORTERS: Record<SortKey, (r: Sortable) => number> = {
   listings: (r) => r.activeListings,
 };
 
-const marketHaystack = (m: Market) =>
-  `${m.name} ${m.state} ${m.stateCode}`.toLowerCase();
+const marketHaystack = (m: Market) => marketSearchText(m);
 const submarketHaystack = (s: Submarket) =>
   `${s.name} ${s.marketName} ${s.stateCode}`.toLowerCase();
 

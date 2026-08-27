@@ -100,16 +100,40 @@ export function normalizeKeyword(s: string): string {
 }
 
 /**
+ * Every US state abbreviation, so a two-letter token can be recognised
+ * as one rather than treated as three letters of somebody's city.
+ */
+const STATE_CODES = new Set(
+  ("al ak az ar ca co ct de fl ga hi id il in ia ks ky la me md ma mi mn ms " +
+    "mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv " +
+    "wi wy dc").split(" ")
+);
+
+/**
  * Location matching that survives how people actually type: every
  * word/token of the query must appear in the market's haystack
- * ("name state code", lowercased). "jacksonville florida",
+ * ("name state code aliases", lowercased). "jacksonville florida",
  * "Jacksonville, FL", and plain "jacksonville" all find the same market;
  * "springfield mo" pins down one Springfield.
+ *
+ * A state abbreviation has to match as a WHOLE WORD, which the plain
+ * substring test got wrong in a way nobody would guess: "Portland, OR"
+ * also matched Portland, Maine, because "portland" contains an "or",
+ * and "Lincoln, NE" also matched Lincoln, New Hampshire, through the
+ * "ne" in "new". Two matches instead of one, and the Deal Finder only
+ * loads live inventory when a search resolves to exactly one market —
+ * so two of the course's own cities silently showed preview rows
+ * forever. Anything that isn't a state code still matches as a
+ * substring, which is what makes typing half a city name work.
  */
 export function marketMatchesQuery(haystack: string, query: string): boolean {
   const tokens = query.toLowerCase().split(/[\s,]+/).filter(Boolean);
   if (tokens.length === 0) return true;
-  return tokens.every((t) => haystack.includes(t));
+  return tokens.every((t) =>
+    STATE_CODES.has(t)
+      ? new RegExp(`\\b${t}\\b`).test(haystack)
+      : haystack.includes(t)
+  );
 }
 
 /* ------------------------------------------------------------------ */
