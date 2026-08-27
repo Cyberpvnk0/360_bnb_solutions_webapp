@@ -34,6 +34,7 @@ import { NextResponse } from "next/server";
 import {
   isFresh,
   readMarketStore,
+  storeStatus,
   writeMarketPhotoMerge,
 } from "@/lib/db/market-store";
 import { buildMarketPhotoMerge } from "@/lib/live/photo-merge";
@@ -52,6 +53,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ photos: {} }, { status: 404 });
   }
   const shape = searchParams.get("shape");
+
+  // Setup check: does the durable store actually work, and if not, why.
+  // Its own flag because it WRITES — a sentinel row, never a market —
+  // and proving a key's access is worth a round trip nobody pays for on
+  // a page load.
+  if (searchParams.get("storeCheck")) {
+    return NextResponse.json({ store: await storeStatus() });
+  }
 
   // One page per candidate URL, run only when asked. The house filter
   // has to be found by measurement: a form the vendor ignores answers

@@ -42,7 +42,11 @@ export interface StoredMarket {
 
 function config(): { url: string; key: string } | null {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Either name: the dashboard now issues "secret" keys (sb_secret_…)
+  // where it used to issue service_role JWTs, and an env var whose name
+  // doesn't match the label you copied it from is its own small trap.
+  const key =
+    process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return { url: url.replace(/\/+$/, ""), key };
 }
@@ -150,4 +154,72 @@ export async function writeMarketPhotoMerge(
     photo_merge: merge,
     photo_merge_at: new Date().toISOString(),
   });
+}
+
+/** A slug no market will ever have, so the check writes nothing real. */
+const HEALTH_SLUG = "__healthcheck__";
+
+export interface StoreStatus {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * Whether the store can actually be used, answered by using it.
+ *
+ * A write followed by a read, because that is the only thing that
+ * settles the question the setup actually raises: does THIS key have
+ * privileged access? A key without it doesn't necessarily error — with
+ * row level security on and no policies, an under-privileged key can
+ * return a cheerful empty result forever, which reads as "working" from
+ * a status code alone. Writing a sentinel row and reading it back can't
+ * be faked by an empty answer.
+ *
+ * Diagnostic only. Everything on the hot path stays silent by design;
+ * this is the one place that says why.
+ */
+export async function storeStatus(): Promise<StoreStatus> {
+  const cfg = config();
+  if (!cfg) {
+    return {
+      ok: false,
+      detail:
+        "Not configured — set SUPABASE_URL and SUPABASE_SECRET_KEY (the dashboard's secret key, not the publishable one).",
+    };
+  }
+
+  const stamp = new Date().toISOString();
+  let write: Response;
+  try {
+    write = await fetch(`${cfg.url}/rest/v1/market_cache`, {
+      method: "POST",
+      headers: { ...headers(cfg.key), prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify([{ market_slug: HEALTH_SLUG, listings_at: stamp }]),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, detail: "Unreachable — check SUPABASE_URL." };
+  }
+
+  if (!write.ok) {
+    const body = (await write.text().catch(() => "")).slice(0, 200);
+    const hint =
+      write.status === 401 || write.status === 403
+        ? "the key was rejected — a publishable key cannot write here; use the secret key"
+        : write.status === 404
+          ? "no market_cache table — run supabase/schema.sql in the SQL editor"
+          : "see the body";
+    return { ok: false, detail: `Write failed ${write.status}: ${hint}. ${body}` };
+  }
+
+  const back = await readMarketStore(HEALTH_SLUG);
+  if (back?.listingsAt !== stamp) {
+    return {
+      ok: false,
+      detail:
+        "Wrote without error but read nothing back — the key lacks privileged access, so row level security is hiding the row it just wrote.",
+    };
+  }
+  return { ok: true, detail: "Read and wrote a sentinel row." };
 }
