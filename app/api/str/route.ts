@@ -75,6 +75,60 @@ function describe(value: unknown, depth = 0, max = 2): unknown {
   return typeof value;
 }
 
+/**
+ * Measured annual revenue against the revenue our model would predict
+ * for the same listing.
+ *
+ * The projection computes rate x occupancy x nights. That product is
+ * only equal to real revenue when rate and occupancy are uncorrelated,
+ * and in a seasonal market they plainly are not — peak weeks carry both
+ * a higher rate and a fuller calendar — so the naive product should
+ * understate. Should. Whether it actually does here, and by how much,
+ * depends on how the vendor defines its average rate: over booked
+ * nights, the product is nearly exact by construction; over listed
+ * nights, it is not.
+ *
+ * That is not something to reason out. Every comp carries both figures,
+ * so this divides one by the other and reports the answer. A ratio near
+ * 1.00 means the model is already right and wants no calibration; a
+ * ratio consistently away from 1.00 is a real bias worth correcting,
+ * and its size is the correction.
+ *
+ * Costs nothing — the numbers are already in hand.
+ */
+function revenueCheck(comps: { adr: number; occupancy: number; annualRevenue?: number }[]) {
+  const pairs = comps
+    .filter((c) => typeof c.annualRevenue === "number" && c.annualRevenue > 0)
+    .map((c) => ({
+      measured: c.annualRevenue!,
+      modeled: Math.round(c.adr * c.occupancy * 365),
+    }))
+    .filter((p) => p.modeled > 0);
+
+  if (pairs.length === 0) {
+    return { pairs: 0, note: "no comp reported a measured revenue" };
+  }
+  const ratios = pairs.map((p) => p.measured / p.modeled).sort((a, b) => a - b);
+  const mid = Math.floor(ratios.length / 2);
+  const median =
+    ratios.length % 2 === 1 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
+
+  return {
+    pairs: pairs.length,
+    /** Median, not mean: one comp that relaunched mid-year has a
+     *  trailing revenue covering part of a year and a ratio to match,
+     *  and it should not drag the answer. */
+    medianRatio: Number(median.toFixed(3)),
+    range: [Number(ratios[0].toFixed(3)), Number(ratios[ratios.length - 1].toFixed(3))],
+    sample: pairs.slice(0, 5),
+    howToRead:
+      "measured / modeled, where modeled = adr x occupancy x 365. " +
+      "Near 1.00 means the projection needs no calibration. " +
+      "Consistently above 1.00 means the model understates real revenue by that factor — the covariance of rate and occupancy across a season — and the median is the correction to apply. " +
+      "A wide range means the comps disagree and no single factor is honest.",
+  };
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const lat = Number(searchParams.get("lat"));
@@ -192,6 +246,7 @@ export async function GET(request: Request) {
       live: true,
       asOf: new Date().toISOString(),
       comps,
+      revenueCheck: revenueCheck(comps),
       remaining: spent.remaining,
     });
   } catch (error) {
