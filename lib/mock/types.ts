@@ -176,6 +176,15 @@ export interface Analysis {
   ltrComps: LtrComp[];
   /** Seeded calculator defaults; rent comes from the LTR comp median. */
   defaults: DealInputs;
+  /**
+   * Twelve fractions of annual revenue, one per month, for this
+   * address — present only when the live feed supplied them.
+   *
+   * Absent on seeded analyses, and deliberately not invented for them:
+   * a made-up season drawn with the same confidence as a measured one
+   * is the kind of decoration that gets somebody to sign a lease.
+   */
+  monthlyRevenueWeights?: number[];
 }
 
 /* ------------------------------------------------------------------ */

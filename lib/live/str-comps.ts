@@ -10,7 +10,7 @@
  * which set it got; the numbers are never a blend of the two.
  */
 
-import { fetchComps, hasAirRoiKey } from "@/lib/live/airroi";
+import { fetchEstimate, hasAirRoiKey } from "@/lib/live/airroi";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import type { Analysis } from "@/lib/mock/types";
 
@@ -33,22 +33,35 @@ export async function withLiveComps(
   if (!checkLiveSearch(key).allowed) return { analysis, liveComps: false };
 
   try {
-    // Bedrooms alone leaves the feed guessing. Their comparables
-    // endpoint takes baths and guests too, in the same billed call, and
-    // a comp set matched on all three is a better read than one matched
-    // on a third of what we know. Guests is inferred the way the
-    // industry does — two to a bedroom — because the analysis records
-    // the property, not its listing.
-    const comps = await fetchComps({
+    // Their calculator endpoint rather than plain comparables: same one
+    // billed call, and it returns the comp set AND this address's own
+    // twelve-month revenue distribution. Fetching comps alone and then
+    // wanting the season would have cost a second call for data that
+    // was already in the first response.
+    //
+    // Bedrooms alone leaves the feed guessing, so baths and guests go
+    // too — both are required by the endpoint in any case. Guests is
+    // inferred the way the industry does, two to a bedroom, because the
+    // analysis records the property rather than its listing.
+    const estimate = await fetchEstimate({
       lat: point.lat,
       lon: point.lon,
       bedrooms: analysis.bedrooms,
       baths: analysis.bathrooms,
       guests: Math.max(2, analysis.bedrooms * 2),
     });
-    if (comps.length < MIN_COMPS) return { analysis, liveComps: false };
+    if (estimate.comps.length < MIN_COMPS) return { analysis, liveComps: false };
     commitLiveSearch(key);
-    return { analysis: { ...analysis, strComps: comps }, liveComps: true };
+    return {
+      analysis: {
+        ...analysis,
+        strComps: estimate.comps,
+        ...(estimate.monthlyRevenue
+          ? { monthlyRevenueWeights: estimate.monthlyRevenue }
+          : {}),
+      },
+      liveComps: true,
+    };
   } catch {
     return { analysis, liveComps: false };
   }

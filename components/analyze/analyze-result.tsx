@@ -34,6 +34,7 @@ import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { CalculatorInputs } from "./calculator-inputs";
+import { SeasonalityStrip } from "./seasonality-strip";
 import { CompsExplorer } from "./comps-explorer";
 import { LtrCompsTable } from "./comps-tables";
 import { PropertyThumb } from "./property-thumb";
@@ -298,6 +299,19 @@ export function AnalyzeResult({
             subjectAnnualRevenue={annualRevenueDisplay}
           />
         </div>
+
+        {/* The year month by month — only when the feed gave a real
+            distribution for this address. Renders nothing otherwise,
+            rather than drawing an invented season. */}
+        {analysis.monthlyRevenueWeights ? (
+          <div className="border-t border-border px-6 py-5">
+            <SeasonalityStrip
+              inputs={inputs}
+              assumptions={assumptions}
+              weights={analysis.monthlyRevenueWeights}
+            />
+          </div>
+        ) : null}
       </section>
 
       {/* Calculator: inputs left, outputs right */}
