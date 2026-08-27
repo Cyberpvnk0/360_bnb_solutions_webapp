@@ -33,10 +33,18 @@ export async function withLiveComps(
   if (!checkLiveSearch(key).allowed) return { analysis, liveComps: false };
 
   try {
+    // Bedrooms alone leaves the feed guessing. Their comparables
+    // endpoint takes baths and guests too, in the same billed call, and
+    // a comp set matched on all three is a better read than one matched
+    // on a third of what we know. Guests is inferred the way the
+    // industry does — two to a bedroom — because the analysis records
+    // the property, not its listing.
     const comps = await fetchComps({
       lat: point.lat,
       lon: point.lon,
       bedrooms: analysis.bedrooms,
+      baths: analysis.bathrooms,
+      guests: Math.max(2, analysis.bedrooms * 2),
     });
     if (comps.length < MIN_COMPS) return { analysis, liveComps: false };
     commitLiveSearch(key);

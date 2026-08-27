@@ -19,8 +19,10 @@ import {
   COMPS_PATH,
   fetchComps,
   fetchMarketAnalytics,
+  fullNameOf,
   hasAirRoiKey,
   MARKET_PATH,
+  MARKET_PROBE_TARGETS,
   probeEndpoint,
   probeShape,
   PROBE_TARGETS,
@@ -84,24 +86,47 @@ export async function GET(request: Request) {
   // setup step rather than anything a page reaches.
   if (shape === "all") {
     const results = [];
+    let fullName: string | null = null;
+
     for (const target of PROBE_TARGETS) {
       const outcome = await probeEndpoint(target.path, target.params(lat, lon));
+      // The market identifier the second stage needs, taken from what
+      // the service returned rather than guessed at.
+      if (outcome.ok && fullName === null) fullName = fullNameOf(outcome.shape);
       results.push({
         path: outcome.path,
         ok: outcome.ok,
         status: outcome.status,
         reason: outcome.reason,
+        detail: outcome.detail,
         shape: outcome.ok ? describe(outcome.shape) : null,
       });
     }
+
+    // Markets resolve to a name and carry no figures of their own, so
+    // the metrics live somewhere keyed on that name. Only worth asking
+    // once a real name is in hand.
+    for (const target of fullName === null ? [] : MARKET_PROBE_TARGETS) {
+      const params = target.params(fullName!);
+      const outcome = await probeEndpoint(target.path, params);
+      results.push({
+        path: `${target.path}?${Object.keys(params).join("&")}`,
+        ok: outcome.ok,
+        status: outcome.status,
+        reason: outcome.reason,
+        detail: outcome.detail,
+        shape: outcome.ok ? describe(outcome.shape) : null,
+      });
+    }
+
     return NextResponse.json({
       swept: results.length,
+      marketFullName: fullName,
       results,
       howToRead:
-        "Key names and value types only — no listing data leaves this route. " +
-        "A 404 means the path is wrong and wants correcting in lib/live/airroi.ts; " +
-        "auth means the key is not active yet; quota means it is active but out of credit. " +
-        "Whichever paths answer 200, read their key names and pin ADR_KEYS / OCC_KEYS / REV_KEYS to them.",
+        "Key names and value types only — no listing data leaves this route, though `detail` carries the service's own rejection message, which is how a 400 names the parameter it wanted. " +
+        "404 means the path is wrong; 400 means the path is right and the parameters are not; auth means the key is not active; quota means active but out of credit. " +
+        "Whichever paths answer 200 with ADR and occupancy in them are the ones to pin ADR_KEYS / OCC_KEYS / REV_KEYS against.",
     });
   }
 

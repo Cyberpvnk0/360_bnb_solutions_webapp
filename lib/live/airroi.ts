@@ -29,8 +29,20 @@ const BASE = "https://api.airroi.com";
 
 /** Comparable listings around a point — the comps behind a projection. */
 export const COMPS_PATH = "/listings/comparables";
-/** A coordinate's market, with its headline KPIs. */
+/**
+ * A coordinate's market — IDENTITY ONLY.
+ *
+ * Measured, not assumed: this returns full_name, country, region,
+ * locality and district, and no performance figures whatsoever. The
+ * first version of this file treated it as the analytics call and would
+ * have mapped a market with no ADR and no occupancy to null forever,
+ * looking for all the world like a market with no data.
+ */
 export const MARKET_PATH = "/markets/lookup";
+
+/** Where the market's actual numbers live, keyed by the full_name that
+ *  lookup hands back. */
+export const MARKET_METRICS_PATH = "/markets/metrics/all";
 
 /** Comps move with new bookings; market aggregates barely move at all. */
 export const COMPS_REVALIDATE_SECONDS = 86_400; // 1 day
@@ -39,7 +51,12 @@ export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
 export class AirRoiError extends Error {
   constructor(
     readonly reason: "no-key" | "auth" | "quota" | "http" | "network",
-    readonly status?: number
+    readonly status?: number,
+    /** What the service said went wrong. A rejected request explains
+     *  itself in the body, and the first version of this class dropped
+     *  that on the floor — which turned a 400 that names its missing
+     *  parameter into a silent "http". */
+    readonly detail?: string
   ) {
     super(`AirROI ${reason}${status ? ` (${status})` : ""}`);
     this.name = "AirRoiError";
@@ -204,13 +221,18 @@ async function call(
   }
 
   if (!res.ok) {
+    // Validation prose, not listing data — safe to surface and the
+    // whole point of asking.
+    const detail = (await res.text().catch(() => ""))
+      .replace(/\s+/g, " ")
+      .slice(0, 300);
     if (res.status === 401 || res.status === 403) {
-      throw new AirRoiError("auth", res.status);
+      throw new AirRoiError("auth", res.status, detail);
     }
     if (res.status === 402 || res.status === 429) {
-      throw new AirRoiError("quota", res.status);
+      throw new AirRoiError("quota", res.status, detail);
     }
-    throw new AirRoiError("http", res.status);
+    throw new AirRoiError("http", res.status, detail);
   }
   return res.json().catch(() => null);
 }
@@ -283,17 +305,53 @@ export async function probeShape(
  * page ever triggers.
  */
 export const PROBE_TARGETS: { path: string; params: (lat: number, lon: number) => Record<string, string> }[] = [
-  { path: COMPS_PATH, params: (lat, lon) => ({ latitude: String(lat), longitude: String(lon), bedrooms: "2", currency: "native" }) },
+  // Their example sends baths and guests as well; the first sweep sent
+  // neither and got a 400 for it.
+  {
+    path: COMPS_PATH,
+    params: (lat, lon) => ({
+      latitude: String(lat),
+      longitude: String(lon),
+      bedrooms: "2",
+      baths: "2.0",
+      guests: "4",
+      currency: "native",
+    }),
+  },
   { path: MARKET_PATH, params: (lat, lon) => ({ lat: String(lat), lng: String(lon) }) },
-  { path: "/markets/search", params: () => ({ query: "jacksonville" }) },
-  { path: "/markets/overview", params: (lat, lon) => ({ lat: String(lat), lng: String(lon) }) },
 ];
+
+/**
+ * Stage two: endpoints that need a market identifier, tried with the
+ * one stage one actually returned rather than a guess at its format.
+ */
+export const MARKET_PROBE_TARGETS: { path: string; params: (fullName: string) => Record<string, string> }[] = [
+  { path: MARKET_METRICS_PATH, params: (n) => ({ full_name: n, currency: "native" }) },
+  { path: MARKET_METRICS_PATH, params: (n) => ({ market: n, currency: "native" }) },
+  { path: "/markets/metrics/occupancy", params: (n) => ({ full_name: n }) },
+];
+
+/** The market identifier a lookup response carries, if it carries one. */
+export function fullNameOf(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const row = body as Row;
+  const direct = pickString(row, ["full_name", "fullName"]);
+  if (direct) return direct;
+  // Search responses wrap their rows.
+  const entries = (row.entries ?? row.data ?? row.results) as unknown;
+  if (Array.isArray(entries) && entries[0] && typeof entries[0] === "object") {
+    return pickString(entries[0] as Row, ["full_name", "fullName"]);
+  }
+  return null;
+}
 
 export interface ProbeOutcome {
   path: string;
   ok: boolean;
   status: number | null;
   reason: string | null;
+  /** What the service said, when it refused. */
+  detail: string | null;
 }
 
 /** One candidate, reporting rather than throwing — a 404 is the answer
@@ -304,11 +362,18 @@ export async function probeEndpoint(
 ): Promise<ProbeOutcome & { shape: unknown }> {
   try {
     const body = await call(path, params, 60);
-    return { path, ok: true, status: 200, reason: null, shape: body };
+    return { path, ok: true, status: 200, reason: null, detail: null, shape: body };
   } catch (error) {
     if (error instanceof AirRoiError) {
-      return { path, ok: false, status: error.status ?? null, reason: error.reason, shape: null };
+      return {
+        path,
+        ok: false,
+        status: error.status ?? null,
+        reason: error.reason,
+        detail: error.detail ?? null,
+        shape: null,
+      };
     }
-    return { path, ok: false, status: null, reason: "network", shape: null };
+    return { path, ok: false, status: null, reason: "network", detail: null, shape: null };
   }
 }
