@@ -331,3 +331,32 @@ describe("a spent plan is not a forbidden domain", () => {
     expect(looksSpent("")).toBe(false);
   });
 });
+
+describe("cities the listing site files under another name", () => {
+  // Berkeley Springs is incorporated as Bath; Augusta is the
+  // consolidated Augusta-Richmond county government. Using our own name
+  // in the path asks for a page that isn't theirs.
+  it("uses the site's own path segment where it differs", () => {
+    const berkeley = MARKETS.find((m) => m.slug === "berkeley-springs")!;
+    expect(redfinRentalsUrlFor(berkeley, REDFIN_CITY_ID["berkeley-springs"])).toBe(
+      "https://www.redfin.com/city/1288/WV/Bath/rentals"
+    );
+
+    const augusta = MARKETS.find((m) => m.slug === "augusta-ga")!;
+    expect(redfinRentalsUrlFor(augusta, REDFIN_CITY_ID["augusta-ga"])).toBe(
+      "https://www.redfin.com/city/36058/GA/Augusta-Richmond/rentals"
+    );
+  });
+
+  it("still uses the market's own name everywhere else", () => {
+    const tampa = MARKETS.find((m) => m.slug === "tampa")!;
+    expect(redfinRentalsUrlFor(tampa, 1234)).toContain("/FL/Tampa/rentals");
+  });
+
+  it("covers every market the course teaches that we carry", () => {
+    // Four of these had no photo source until their real ids were found.
+    for (const slug of ["augusta-ga", "ellijay", "spring-hill", "berkeley-springs", "eagle-mountain-lake"]) {
+      expect(REDFIN_CITY_ID[slug], slug).toBeTypeOf("number");
+    }
+  });
+});

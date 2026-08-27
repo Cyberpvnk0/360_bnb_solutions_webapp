@@ -52,12 +52,33 @@ const ATTEMPT_TIMEOUT_MS = 20_000;
  * Known ids, seeded from real URLs. A static entry costs nothing and is
  * always preferred; everything else resolves on first use.
  */
+/**
+ * Where the listing site's URL path uses a different name than we do.
+ *
+ * The path segment is usually cosmetic next to the id, but three of
+ * these are cities filed under another name entirely — Berkeley
+ * Springs is incorporated as Bath, Augusta is the consolidated
+ * Augusta-Richmond county government, Eagle Mountain Lake's page is
+ * just Eagle Mountain. Those are also exactly the rows the public
+ * export had no entry for, because it indexes by the official name and
+ * we ask by the common one.
+ *
+ * Only the exceptions live here; everything else uses the market name.
+ */
+export const REDFIN_CITY_PATH: Record<string, string> = {
+  "augusta-ga": "Augusta-Richmond",
+  "berkeley-springs": "Bath",
+  "eagle-mountain-lake": "Eagle-Mountain",
+};
+
 export const REDFIN_CITY_ID: Record<string, number> = {
   // Discovered in bulk from Redfin's state index pages via
   // /api/redfin/cities. Every entry matched on city name AND state.
   anchorage: 781,
+  "augusta-ga": 36058,
   bailey: 38798,
   bentonville: 1423,
+  "berkeley-springs": 1288,
   "bethany-beach": 1517,
   birmingham: 1823,
   boulder: 2025,
@@ -71,7 +92,9 @@ export const REDFIN_CITY_ID: Record<string, number> = {
   corvallis: 4092,
   "cripple-creek": 4797,
   denver: 5155,
+  "eagle-mountain-lake": 22487,
   elizabethtown: 6247,
+  ellijay: 6933,
   "eureka-springs": 5727,
   "fayetteville-ar": 6011,
   flagstaff: 6089,
@@ -117,6 +140,7 @@ export const REDFIN_CITY_ID: Record<string, number> = {
   sedona: 16757,
   seward: 17568,
   "siesta-key": 25613,
+  "spring-hill": 25768,
   stamford: 18605,
   "st-augustine": 16053,
   "st-petersburg": 16164,

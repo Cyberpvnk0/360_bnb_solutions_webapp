@@ -23,7 +23,7 @@ import { addressKey, buildingKey, streetPartOf } from "@/lib/live/address";
 import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
-import { cityIdFor, REDFIN_CITY_ID } from "@/lib/live/redfin-city";
+import { cityIdFor, REDFIN_CITY_ID, REDFIN_CITY_PATH } from "@/lib/live/redfin-city";
 import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
 /**
@@ -98,7 +98,11 @@ export function redfinRentalsUrlFor(
   cityId: number,
   opts: { furnished?: boolean; propertyType?: string } = {}
 ): string {
-  const city = market.name.trim().replace(/\s+/g, "-");
+  // The site files a few cities under another name — Berkeley Springs
+  // as Bath, Augusta as Augusta-Richmond — so the path is an override
+  // where one exists and the market's own name everywhere else.
+  const city =
+    REDFIN_CITY_PATH[market.slug] ?? market.name.trim().replace(/\s+/g, "-");
   const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}/rentals`;
   // Filters stack behind one /filter/ segment, comma separated.
   //
@@ -466,7 +470,11 @@ export async function probeHouseFilters(market: Market): Promise<unknown> {
     return { market: market.slug, error: "no city id for this market" };
   }
 
-  const city = market.name.trim().replace(/\s+/g, "-");
+  // The site files a few cities under another name — Berkeley Springs
+  // as Bath, Augusta as Augusta-Richmond — so the path is an override
+  // where one exists and the market's own name everywhere else.
+  const city =
+    REDFIN_CITY_PATH[market.slug] ?? market.name.trim().replace(/\s+/g, "-");
   const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}`;
   const candidates: { label: string; url: string }[] = [
     { label: "unfiltered (control)", url: `${base}/rentals` },

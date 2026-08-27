@@ -40,7 +40,7 @@ import {
   type ZyteMode,
   type ZyteProduct,
 } from "@/lib/live/zyte";
-import { REDFIN_CITY_ID } from "@/lib/live/redfin-city";
+import { REDFIN_CITY_ID, REDFIN_CITY_PATH } from "@/lib/live/redfin-city";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 
@@ -123,7 +123,11 @@ interface Target {
 }
 
 function targetsFor(market: Market): Target[] {
-  const city = market.name.trim().replace(/\s+/g, "-");
+  // Same override the live URL builder uses: a handful of cities are
+  // filed under another name and the probe has to ask for the same URL
+  // the app would, or it measures a page nobody visits.
+  const city =
+    REDFIN_CITY_PATH[market.slug] ?? market.name.trim().replace(/\s+/g, "-");
   const slug = market.name.trim().toLowerCase().replace(/\s+/g, "-");
   const cityId = REDFIN_CITY_ID[market.slug];
   const state = market.stateCode;

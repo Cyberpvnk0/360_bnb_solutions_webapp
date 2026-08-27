@@ -21,7 +21,7 @@
 
 import { NextResponse } from "next/server";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
-import { REDFIN_CITY_ID } from "@/lib/live/redfin-city";
+import { REDFIN_CITY_ID, REDFIN_CITY_PATH } from "@/lib/live/redfin-city";
 
 export const maxDuration = 120;
 
@@ -38,7 +38,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "no SCRAPERAPI_KEY" }, { status: 503 });
   }
 
-  const city = market.name.trim().replace(/\s+/g, "-");
+  // Same override the live URL builder uses: a handful of cities are
+  // filed under another name and the probe has to ask for the same URL
+  // the app would, or it measures a page nobody visits.
+  const city =
+    REDFIN_CITY_PATH[market.slug] ?? market.name.trim().replace(/\s+/g, "-");
   const state = market.stateCode;
   const cityId = REDFIN_CITY_ID[market.slug];
 
