@@ -19,6 +19,8 @@
 
 import { NextResponse } from "next/server";
 import {
+  isFresh,
+  readMarketStore,
   storeConfigured,
   writeMarketListings,
   writeMarketPhotoMerge,
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
     ms: number;
     matched?: number;
     extras?: number;
+    skipped?: string;
     error?: string;
   }[] = [];
 
@@ -63,6 +66,23 @@ export async function GET(request: Request) {
       continue;
     }
     try {
+      // Already current? Then there is nothing to warm, and warming it
+      // anyway is the whole cost of this endpoint spent for nothing.
+      // This is what makes STORE_TTL_HOURS actually save credits: the
+      // vendors' own caches expire on their schedule, not ours, so
+      // without this check a longer TTL only helps the request path
+      // while the cron kept re-fetching on the old one.
+      const current = await readMarketStore(slug);
+      if (current?.photoMerge && isFresh(current.photoMergeAt)) {
+        results.push({
+          slug,
+          ok: true,
+          ms: Date.now() - started,
+          skipped: `already fresh (stored ${current.photoMergeAt})`,
+        });
+        continue;
+      }
+
       const merge = await buildMarketPhotoMerge(market);
       // The point of warming: the work lands in the durable store, so
       // it survives deploys and serves every instance — not just the
@@ -70,7 +90,9 @@ export async function GET(request: Request) {
       if (merge.feed.length > 0) {
         await writeMarketListings(slug, merge.feed);
       }
-      if (merge.covered) {
+      // Never store an empty pass over a full one — a vendor that
+      // refused has nothing to teach the store.
+      if (merge.covered && (Object.keys(merge.photos).length > 0 || merge.extras.length > 0)) {
         await writeMarketPhotoMerge(slug, {
           photos: merge.photos,
           extras: merge.extras,
