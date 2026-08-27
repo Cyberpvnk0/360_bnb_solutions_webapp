@@ -211,18 +211,25 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   const lat = nestedNumber(row, "location_info", LAT_KEYS, LAT_KEYS);
   const lon = nestedNumber(row, "location_info", LON_KEYS, LON_KEYS);
   /**
-   * The host's listing is only pinned where the feed says it is when the
-   * feed says that position is exact. Airbnb fuzzes a listing's location
-   * until it is booked, and the payload admits which is which — so a
-   * fuzzed coordinate is treated as no coordinate rather than drawn as
-   * a precise one.
+   * Keep the coordinate either way; record only whether it is exact.
+   *
+   * Airbnb blurs a listing's position until it is booked, and in
+   * practice almost every comp comes back blurred — all twelve in the
+   * first live pull. An earlier version of this discarded those and let
+   * the map fall back to its scatter, which put the pin at a hashed
+   * random bearing from the subject. That is strictly worse: the blur
+   * is a small circle around the real address, the scatter is anywhere
+   * on a ring. Throwing away a good approximation to replace it with a
+   * worse one is not caution, it is just a different error.
+   *
+   * So the position is used and `exactLocation` carries the caveat.
    */
+  const hasPoint =
+    lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
   const exact = group(row, "location_info")?.exact_location;
-  const usable =
-    lat !== null && lon !== null &&
-    Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
-    exact !== false;
-  const placed = usable ? { lat: lat!, lon: lon! } : {};
+  const placed = hasPoint
+    ? { lat: lat!, lon: lon!, exactLocation: exact === true }
+    : {};
 
   const revenue = nestedNumber(row, "performance_metrics", REV_KEYS, REV_KEYS);
 

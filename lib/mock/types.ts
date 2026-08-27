@@ -126,6 +126,15 @@ export interface StrComp {
   lat?: number;
   lon?: number;
   /**
+   * Whether that position is the real one.
+   *
+   * Airbnb blurs a listing's coordinates until it is booked, so most
+   * comps arrive approximately placed — near the address, not on it.
+   * Worth showing and worth labelling; not worth discarding, since the
+   * alternative is a guessed bearing that is further out.
+   */
+  exactLocation?: boolean;
+  /**
    * What this listing actually earned over the trailing twelve months,
    * when the feed reports it.
    *

@@ -121,16 +121,21 @@ describe("the real nested payload", () => {
     expect(c?.lon).toBeCloseTo(-81.6612);
   });
 
-  it("treats a fuzzed location as no location", () => {
-    // Airbnb blurs a listing's position until it is booked, and the
-    // payload says which. Drawing a blurred point as a precise pin is
-    // the lie this avoids.
+  it("keeps a blurred location and labels it", () => {
+    // Airbnb blurs a listing until it is booked — all twelve comps in
+    // the first live pull were blurred. Discarding them sent the map to
+    // a hashed random bearing, which is further from the truth than the
+    // blur is.
     const c = mapComp(
       realComp({ location_info: { latitude: 30.3, longitude: -81.6, exact_location: false } }),
       0
     );
-    expect(c?.lat).toBeUndefined();
-    expect(c?.lon).toBeUndefined();
+    expect(c?.lat).toBeCloseTo(30.3);
+    expect(c?.exactLocation).toBe(false);
+  });
+
+  it("marks an exact location as exact", () => {
+    expect(mapComp(realComp(), 0)?.exactLocation).toBe(true);
   });
 
   it("still reads a flat payload, so a reshape degrades instead of vanishing", () => {

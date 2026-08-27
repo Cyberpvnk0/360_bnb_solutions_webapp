@@ -65,11 +65,12 @@ export function placeComps(
   const milesPerDegLon =
     MILES_PER_DEG_LAT * Math.cos((subject.lat * Math.PI) / 180);
   return comps.map((c, i) => {
-    // A comp that knows where it is goes where it is. The scatter below
-    // is for the ones that don't, and it is a guess at the bearing even
-    // though the distance is real.
+    // A comp that knows roughly where it is still goes there. Most
+    // arrive blurred to a small circle around the address, which beats
+    // the scatter below by a wide margin — that one only knows the
+    // distance and invents the direction.
     if (typeof c.lat === "number" && typeof c.lon === "number") {
-      return { ...c, lat: c.lat, lon: c.lon, placed: true as const };
+      return { ...c, lat: c.lat, lon: c.lon, placed: c.exactLocation === true };
     }
     const angle = (((hash(c.id) % 360) + i * 137.5) % 360) * (Math.PI / 180);
     return {
@@ -272,7 +273,8 @@ export function CompsStreetMap({
                 </a>
                 {active.placed ? null : (
                   <span className="text-[10px] text-muted-foreground">
-                    Approximate position — distance is exact, direction is not
+                    Approximate position — the platform blurs a listing
+                    until it is booked
                   </span>
                 )}
               </div>
@@ -294,8 +296,8 @@ export function CompsStreetMap({
         {placed.every((c) => c.placed) ? null : (
           <p>
             {placed.some((c) => c.placed)
-              ? "Some comps sit at an approximate bearing — distance exact, direction not."
-              : "Distances exact; bearings approximate."}
+              ? "Some pins are approximate — the platform blurs a listing's location until it is booked."
+              : "Pins are approximate — the platform blurs a listing's location until it is booked."}
           </p>
         )}
       </figcaption>
