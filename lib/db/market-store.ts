@@ -245,6 +245,56 @@ export async function writeMarketPhotoMerge(
 }
 
 /**
+ * Every stored KPI row, in one query.
+ *
+ * The markets grid draws 409 cards. Reading them one at a time would be
+ * 409 round trips to serve a single page, and fetching them from the
+ * vendor instead would be over a thousand billed calls for a scroll.
+ * One `in` query costs one request and nothing at the vendor: the grid
+ * shows measured figures for whatever has already been paid for, and
+ * the seeded model everywhere else.
+ *
+ * Slugs are filtered to the safe character set before interpolation.
+ * They come from our own catalogue rather than a user, but a query
+ * built by string concatenation should not depend on that staying true.
+ */
+export async function readAllMarketStats(): Promise<
+  Map<string, { stats: StoredMarketStats; at: string | null }>
+> {
+  const out = new Map<string, { stats: StoredMarketStats; at: string | null }>();
+  const cfg = config();
+  if (!cfg) return out;
+
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/market_cache?stats=not.is.null&select=market_slug,stats,stats_at`,
+      {
+        headers: headers(cfg.key),
+        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    // A schema without the column rejects the whole select, exactly as
+    // the single-row read had to be taught. An empty map is the right
+    // answer: every card falls back to the seeded model.
+    if (!res.ok) return out;
+    const rows = (await res.json()) as {
+      market_slug?: string;
+      stats?: StoredMarketStats | null;
+      stats_at?: string | null;
+    }[];
+    for (const row of rows ?? []) {
+      if (row.market_slug && row.stats) {
+        out.set(row.market_slug, { stats: row.stats, at: row.stats_at ?? null });
+      }
+    }
+    return out;
+  } catch {
+    return out;
+  }
+}
+
+/**
  * A market's live KPIs.
  *
  * Two billed calls produced these, so losing them to a deployment is

@@ -14,6 +14,7 @@ import { ArrowUpRight, Check, Eye, TriangleAlert } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtMoneyShort, fmtNum, fmtPct } from "@/lib/format";
 import type { Market } from "@/lib/mock/types";
+import type { StoredMarketStats } from "@/lib/db/market-store";
 import { useSession } from "@/components/providers/session-provider";
 import { MarketBanner, TERRAIN_LABEL } from "./market-banner";
 import { cn } from "@/lib/utils";
@@ -41,14 +42,32 @@ interface MarketCardProps {
   market: Market;
   selected: boolean;
   onHoverChange: (slug: string | null) => void;
+  /** Measured figures, when this market has already been paid for. */
+  live?: StoredMarketStats | null;
 }
 
 export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
-  function MarketCard({ market: m, selected, onHoverChange }, ref) {
+  function MarketCard({ market: m, selected, onHoverChange, live = null }, ref) {
     const router = useRouter();
     const { watchedMarketSlugs, toggleWatchMarket, ready } = useSession();
     const watching = watchedMarketSlugs.includes(m.slug);
-    const marginPts = Math.round((m.occupancy - m.avgBreakeven2br) * 100);
+
+    // Measured or seeded, together — the same all-or-nothing rule the
+    // market page runs on. A real rate beside an invented occupancy
+    // reads as one measurement and is two.
+    const measured = live?.adr != null && live.occupancy != null;
+    const adr = measured ? live!.adr! : m.adr;
+    const occupancy = measured ? live!.occupancy! : m.occupancy;
+    const listings =
+      measured && live!.activeListings != null
+        ? Math.round(live!.activeListings)
+        : m.activeListings;
+    const revenue =
+      measured && live!.revenue != null
+        ? live!.revenue
+        : annualRevenueFromAdr(adr, occupancy);
+
+    const marginPts = Math.round((occupancy - m.avgBreakeven2br) * 100);
     const strong = marginPts >= 8;
 
     return (
@@ -143,24 +162,29 @@ export const MarketCard = React.forwardRef<HTMLDivElement, MarketCardProps>(
               <span className="sr-only">View market</span>
             </Link>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {TERRAIN_LABEL[m.terrain]} · {fmtNum(m.activeListings)} listings
+              {TERRAIN_LABEL[m.terrain]} · {fmtNum(listings)} listings
             </p>
           </div>
         </div>
 
         {/* Trailing-12 figures */}
         <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
-          <Figure label="Revenue potential">
-            {fmtMoneyShort(annualRevenueFromAdr(m.adr, m.occupancy))}
-          </Figure>
-          <Figure label="Occupancy">{fmtPct(m.occupancy)}</Figure>
-          <Figure label="Nightly rate">{fmtMoney(m.adr)}</Figure>
+          <Figure label="Revenue potential">{fmtMoneyShort(revenue)}</Figure>
+          <Figure label="Occupancy">{fmtPct(occupancy)}</Figure>
+          <Figure label="Nightly rate">{fmtMoney(adr)}</Figure>
         </div>
 
         {/* Footer strip */}
         <div className="flex items-center justify-between gap-3 border-t border-border bg-secondary/40 px-5 py-2">
           <span className="text-[11px] text-muted-foreground">
-            Trailing 12 months · 2 bd benchmark
+            {measured ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+                Measured · trailing 12 months
+              </span>
+            ) : (
+              <>Trailing 12 months · 2 bd benchmark</>
+            )}
           </span>
           <span className="text-[11px] text-muted-foreground tabular">
             Breakeven{" "}

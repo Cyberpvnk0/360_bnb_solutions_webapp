@@ -20,6 +20,7 @@ import { annualRevenueFromAdr, revpar } from "@/lib/calc/arbitrage";
 import { getAllSubmarkets, getCoverageTotals } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
 import type { Market, MarketTerrain, Submarket } from "@/lib/mock/types";
+import type { StoredMarketStats } from "@/lib/db/market-store";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,9 +88,22 @@ const marketTerrain = (m: Market): MarketTerrain => m.terrain;
 interface MarketsExplorerProps {
   markets: Market[];
   states: string[];
+  /**
+   * Measured figures by slug, for markets already in the store.
+   *
+   * A plain object rather than a Map so it crosses the server/client
+   * boundary. Empty is the normal state early on and costs nothing:
+   * every card falls back to the seeded model until someone opens that
+   * market, or a backfill is run deliberately.
+   */
+  liveStats?: Record<string, StoredMarketStats>;
 }
 
-export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
+export function MarketsExplorer({
+  markets,
+  states,
+  liveStats = {},
+}: MarketsExplorerProps) {
   const [scope, setScope] = React.useState<Scope>("markets");
   const [filters, setFilters] = React.useState<ExplorerFilters>(DEFAULT_FILTERS);
   const [sort, setSort] = React.useState<SortKey>("margin");
@@ -394,6 +408,7 @@ export function MarketsExplorer({ markets, states }: MarketsExplorerProps) {
                       market={m}
                       selected={m.slug === selectedSlug}
                       onHoverChange={setHoverCardSlug}
+                      live={liveStats[m.slug] ?? null}
                     />
                   ))}
                 </div>
