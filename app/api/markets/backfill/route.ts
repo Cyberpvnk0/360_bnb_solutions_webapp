@@ -2,6 +2,7 @@
  * Fill the market store on purpose:
  *   /api/markets/backfill?limit=10&secret=…      → resolve 10 unstored markets
  *   /api/markets/backfill?secret=…&dry=1         → count what is left, spend nothing
+ *   …&only=course                                → just the markets the course teaches
  *
  * The grid reads the store and never calls the vendor, so measured
  * figures only appear for markets someone has already opened. This is
@@ -17,6 +18,7 @@
 
 import { NextResponse } from "next/server";
 import { MARKETS } from "@/lib/mock/markets";
+import { COURSE_MARKETS } from "@/lib/mock/course-markets";
 import { fetchLiveMarket } from "@/lib/live/market-live";
 import { hasAirRoiKey } from "@/lib/live/airroi";
 import {
@@ -64,18 +66,37 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "no AIRROI_API_KEY" }, { status: 503 });
   }
 
+  /**
+   * `only=course` restricts the queue to the markets the mentorship
+   * teaches — 75 of 409.
+   *
+   * Not a shortcut so much as the right order. Those are the markets
+   * students are told to look at, so they are the ones that will
+   * actually be opened; the rest of the catalogue can fill itself in
+   * over time as people wander into it, at no cost until they do.
+   * 225 calls against 1,227 for the set that carries the traffic.
+   */
+  const courseOnly = searchParams.get("only") === "course";
+  const queue = courseOnly
+    ? MARKETS.filter((m) => COURSE_MARKETS.has(m.slug))
+    : MARKETS;
+
   const stored = await readAllMarketStats();
-  const pending = MARKETS.filter((m) => {
+  const pending = queue.filter((m) => {
     const row = stored.get(m.slug);
     return !row || !isFresh(row.at);
   });
 
   if (searchParams.get("dry")) {
     return NextResponse.json({
+      scope: courseOnly ? "course markets" : "every market",
+      inScope: queue.length,
       stored: stored.size,
       pending: pending.length,
       callsToFinish: pending.length * CALLS_PER_MARKET,
-      note: "Nothing was spent. Re-run without dry=1 and with a limit to resolve a batch.",
+      note: courseOnly
+        ? "Nothing was spent. This counts only the markets the course teaches."
+        : "Nothing was spent. Add only=course to count just the markets the course teaches.",
     });
   }
 
@@ -103,6 +124,7 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
+    scope: courseOnly ? "course markets" : "every market",
     resolved: done.length,
     failed: failed.length,
     /** What this run actually cost, in requests. */
