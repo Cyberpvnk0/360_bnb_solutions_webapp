@@ -156,6 +156,19 @@ export async function writeMarketPhotoMerge(
   });
 }
 
+/**
+ * Which Supabase variables this deployment can see, names only.
+ *
+ * Names, never values — a diagnostic that leaks a secret key to
+ * whoever loads the URL is worse than the confusion it solves. A
+ * misspelled variable is invisible to a "did you set it?" question and
+ * obvious the moment the actual names are listed.
+ */
+function describePresent(): string {
+  const seen = Object.keys(process.env).filter((k) => /SUPA?BASE/i.test(k));
+  return seen.length > 0 ? seen.sort().join(", ") : "no SUPABASE_* variables at all";
+}
+
 /** A slug no market will ever have, so the check writes nothing real. */
 const HEALTH_SLUG = "__healthcheck__";
 
@@ -181,10 +194,23 @@ export interface StoreStatus {
 export async function storeStatus(): Promise<StoreStatus> {
   const cfg = config();
   if (!cfg) {
+    // Name the one that is missing. "Not configured" for a two-variable
+    // setup sends someone to re-check the variable they already got
+    // right — which is exactly what it did.
+    const missing = [
+      process.env.SUPABASE_URL ? null : "SUPABASE_URL",
+      process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? null
+        : "SUPABASE_SECRET_KEY",
+    ].filter(Boolean);
     return {
       ok: false,
       detail:
-        "Not configured — set SUPABASE_URL and SUPABASE_SECRET_KEY (the dashboard's secret key, not the publishable one).",
+        `Not configured — missing ${missing.join(" and ")}. ` +
+        `Present: ${describePresent()}. ` +
+        "SUPABASE_URL is the dashboard's Project URL (https://<ref>.supabase.co); " +
+        "SUPABASE_SECRET_KEY is the secret key, not the publishable one. " +
+        "Env changes only reach a NEW deployment — redeploy after adding them.",
     };
   }
 
