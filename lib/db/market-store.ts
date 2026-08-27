@@ -68,11 +68,27 @@ export interface StoredListingDetail {
   depositMax?: number;
 }
 
+/** A market's live KPIs, as stored. Shape mirrors the feed's summary
+ *  so a schema change surfaces here rather than three screens later. */
+export interface StoredMarketStats {
+  adr: number | null;
+  occupancy: number | null;
+  revpar: number | null;
+  revenue: number | null;
+  activeListings: number | null;
+  bookingLeadTime: number | null;
+  lengthOfStay: number | null;
+  /** What the feed calls this place, at its own granularity. */
+  fullName: string | null;
+}
+
 export interface StoredMarket {
   listings: RentalListing[] | null;
   listingsAt: string | null;
   photoMerge: StoredPhotoMerge | null;
   photoMergeAt: string | null;
+  stats: StoredMarketStats | null;
+  statsAt: string | null;
 }
 
 function config(): { url: string; key: string } | null {
@@ -116,7 +132,7 @@ export async function readMarketStore(
   if (!cfg) return null;
   try {
     const res = await fetch(
-      `${cfg.url}/rest/v1/market_cache?market_slug=eq.${encodeURIComponent(slug)}&select=listings,listings_at,photo_merge,photo_merge_at`,
+      `${cfg.url}/rest/v1/market_cache?market_slug=eq.${encodeURIComponent(slug)}&select=listings,listings_at,photo_merge,photo_merge_at,stats,stats_at`,
       {
         headers: headers(cfg.key),
         signal: AbortSignal.timeout(READ_TIMEOUT_MS),
@@ -130,6 +146,8 @@ export async function readMarketStore(
       listings_at?: string | null;
       photo_merge?: StoredPhotoMerge | null;
       photo_merge_at?: string | null;
+      stats?: StoredMarketStats | null;
+      stats_at?: string | null;
     }[];
     const row = rows?.[0];
     if (!row) return null;
@@ -138,6 +156,8 @@ export async function readMarketStore(
       listingsAt: row.listings_at ?? null,
       photoMerge: row.photo_merge ?? null,
       photoMergeAt: row.photo_merge_at ?? null,
+      stats: row.stats ?? null,
+      statsAt: row.stats_at ?? null,
     };
   } catch {
     return null;
@@ -188,6 +208,24 @@ export async function writeMarketPhotoMerge(
     market_slug: slug,
     photo_merge: merge,
     photo_merge_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * A market's live KPIs.
+ *
+ * Two billed calls produced these, so losing them to a deployment is
+ * two calls thrown away per market — across 409 markets that is the
+ * kind of arithmetic that turns a plan into a monthly surprise.
+ */
+export async function writeMarketStats(
+  slug: string,
+  stats: StoredMarketStats
+): Promise<void> {
+  await upsert({
+    market_slug: slug,
+    stats,
+    stats_at: new Date().toISOString(),
   });
 }
 

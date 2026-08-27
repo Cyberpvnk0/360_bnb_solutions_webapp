@@ -47,6 +47,7 @@ import {
   fmtMonth,
 } from "@/lib/format";
 import type { Market, Submarket } from "@/lib/mock/types";
+import type { MarketStats } from "@/lib/live/market-stats";
 import { useSession } from "@/components/providers/session-provider";
 import {
   DataTable,
@@ -229,14 +230,40 @@ const SUBMARKET_COLUMNS: DataTableColumn<Submarket>[] = [
 export function MarketDetail({
   market: m,
   submarkets,
+  live = null,
 }: {
   market: Market;
   submarkets: Submarket[];
+  /** Measured figures for this market, when the feed had them. */
+  live?: MarketStats | null;
 }) {
   const { watchedMarketSlugs, toggleWatchMarket, ready } = useSession();
   const watching = watchedMarketSlugs.includes(m.slug);
 
-  const margin = m.occupancy - m.avgBreakeven2br;
+  /**
+   * Measured where we have it, seeded where we don't — and never a
+   * blend inside one figure.
+   *
+   * The store only keeps a summary that carries both a rate and an
+   * occupancy, so these move together: either the headline row is real
+   * or it is the seeded model, and the row says which.
+   */
+  const measured = live?.stats.adr != null && live.stats.occupancy != null;
+  const adr = measured ? live!.stats.adr! : m.adr;
+  const occupancy = measured ? live!.stats.occupancy! : m.occupancy;
+  const activeListings = measured && live!.stats.activeListings != null
+    ? Math.round(live!.stats.activeListings)
+    : m.activeListings;
+  const revparValue = measured && live!.stats.revpar != null
+    ? live!.stats.revpar
+    : revpar(adr, occupancy);
+  const annualRevenue = measured && live!.stats.revenue != null
+    ? live!.stats.revenue
+    : annualRevenueFromAdr(adr, occupancy);
+
+  // The cushion is the point of the page, so it reads against whichever
+  // occupancy is real.
+  const margin = occupancy - m.avgBreakeven2br;
   const marginPts = Math.round(margin * 100);
   const strong = marginPts >= 8;
 
@@ -368,7 +395,7 @@ export function MarketDetail({
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {m.state} · {TERRAIN_LABEL[m.terrain]} ·{" "}
-              {fmtNum(m.activeListings)} active rentals
+              {fmtNum(activeListings)} active rentals
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -381,13 +408,25 @@ export function MarketDetail({
           </div>
         </div>
 
-        {/* Headline figures */}
+        {/* Headline figures. When these are measured the row says so,
+            with the feed's own granularity and the time it was read —
+            never dressed up as this moment. */}
+        {measured ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border px-6 pt-4 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+              <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+              Measured
+            </span>
+            {live?.stats.fullName ? <span>· {live.stats.fullName}</span> : null}
+            <span>· read {new Date(live!.asOf).toLocaleDateString()}</span>
+          </div>
+        ) : null}
         <div className="overflow-x-auto border-t border-border">
           <div className="flex min-w-max items-stretch divide-x divide-border">
             <div className="px-6 py-5">
               <MetricLabel>Revenue potential</MetricLabel>
               <div className="mt-1.5 font-display text-3xl font-medium leading-tight tracking-tight text-foreground">
-                {fmtMoneyShort(annualRevenueFromAdr(m.adr, m.occupancy))}
+                {fmtMoneyShort(annualRevenue)}
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 per listing, trailing 12 months
@@ -396,32 +435,41 @@ export function MarketDetail({
             <div className="px-6 py-5">
               <MetricLabel>Occupancy</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight text-foreground tabular">
-                {fmtPct(m.occupancy)}
+                {fmtPct(occupancy)}
               </div>
-              <div className="mt-1">
-                <DeltaSub
-                  value={m.deltas.occupancy}
-                  label={fmtDeltaPts(m.deltas.occupancy)}
-                />
-              </div>
+              {/* A seeded month-over-month delta beside a measured
+                  figure would read as measured too. There is no live
+                  delta, so there is no delta. */}
+              {measured ? null : (
+                <div className="mt-1">
+                  <DeltaSub
+                    value={m.deltas.occupancy}
+                    label={fmtDeltaPts(m.deltas.occupancy)}
+                  />
+                </div>
+              )}
             </div>
             <div className="px-6 py-5">
               <MetricLabel>Nightly rate</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight text-foreground tabular">
-                {fmtMoney(m.adr)}
+                {fmtMoney(adr)}
               </div>
-              <div className="mt-1">
-                <DeltaSub value={m.deltas.adr} label={fmtDeltaPct(m.deltas.adr)} />
-              </div>
+              {measured ? null : (
+                <div className="mt-1">
+                  <DeltaSub value={m.deltas.adr} label={fmtDeltaPct(m.deltas.adr)} />
+                </div>
+              )}
             </div>
             <div className="px-6 py-5">
               <MetricLabel>RevPAR</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight text-foreground tabular">
-                {fmtMoney(revpar(m.adr, m.occupancy))}
+                {fmtMoney(revparValue)}
               </div>
-              <div className="mt-1">
-                <DeltaSub value={revparDelta} label={fmtDeltaPct(revparDelta)} />
-              </div>
+              {measured ? null : (
+                <div className="mt-1">
+                  <DeltaSub value={revparDelta} label={fmtDeltaPct(revparDelta)} />
+                </div>
+              )}
             </div>
             <div className="px-6 py-5">
               <MetricLabel>2 bd breakeven</MetricLabel>

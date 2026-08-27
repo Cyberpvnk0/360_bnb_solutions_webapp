@@ -23,6 +23,7 @@
  */
 
 import {
+  grossRevenue,
   netCashFlow,
   type DealInputs,
   type MarketAssumptions,
@@ -43,6 +44,13 @@ export interface MonthOutlook {
    *  peak, 0.79 a trough. The number worth showing. */
   index: number;
   occupancy: number;
+  /**
+   * Gross booking revenue for the month — nightly takings plus cleaning
+   * fees collected. Shown beside net because the two answer different
+   * questions and the gap between them IS the cost of operating: a
+   * strong revenue month can still be a losing one.
+   */
+  revenue: number;
   /** Net cash flow for the month, at that occupancy. */
   net: number;
   /** True when the season would have pushed occupancy past 100% and it
@@ -88,6 +96,7 @@ export function monthlyOutlook(
       weight,
       index: Math.round(index * 100) / 100,
       occupancy: Math.round(occupancy * 1000) / 1000,
+      revenue: Math.round(grossRevenue(inputs, assumptions, occupancy)),
       net: Math.round(netCashFlow(inputs, assumptions, occupancy)),
       capped: raw > 1,
     };
@@ -106,6 +115,10 @@ export interface SeasonalRisk {
   worstCaseDrawdown: number;
   weakest: MonthOutlook;
   strongest: MonthOutlook;
+  /** Gross revenue across the year, for the headline beside the strip. */
+  annualRevenue: number;
+  /** Net across the year — what the deal actually returns. */
+  annualNet: number;
 }
 
 export function seasonalRisk(months: MonthOutlook[]): SeasonalRisk | null {
@@ -129,5 +142,7 @@ export function seasonalRisk(months: MonthOutlook[]): SeasonalRisk | null {
     ),
     weakest: months.reduce((a, b) => (b.net < a.net ? b : a)),
     strongest: months.reduce((a, b) => (b.net > a.net ? b : a)),
+    annualRevenue: Math.round(months.reduce((a, m) => a + m.revenue, 0)),
+    annualNet: Math.round(months.reduce((a, m) => a + m.net, 0)),
   };
 }
