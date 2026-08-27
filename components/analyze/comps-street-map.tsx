@@ -38,6 +38,9 @@ const MILES_PER_DEG_LAT = 69;
 export interface PlacedComp extends StrComp {
   lat: number;
   lon: number;
+  /** True when the feed gave a real position, false when the bearing
+   *  was invented to sit the comp at the right distance. */
+  placed: boolean;
 }
 
 /** Subject sits near the market center, offset deterministically per
@@ -62,11 +65,18 @@ export function placeComps(
   const milesPerDegLon =
     MILES_PER_DEG_LAT * Math.cos((subject.lat * Math.PI) / 180);
   return comps.map((c, i) => {
+    // A comp that knows where it is goes where it is. The scatter below
+    // is for the ones that don't, and it is a guess at the bearing even
+    // though the distance is real.
+    if (typeof c.lat === "number" && typeof c.lon === "number") {
+      return { ...c, lat: c.lat, lon: c.lon, placed: true as const };
+    }
     const angle = (((hash(c.id) % 360) + i * 137.5) % 360) * (Math.PI / 180);
     return {
       ...c,
       lat: subject.lat + (c.distanceMiles / MILES_PER_DEG_LAT) * Math.cos(angle),
       lon: subject.lon + (c.distanceMiles / milesPerDegLon) * Math.sin(angle),
+      placed: false as const,
     };
   });
 }
@@ -260,9 +270,11 @@ export function CompsStreetMap({
                   Open this area on Airbnb
                   <ArrowUpRight aria-hidden className="size-3" />
                 </a>
-                <span className="text-[10px] text-muted-foreground">
-                  Preview comp — live listing links land with real data
-                </span>
+                {active.placed ? null : (
+                  <span className="text-[10px] text-muted-foreground">
+                    Approximate position — distance is exact, direction is not
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -279,7 +291,13 @@ export function CompsStreetMap({
           />
           <span>Comps priced by the night — click one to open it</span>
         </p>
-        <p>Distances exact; bearings approximate until live data lands.</p>
+        {placed.every((c) => c.placed) ? null : (
+          <p>
+            {placed.some((c) => c.placed)
+              ? "Some comps sit at an approximate bearing — distance exact, direction not."
+              : "Distances exact; bearings approximate."}
+          </p>
+        )}
       </figcaption>
     </figure>
   );

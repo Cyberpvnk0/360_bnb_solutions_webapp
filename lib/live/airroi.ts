@@ -93,6 +93,8 @@ const BATHS_KEYS = ["bathrooms", "baths", "bathroomCount"];
 const DIST_KEYS = ["distanceMiles", "distance_miles", "distance"];
 const NAME_KEYS = ["title", "name", "listingName", "listing_title"];
 const ID_KEYS = ["id", "listingId", "listing_id", "airbnbId"];
+const LAT_KEYS = ["latitude", "lat"];
+const LON_KEYS = ["longitude", "lng", "lon", "long"];
 
 /**
  * One AirROI listing → the StrComp shape the projection already runs on.
@@ -113,6 +115,15 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   const distance = pickNumber(row, DIST_KEYS);
   const id = pickString(row, ID_KEYS) ?? `airroi-${index}`;
 
+  // Only a pair counts. Half a coordinate would place a pin on the
+  // prime meridian and look deliberate doing it.
+  const lat = pickNumber(row, LAT_KEYS);
+  const lon = pickNumber(row, LON_KEYS);
+  const placed =
+    lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+      ? { lat, lon }
+      : {};
+
   return {
     id: `sc-live-${id}`,
     name: pickString(row, NAME_KEYS) ?? `${Math.max(1, Math.round(bedrooms))} BR nearby rental`,
@@ -122,6 +133,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     // Whole-point storage, like every other occupancy in the product.
     occupancy: Math.round(occupancy * 100) / 100,
     distanceMiles: distance === null ? 0 : Math.round(distance * 10) / 10,
+    ...placed,
   };
 }
 

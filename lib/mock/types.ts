@@ -114,6 +114,17 @@ export interface StrComp {
   /** Fraction, 0–1. */
   occupancy: number;
   distanceMiles: number;
+  /**
+   * Where the comp actually is, when the feed says.
+   *
+   * Absent on seeded comps, which is why it is optional and why the map
+   * still has a scatter to fall back on. A comp with real coordinates
+   * gets pinned where it stands; one without gets pinned at the right
+   * distance and an invented bearing, and the map says so rather than
+   * letting the two look alike.
+   */
+  lat?: number;
+  lon?: number;
 }
 
 export interface LtrComp {
