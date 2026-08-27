@@ -267,19 +267,39 @@ export function MarketDetail({
   const marginPts = Math.round(margin * 100);
   const strong = marginPts >= 8;
 
-  const last = m.monthly[m.monthly.length - 1];
-  const prev = m.monthly[m.monthly.length - 2];
+  /**
+   * The series both charts run on: measured where the feed had it,
+   * seeded otherwise. All or nothing — a chart splicing real months
+   * onto invented ones would draw the join as a trend.
+   */
+  const monthly = React.useMemo(
+    () =>
+      live?.stats.monthly && live.stats.monthly.length >= 2
+        ? live.stats.monthly
+        : m.monthly,
+    [live?.stats.monthly, m.monthly]
+  );
+  const monthlyMeasured = monthly !== m.monthly;
+
+  const last = monthly[monthly.length - 1];
+  const prev = monthly[monthly.length - 2];
   const revparNow = revpar(last.adr, last.occupancy);
   const revparPrev = revpar(prev.adr, prev.occupancy);
   const revparDelta = revparPrev > 0 ? (revparNow - revparPrev) / revparPrev : 0;
 
   const seasonality = React.useMemo(
     () =>
-      m.monthly.map((mo) => ({
+      monthly.map((mo) => ({
         month: mo.month,
-        revenue: revpar(mo.adr, mo.occupancy) * NIGHTS_PER_MONTH,
+        // The feed publishes a month's revenue directly; the seeded
+        // series has to build one from RevPAR. Measured beats derived
+        // wherever it is offered.
+        revenue:
+          "revenue" in mo && typeof mo.revenue === "number" && mo.revenue > 0
+            ? mo.revenue
+            : revpar(mo.adr, mo.occupancy) * NIGHTS_PER_MONTH,
       })),
-    [m.monthly]
+    [monthly]
   );
 
   const bedrooms = React.useMemo(
@@ -294,12 +314,12 @@ export function MarketDetail({
 
   const occupancyTrend = React.useMemo(
     () =>
-      m.monthly.map((mo) => ({
+      monthly.map((mo) => ({
         month: mo.month,
         occupancy: mo.occupancy,
         breakeven: m.avgBreakeven2br,
       })),
-    [m.monthly, m.avgBreakeven2br]
+    [monthly, m.avgBreakeven2br]
   );
 
   const occFloor = Math.max(
@@ -488,7 +508,11 @@ export function MarketDetail({
       <div className="mt-8 space-y-8">
         <ChartCard
           title="Monthly revenue per listing"
-          sub="RevPAR × 30.4 nights for the 2BR benchmark, trailing 12 months."
+          sub={
+            monthlyMeasured
+              ? "Measured revenue per active listing, trailing 12 months."
+              : "RevPAR × 30.4 nights for the 2BR benchmark, trailing 12 months."
+          }
         >
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart

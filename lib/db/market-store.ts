@@ -19,6 +19,7 @@
  * live. The store is an accelerator, not a dependency.
  */
 
+import type { LiveMarketMonth } from "@/lib/live/airroi";
 import type { RentalListing } from "@/lib/mock/types";
 
 /**
@@ -80,6 +81,16 @@ export interface StoredMarketStats {
   lengthOfStay: number | null;
   /** What the feed calls this place, at its own granularity. */
   fullName: string | null;
+  /**
+   * Twelve months of history, when the feed had it.
+   *
+   * Deliberately inside this jsonb rather than in a column of its own:
+   * the stats column already exists, and every new column is a
+   * migration somebody has to run before the deploy that needs it —
+   * which is exactly the trap the tolerant read had to be written
+   * around last time.
+   */
+  monthly?: LiveMarketMonth[];
 }
 
 export interface StoredMarket {

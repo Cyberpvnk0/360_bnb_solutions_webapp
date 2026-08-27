@@ -280,6 +280,23 @@ export interface PropertyEstimate {
   comps: StrComp[];
 }
 
+/**
+ * One month of a market's history, flattened.
+ *
+ * Their payload gives avg/p25/p50/p75/p90 for every measure; the charts
+ * plot a single line, so the average is taken and the rest dropped
+ * rather than carried through a store and three components unused.
+ */
+export interface LiveMarketMonth {
+  /** YYYY-MM-01, matching the seeded series so both feed one chart. */
+  month: string;
+  adr: number;
+  /** Fraction. */
+  occupancy: number;
+  revenue: number | null;
+  revpar: number | null;
+}
+
 export interface MarketSummary {
   adr: number | null;
   /** Fraction. */
@@ -573,6 +590,75 @@ export async function fetchMarketSummary(market: {
     bookingLeadTime: pickNumber(row, ["booking_lead_time"]),
     lengthOfStay: pickNumber(row, ["length_of_stay"]),
   };
+}
+
+/**
+ * A market's monthly history.
+ *
+ * POST, like every other market endpoint. Twelve months by default,
+ * which is what the charts draw and what "trailing twelve" means
+ * everywhere else in this product.
+ *
+ * A month with no rate or no occupancy is dropped rather than zeroed:
+ * a zero plots as a real collapse and reads as one.
+ */
+export async function fetchMarketMetrics(
+  market: {
+    country?: string;
+    region?: string;
+    locality?: string;
+    district?: string;
+  },
+  numMonths = 12
+): Promise<LiveMarketMonth[]> {
+  const body = await call(MARKET_METRICS_PATH, {}, MARKET_REVALIDATE_SECONDS, {
+    market,
+    currency: "native",
+    num_months: numMonths,
+  });
+
+  const rows = (body && typeof body === "object" ? (body as Row).results : null) as
+    | unknown[]
+    | null;
+  if (!Array.isArray(rows)) return [];
+
+  const avg = (row: Row, key: string): number | null => {
+    const g = group(row, key);
+    return g ? pickNumber(g, ["avg", "p50"]) : pickNumber(row, [key]);
+  };
+
+  return rows
+    .map((raw): LiveMarketMonth | null => {
+      if (!raw || typeof raw !== "object") return null;
+      const row = raw as Row;
+      const month = normaliseMonth(pickString(row, ["date", "month"]));
+      const adr = avg(row, "average_daily_rate");
+      const occupancy = toFraction(avg(row, "occupancy"));
+      if (!month || adr === null || adr <= 0 || occupancy === null) return null;
+      return {
+        month,
+        adr: Math.round(adr),
+        occupancy: Math.round(occupancy * 1000) / 1000,
+        revenue: avg(row, "revenue"),
+        revpar: avg(row, "revpar"),
+      };
+    })
+    .filter((m): m is LiveMarketMonth => m !== null)
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * Their date to the seeded series' YYYY-MM-01.
+ *
+ * Both shapes have turned up in this codebase's vendors — a full
+ * timestamp and a bare month — so this takes the first seven characters
+ * when they parse as a year and month, and refuses anything else rather
+ * than inventing a date for a row to sit at.
+ */
+function normaliseMonth(value: string | null): string | null {
+  if (!value) return null;
+  const m = value.match(/^(\d{4})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-01` : null;
 }
 
 /**

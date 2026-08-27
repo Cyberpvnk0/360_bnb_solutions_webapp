@@ -38,7 +38,11 @@ export async function marketStats(market: Market): Promise<MarketStats | null> {
   const live = await fetchLiveMarket(market);
   if (!live) return null;
 
-  const stats: StoredMarketStats = { ...live.summary, fullName: live.fullName };
+  const stats: StoredMarketStats = {
+    ...live.summary,
+    fullName: live.fullName,
+    ...(live.monthly.length > 0 ? { monthly: live.monthly } : {}),
+  };
   // Write, but never let a storage failure cost the answer we just
   // bought — the store is an accelerator, not a dependency.
   await writeMarketStats(market.slug, stats).catch(() => {});

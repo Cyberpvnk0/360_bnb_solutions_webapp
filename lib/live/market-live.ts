@@ -6,9 +6,9 @@
  * was honest while no live source existed. One does: a coordinate
  * resolves to a market, and that market has published figures.
  *
- * COST IS THE WHOLE DESIGN. Two billed calls per market, times 409
- * markets, times however often it refreshes, is not a number to
- * discover after the fact. So nothing is pre-fetched: a market costs
+ * COST IS THE WHOLE DESIGN. Three billed calls per market — identity,
+ * summary, history — times 409 markets, times however often it
+ * refreshes, is not a number to discover after the fact. So nothing is pre-fetched: a market costs
  * money the first time someone opens it and not before, and the answer
  * is kept in the durable store for as long as the TTL allows. A market
  * nobody visits costs nothing, forever.
@@ -21,8 +21,10 @@
 
 import {
   fetchMarketIdentity,
+  fetchMarketMetrics,
   fetchMarketSummary,
   hasAirRoiKey,
+  type LiveMarketMonth,
   type MarketSummary,
 } from "@/lib/live/airroi";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
@@ -30,6 +32,10 @@ import type { Market } from "@/lib/mock/types";
 
 export interface LiveMarket {
   summary: MarketSummary;
+  /** Twelve months of history — empty when the call failed, which is
+   *  survivable: the headline figures still stand and the charts fall
+   *  back to the seeded series. */
+  monthly: LiveMarketMonth[];
   /** What the feed calls this place — ZIP-granular, e.g.
    *  "32202, Jacksonville, Florida, United States". Worth showing: it
    *  says how wide the figures actually are. */
@@ -65,9 +71,16 @@ export async function fetchLiveMarket(market: Market): Promise<LiveMarket | null
     const summary = await fetchMarketSummary(identity.market);
     if (!complete(summary)) return null;
 
+    // The history is worth a third call but not worth failing over: a
+    // page with real headline figures and a seeded chart is far better
+    // than one that falls back to seeded everything because the series
+    // was unavailable.
+    const monthly = await fetchMarketMetrics(identity.market).catch(() => []);
+
     commitLiveSearch(key);
     return {
       summary,
+      monthly,
       fullName: identity.fullName,
       asOf: new Date().toISOString(),
     };
