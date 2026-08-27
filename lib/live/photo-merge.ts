@@ -1,13 +1,15 @@
 /**
  * The photo merge for one market, in one place.
  *
- * Two callers: the route the browser asks a beat after the rows render,
- * and the scheduled warmer that runs the same work before anyone is
- * awake. Everything expensive underneath — search pages, the feed,
- * geocodes — lands in the data cache, so whoever runs this first pays
- * and everyone after rides. The point of the warmer is that "whoever
- * runs this first" should be a robot on a schedule, not the first
- * student into a market each morning.
+ * One caller: the route the browser asks for a beat after the rows
+ * render. Nothing pre-fetches — a market costs credits the moment
+ * someone searches it and not before, which is the whole trade. The
+ * first student into a market each morning waits; everyone after them
+ * rides the stored row for free.
+ *
+ * Everything expensive underneath — search pages, the feed, geocodes —
+ * lands in the store, so "whoever runs this first pays" is true exactly
+ * once per market per TTL rather than once per deployment.
  */
 
 import { addressKey, buildingKey } from "@/lib/live/address";
@@ -24,8 +26,8 @@ import type { Market, RentalListing } from "@/lib/mock/types";
 export interface MarketPhotoMerge {
   /** False when no photo source is mapped for this market. */
   covered: boolean;
-  /** The feed's own rows, so a warming run can store the whole day —
-   *  listings and photos both — in one computation. */
+  /** The feed's own rows, so one search stores the whole day —
+   *  listings and photos both — from a single computation. */
   feed: RentalListing[];
   /** Feed listing id → photo, for rows the feed already shows. */
   photos: Record<string, string>;

@@ -38,7 +38,7 @@ export async function GET() {
     durability: {
       storeConfigured: storeConfigured(),
       detail:
-        "With the store configured, market searches AND listing details survive deploys. Without it both fall back to the framework cache, which every deployment discards — that is what made a day of pushes cost a day of credits.",
+        "Nothing pre-fetches: a market costs credits when someone searches it and not before. With the store configured, that search's result AND any listing details opened from it survive deploys, so the next student rides for free. Without it both fall back to the framework cache, which every deployment discards — that is what made a day of pushes cost a day of credits.",
     },
   });
 }

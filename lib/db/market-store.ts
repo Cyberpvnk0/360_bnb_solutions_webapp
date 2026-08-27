@@ -4,9 +4,10 @@
  *
  * Before this, every cache lived inside the framework's fetch cache —
  * real, but bound to a deployment and invisible to the next one, so a
- * deploy re-chilled every market and the warming cron's work evaporated
- * with it. A row here survives deploys, spans serverless instances, and
- * makes a warmed market instant for as long as the row is fresh.
+ * deploy re-chilled every market that had ever been searched. A row
+ * here survives deploys and spans serverless instances, so the first
+ * student to search a market pays for it and everyone after them —
+ * across deploys, across instances — rides for free until it ages out.
  *
  * Plain fetch against Supabase's REST layer, no SDK — the same posture
  * as every other vendor in lib/live, and one less dependency to audit.
@@ -29,6 +30,11 @@ import type { RentalListing } from "@/lib/mock/types";
  * does not turn over fast enough for a two- or three-day-old set to be
  * wrong so much as slightly behind — which the honest asOf timestamp
  * already says out loud.
+ *
+ * This is now the ONLY thing standing between a popular market and a
+ * fresh bill every time someone opens it: nothing pre-fetches any
+ * more, so the TTL alone decides how often a searched market is
+ * re-bought.
  */
 export const STORE_TTL_MS = (() => {
   const raw = Number(process.env.STORE_TTL_HOURS);

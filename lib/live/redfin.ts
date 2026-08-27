@@ -561,7 +561,7 @@ export interface RedfinPhotoIndex {
      * Reported because estimating it went wrong by a factor of ten: the
      * structured endpoints bill 1 credit a request, not the 10 a
      * premium proxy request costs, and a budget built on the wrong one
-     * sizes the warm list wrong in whichever direction it errs. Null
+     * misjudges the whole plan in whichever direction it errs. Null
      * when the vendor sent no cost header.
      */
     credits: number | null;

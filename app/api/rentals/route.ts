@@ -144,10 +144,10 @@ export async function GET(request: Request) {
   }
 
   // The durable store first: a fresh row is the same inventory this
-  // route would fetch, already fetched — by the warming cron, another
-  // instance, or an earlier deploy — and serving it spends neither a
-  // vendor request nor a quota slot. asOf is the row's real fetch
-  // time, never dressed up as now.
+  // route would fetch, already fetched — by another instance, an
+  // earlier deploy, or simply whoever searched this market before —
+  // and serving it spends neither a vendor request nor a quota slot.
+  // asOf is the row's real fetch time, never dressed up as now.
   const stored = await readMarketStore(market.slug);
   const gate = checkLiveSearch(`market:${market.slug}`);
   if (stored?.listings?.length && isFresh(stored.listingsAt)) {

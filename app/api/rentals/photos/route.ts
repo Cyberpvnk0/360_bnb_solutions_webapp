@@ -79,8 +79,8 @@ export async function GET(request: Request) {
   }
 
   // The durable store first — a fresh photo merge is the whole answer,
-  // computed once today by whoever got here first (usually the warming
-  // cron). The shape probe always computes live: it exists to watch the
+  // computed once by whoever searched this market first and paid for
+  // it. The shape probe always computes live: it exists to watch the
   // pipeline run, and a stored answer would hide exactly what it is
   // for.
   const stored = await readMarketStore(market.slug);
