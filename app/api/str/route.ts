@@ -3,6 +3,7 @@
  *   /api/str?lat=30.33&lon=-81.66&bedrooms=2   → comps + market analytics
  *   /api/str?lat=…&lon=…&shape=comps           → raw payload, keys only
  *   /api/str?lat=…&lon=…&shape=all             → sweep every candidate path
+ *   …&depth=5                                  → how far into nested payloads to look
  *
  * The AirROI key stays server-side. Calls are billed per request, so
  * each point spends at most one slot of the same daily cap that guards
@@ -42,19 +43,26 @@ function failure(error: unknown) {
   );
 }
 
-/** Key names and value types only — no listing data leaves this route. */
-function describe(value: unknown, depth = 0): unknown {
+/**
+ * Key names and value types only — no listing data leaves this route.
+ *
+ * The depth limit is a parameter because the default of two was itself
+ * a bug in disguise: a comp arrives as eight nested objects, and at
+ * depth two every one of them printed as the word "object". The probe
+ * reported success while hiding the only thing it was asked to find.
+ */
+function describe(value: unknown, depth = 0, max = 2): unknown {
   if (Array.isArray(value)) {
-    return depth > 2
+    return depth > max
       ? `array(${value.length})`
-      : { array: value.length, first: describe(value[0], depth + 1) };
+      : { array: value.length, first: describe(value[0], depth + 1, max) };
   }
   if (value && typeof value === "object") {
-    if (depth > 2) return "object";
+    if (depth > max) return "object";
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([k, v]) => [
         k,
-        describe(v, depth + 1),
+        describe(v, depth + 1, max),
       ])
     );
   }
@@ -67,6 +75,10 @@ export async function GET(request: Request) {
   const lon = Number(searchParams.get("lon"));
   const bedrooms = Number(searchParams.get("bedrooms")) || undefined;
   const shape = searchParams.get("shape");
+  // How far into a nested payload to report. Capped: this prints keys,
+  // not values, but an unbounded walk of a deep response is still a way
+  // to turn a diagnostic into a data dump.
+  const depth = Math.min(6, Math.max(2, Number(searchParams.get("depth")) || 2));
 
   if (!hasAirRoiKey()) {
     return NextResponse.json(
@@ -99,7 +111,7 @@ export async function GET(request: Request) {
         status: outcome.status,
         reason: outcome.reason,
         detail: outcome.detail,
-        shape: outcome.ok ? describe(outcome.shape) : null,
+        shape: outcome.ok ? describe(outcome.shape, 0, depth) : null,
       });
     }
 
@@ -115,7 +127,7 @@ export async function GET(request: Request) {
         status: outcome.status,
         reason: outcome.reason,
         detail: outcome.detail,
-        shape: outcome.ok ? describe(outcome.shape) : null,
+        shape: outcome.ok ? describe(outcome.shape, 0, depth) : null,
       });
     }
 
@@ -138,7 +150,7 @@ export async function GET(request: Request) {
           ? { lat: String(lat), lng: String(lon) }
           : { latitude: String(lat), longitude: String(lon), bedrooms: "2", currency: "native" };
       const body = await probeShape(path, params);
-      return NextResponse.json({ path, shape: describe(body) });
+      return NextResponse.json({ path, depth, shape: describe(body, 0, depth) });
     } catch (error) {
       return failure(error);
     }
