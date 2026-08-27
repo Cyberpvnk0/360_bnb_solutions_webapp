@@ -125,6 +125,17 @@ export interface StrComp {
    */
   lat?: number;
   lon?: number;
+  /**
+   * What this listing actually earned over the trailing twelve months,
+   * when the feed reports it.
+   *
+   * Ground truth, not a product of rate times occupancy times 365, and
+   * so not something to reconstruct when it is handed over. Nothing
+   * projects from it yet — the revenue model still runs on ADR and
+   * occupancy — but discarding a measured figure to recompute an
+   * estimate of it would be a strange way to treat the better number.
+   */
+  annualRevenue?: number;
 }
 
 export interface LtrComp {
