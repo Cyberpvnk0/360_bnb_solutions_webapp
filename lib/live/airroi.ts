@@ -39,6 +39,29 @@ const BASE = "https://api.airroi.com";
 
 /** Comparable listings around a point — the comps behind a projection. */
 export const COMPS_PATH = "/listings/comparables";
+
+/**
+ * The comps query, in ONE place.
+ *
+ * Every parameter here is required by the service. Three separate
+ * copies of this list existed and each dropped a different pair at
+ * least once, so there is one now and everything reads it.
+ */
+export function compsParams(
+  lat: number,
+  lon: number,
+  opts: { bedrooms?: number; baths?: number; guests?: number }
+): Record<string, string> {
+  const bedrooms = opts.bedrooms ?? 2;
+  return {
+    latitude: String(lat),
+    longitude: String(lon),
+    bedrooms: String(bedrooms),
+    baths: (opts.baths ?? Math.max(1, bedrooms)).toFixed(1),
+    guests: String(opts.guests ?? Math.max(2, bedrooms * 2)),
+    currency: "native",
+  };
+}
 /**
  * A coordinate's market — IDENTITY ONLY.
  *
@@ -332,18 +355,26 @@ export async function fetchComps(opts: {
   guests?: number;
   limit?: number;
 }): Promise<StrComp[]> {
+  /**
+   * baths and guests are REQUIRED — the service answers
+   * "query param baths must not be null" without them, so leaving them
+   * off is not a degraded request, it is a guaranteed 400.
+   *
+   * They were modelled as optional here and omitted when absent, which
+   * meant three separate copies of this parameter list each had to
+   * remember to pass them, and three separate times one didn't: the
+   * sweep, the single-endpoint probe, and this, the path the product
+   * actually uses. Defaulting them where the request is built ends
+   * that — a caller can still say what it knows, and one that says
+   * nothing gets a request that works instead of one that cannot.
+   *
+   * The defaults follow the shape of the housing stock: about a bath
+   * per bedroom, two guests to a bedroom.
+   */
+
   const body = await call(
     COMPS_PATH,
-    {
-      latitude: String(opts.lat),
-      longitude: String(opts.lon),
-      ...(opts.bedrooms ? { bedrooms: String(opts.bedrooms) } : {}),
-      ...(opts.baths ? { baths: opts.baths.toFixed(1) } : {}),
-      ...(opts.guests ? { guests: String(opts.guests) } : {}),
-      // Prices in the listing's own currency; these are US markets, so
-      // this keeps them dollars rather than a converted figure.
-      currency: "native",
-    },
+    compsParams(opts.lat, opts.lon, opts),
     COMPS_REVALIDATE_SECONDS
   );
   const subject = { lat: opts.lat, lon: opts.lon };
@@ -437,19 +468,9 @@ export async function probeShape(
  * page ever triggers.
  */
 export const PROBE_TARGETS: { path: string; params: (lat: number, lon: number) => Record<string, string> }[] = [
-  // Their example sends baths and guests as well; the first sweep sent
-  // neither and got a 400 for it.
-  {
-    path: COMPS_PATH,
-    params: (lat, lon) => ({
-      latitude: String(lat),
-      longitude: String(lon),
-      bedrooms: "2",
-      baths: "2.0",
-      guests: "4",
-      currency: "native",
-    }),
-  },
+  // Every parameter the service requires, in one place, shared with the
+  // real call path — see compsParams.
+  { path: COMPS_PATH, params: (lat, lon) => compsParams(lat, lon, {}) },
   { path: MARKET_PATH, params: (lat, lon) => ({ lat: String(lat), lng: String(lon) }) },
 ];
 

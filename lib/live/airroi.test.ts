@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COMPS_PATH, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
+import { COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -140,5 +140,30 @@ describe("the real nested payload", () => {
 
   it("finds the row array under their `listings` key", () => {
     expect(extractArray({ listings: [realComp(), realComp()] })).toHaveLength(2);
+  });
+});
+
+describe("the comps query", () => {
+  it("always sends every parameter the service requires", () => {
+    // "query param baths must not be null" — they are required, so an
+    // omitted one is a guaranteed 400 rather than a looser search. This
+    // exact omission shipped three times from three copies of the list.
+    const p = compsParams(30.33, -81.66, {});
+    for (const k of ["latitude", "longitude", "bedrooms", "baths", "guests", "currency"]) {
+      expect(p[k], k).toBeTruthy();
+    }
+  });
+
+  it("uses what the caller knows when the caller knows it", () => {
+    const p = compsParams(30.33, -81.66, { bedrooms: 3, baths: 2.5, guests: 7 });
+    expect(p.bedrooms).toBe("3");
+    expect(p.baths).toBe("2.5");
+    expect(p.guests).toBe("7");
+  });
+
+  it("defaults a studio to something the service will accept", () => {
+    const p = compsParams(30.33, -81.66, { bedrooms: 0 });
+    expect(Number(p.baths)).toBeGreaterThan(0);
+    expect(Number(p.guests)).toBeGreaterThan(0);
   });
 });

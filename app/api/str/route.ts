@@ -1,6 +1,7 @@
 /**
  * Short-term-rental data for a point:
- *   /api/str?lat=30.33&lon=-81.66&bedrooms=2   → comps + market analytics
+ *   /api/str?lat=30.33&lon=-81.66&bedrooms=2   → comps for that point
+ *     …&baths=2&guests=4                       → optional; defaulted from bedrooms
  *   /api/str?lat=…&lon=…&shape=comps           → raw payload, keys only
  *   /api/str?lat=…&lon=…&shape=all             → sweep every candidate path
  *   …&depth=5                                  → how far into nested payloads to look
@@ -134,6 +135,8 @@ export async function GET(request: Request) {
   const lat = Number(searchParams.get("lat"));
   const lon = Number(searchParams.get("lon"));
   const bedrooms = Number(searchParams.get("bedrooms")) || undefined;
+  const baths = Number(searchParams.get("baths")) || undefined;
+  const guests = Number(searchParams.get("guests")) || undefined;
   const shape = searchParams.get("shape");
   // How far into a nested payload to report. Capped: this prints keys,
   // not values, but an unbounded walk of a deep response is still a way
@@ -232,7 +235,7 @@ export async function GET(request: Request) {
     // Comps only. The market endpoints carry no figures — lookup
     // returns a name, the metrics paths 404 — so pairing every analysis
     // with a second billed call bought a null and some latency.
-    const comps = await fetchComps({ lat, lon, bedrooms });
+    const comps = await fetchComps({ lat, lon, bedrooms, baths, guests });
     // Too thin to underwrite on is the same as no answer — the seeded
     // comp set is a better read than three strangers' nightly rates.
     if (comps.length < 4) {
