@@ -16,6 +16,14 @@
  * came back with the full result set and read as success. So this
  * fetches each source with and without its filter and compares.
  *
+ * The same three questions are also asked of whichever VENDOR fetches
+ * the pages, because they answer them at wildly different prices and
+ * one of them may answer a fourth: Zyte's automatic extraction turns a
+ * page into structured JSON with no site-specific endpoint behind it.
+ * If that works on Realtor it is the only route to Realtor's photos
+ * and furnished filter that exists anywhere, so `&vendor=zyte` runs
+ * the identical measurements through it.
+ *
  * Costs a handful of credits per run and is not on any page's path.
  * Deliberately reports raw signals — counts, byte sizes, sample
  * addresses — rather than a verdict, because a probe that concludes
@@ -24,6 +32,13 @@
 
 import { NextResponse } from "next/server";
 import { hasScrapflyKey, scrapflyPage } from "@/lib/live/scrapfly";
+import {
+  hasZyteKey,
+  zyteKeyMissingMessage,
+  zytePage,
+  type ZyteMode,
+  type ZyteProduct,
+} from "@/lib/live/zyte";
 import { REDFIN_CITY_ID } from "@/lib/live/redfin-city";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
@@ -144,18 +159,63 @@ function count(text: string, pattern: RegExp): number {
   return (text.match(new RegExp(pattern.source, pattern.flags)) ?? []).length;
 }
 
+/**
+ * One page, from whichever vendor is being measured, flattened to the
+ * fields the comparison actually reads. Vendors bill in their own
+ * units and report it in their own places, so `cost` is deliberately a
+ * string: printing what each one said beats inventing a shared number
+ * neither of them quoted.
+ */
+interface Fetched {
+  ok: boolean;
+  status: number;
+  content: string;
+  bytes: number;
+  cost: string | null;
+  error: string | null;
+  products: ZyteProduct[] | null;
+}
+
+/** What an extraction saw, when one ran. The photo figure here is the
+ *  apples-to-apples partner of photosPerCard: same question, asked of
+ *  structured output instead of a regex over HTML. */
+function extractionOf(products: ZyteProduct[] | null) {
+  if (products === null) return null;
+  const withPhoto = products.filter((p) => p.images > 0).length;
+  const images = products.reduce((sum, p) => sum + p.images, 0);
+  return {
+    products: products.length,
+    withPhoto,
+    imagesPerProduct:
+      products.length > 0 ? Number((images / products.length).toFixed(1)) : null,
+    /** A couple of rows verbatim, so "it worked" can be checked rather
+     *  than taken on the count alone. */
+    sample: products.slice(0, 3),
+    note:
+      products.length === 0
+        ? "extraction ran and found nothing — a rental grid is not a product grid to this model, or the page was blocked"
+        : null,
+  };
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const market = MARKET_BY_SLUG.get(searchParams.get("market") ?? "");
   if (!market) {
     return NextResponse.json({ error: "unknown market" }, { status: 404 });
   }
-  if (!hasScrapflyKey()) {
+
+  const vendor = searchParams.get("vendor") === "zyte" ? "zyte" : "scrapfly";
+  if (vendor === "scrapfly" && !hasScrapflyKey()) {
     return NextResponse.json(
       { error: "no SCRAPFLY_SECRET_KEY on this deployment" },
       { status: 503 }
     );
   }
+  if (vendor === "zyte" && !hasZyteKey()) {
+    return NextResponse.json({ error: zyteKeyMissingMessage() }, { status: 503 });
+  }
+
   const renderJs = searchParams.get("render") === "1";
   // Anti-bot bypass is the expensive setting — a measured 38 credits a
   // page against 1 for a plain fetch. Off-able, because whether these
@@ -163,22 +223,60 @@ export async function GET(request: Request) {
   // around the assumption that they do.
   const asp = searchParams.get("asp") !== "0";
 
+  // Zyte's three ways of fetching the same URL, which cost differently
+  // and are the point of pointing this at Zyte at all.
+  const modeParam = (searchParams.get("mode") ?? "").toLowerCase();
+  const zyteMode: ZyteMode =
+    modeParam === "productlist"
+      ? "productList"
+      : modeParam === "browser"
+        ? "browser"
+        : "http";
+
+  // Six fetches inside a five-minute ceiling is tight once a vendor
+  // renders JavaScript, so one source at a time has to be possible or
+  // the slow configurations can never be measured at all.
+  const only = (searchParams.get("sources") ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const fetchPage = (url: string): Promise<Fetched> =>
+    vendor === "zyte"
+      ? zytePage(url, zyteMode).then((page) => ({
+          ok: page.ok,
+          status: page.status,
+          content: page.content,
+          bytes: page.bytes,
+          cost: page.cost,
+          error: page.error,
+          products: page.products,
+        }))
+      : scrapflyPage(url, { renderJs, asp }).then((page) => ({
+          ok: page.ok,
+          status: page.status,
+          content: page.content,
+          bytes: page.bytes,
+          cost: page.credits === null ? null : `${page.credits} credits`,
+          error: page.error,
+          products: null,
+        }));
+
   const results = [];
-  let spent = 0;
+  const costs: string[] = [];
 
   // Sequential: these go through the shared request gate anyway, and a
   // comparison that trips a rate limit measures the rate limit.
   for (const target of targetsFor(market)) {
+    if (only.length > 0 && !only.includes(target.source)) continue;
     if (!target.plain) {
       results.push({ source: target.source, skipped: "no city id for this market" });
       continue;
     }
 
-    const plain = await scrapflyPage(target.plain, { renderJs, asp });
-    const furnished = target.furnished
-      ? await scrapflyPage(target.furnished, { renderJs, asp })
-      : null;
-    spent += (plain.credits ?? 0) + (furnished?.credits ?? 0);
+    const plain = await fetchPage(target.plain);
+    const furnished = target.furnished ? await fetchPage(target.furnished) : null;
+    for (const c of [plain.cost, furnished?.cost]) if (c) costs.push(c);
 
     const photos = count(plain.content, PHOTO_PATTERNS[target.source]);
     const cards = count(plain.content, CARD_PATTERNS[target.source]);
@@ -191,6 +289,12 @@ export async function GET(request: Request) {
       : {};
     const plainTotal = pickTotal(plainTotals);
     const furnishedTotal = pickTotal(furnishedTotals);
+
+    // Extracted rows are a second, independent count of the same page,
+    // so when the HTML patterns come back empty they still say whether
+    // anything was there.
+    const plainProducts = plain.products?.length ?? null;
+    const furnishedProducts = furnished?.ok ? (furnished.products?.length ?? null) : null;
 
     results.push({
       source: target.source,
@@ -207,7 +311,8 @@ export async function GET(request: Request) {
         photosPerCard: cards > 0 ? Number((photos / cards).toFixed(1)) : null,
         totals: plainTotals,
         total: plainTotal,
-        credits: plain.credits,
+        extraction: extractionOf(plain.products),
+        cost: plain.cost,
         error: plain.error,
       },
       furnished: furnished && {
@@ -218,35 +323,47 @@ export async function GET(request: Request) {
         cards: furnishedCards,
         totals: furnishedTotals,
         total: furnishedTotal,
-        credits: furnished.credits,
+        extraction: extractionOf(furnished.products),
+        cost: furnished.cost,
         error: furnished.error,
       },
       /**
-       * Totals first, cards only as a fallback — and when the fallback
-       * is all there is, it can say "narrows" but never "ignored",
-       * because two full pages look identical however good the filter.
+       * Totals first, extracted rows next, cards last — and whenever
+       * the answer rests on a page rather than a total it can say
+       * "narrows" but never "ignored", because two full pages look
+       * identical however good the filter.
        */
       filterNarrows:
         plainTotal !== null && furnishedTotal !== null
           ? furnishedTotal < plainTotal
             ? `yes — ${furnishedTotal} of ${plainTotal} total`
             : `NO — ${furnishedTotal} vs ${plainTotal} total, the filter is being ignored`
-          : furnishedCards !== null && cards > 0 && furnishedCards < cards
-            ? `yes — ${furnishedCards} of ${cards} on page one`
-            : "unknown — no total found, and one page of results looks the same filtered or not",
+          : plainProducts !== null &&
+              furnishedProducts !== null &&
+              plainProducts > 0 &&
+              furnishedProducts < plainProducts
+            ? `yes — ${furnishedProducts} of ${plainProducts} extracted on page one`
+            : furnishedCards !== null && cards > 0 && furnishedCards < cards
+              ? `yes — ${furnishedCards} of ${cards} on page one`
+              : "unknown — no total found, and one page of results looks the same filtered or not",
     });
   }
 
   return NextResponse.json({
     market: market.slug,
-    renderJs,
-    creditsSpent: spent || null,
+    vendor,
+    ...(vendor === "zyte" ? { mode: zyteMode } : { renderJs, asp }),
+    /** Verbatim, per request, in whatever unit the vendor quoted. */
+    costs: costs.length > 0 ? costs : null,
     results,
     howToRead:
-      "filterNarrows now compares the site's OWN totals, not page-one cards — every one of these paginates near forty, so card counts match whether the filter works or not. That flaw made the first run report Redfin's furnished filter as ignored, which it is not. " +
-      "photosPerCard is the photo-quality comparison. " +
+      "filterNarrows compares the site's OWN totals, not page-one cards — every one of these paginates near forty, so card counts match whether the filter works or not. That flaw made the first run report Redfin's furnished filter as ignored, which it is not. " +
+      "photosPerCard is the photo-quality comparison across sources. " +
       "`totals` lists every count each pattern found, so a wrong pattern is visible instead of quietly standing in for the right one. " +
-      "cards:0 means blocked or JavaScript-rendered, not empty — retry with &render=1. " +
-      "&asp=0 turns off the anti-bot bypass: it is the expensive setting, and whether these sites need it is worth measuring rather than assuming.",
+      "cards:0 means blocked or JavaScript-rendered, not empty. " +
+      "&vendor=zyte swaps the fetcher; with it, &mode=http|browser|productlist chooses how Zyte fetches. " +
+      "productlist is the one worth running: it asks Zyte's automatic extraction to read the rental grid as a product grid, and `extraction.imagesPerProduct` is then the photo figure with no site-specific parsing behind it — the only route to Realtor's photos that would not need one. extraction.products:0 means the extractor ran and found nothing, which is an answer, not an error. " +
+      "&sources=realtor limits the run to one site, which the slower Zyte modes need to finish inside the five-minute ceiling. " +
+      "&asp=0 (scrapfly only) turns off the anti-bot bypass: it is the expensive setting, and whether these sites need it is worth measuring rather than assuming.",
   });
 }
