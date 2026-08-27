@@ -16,6 +16,7 @@ import { clamp, daysAgo, hashStr, MOCK_TODAY, Rng, roundTo } from "./seed";
 import type {
   Analysis,
   LtrComp,
+  Market,
   PropertyType,
   RentalListing,
   StrComp,
@@ -250,4 +251,72 @@ export function analysisForListing(listing: RentalListing): Analysis {
   };
   LISTING_ANALYSES.set(listing.analysisId, analysis);
   return analysis;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reusable builders for a searched address                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lease comps and calculator defaults for a property that is not in the
+ * seeded set.
+ *
+ * Thin wrappers, exported rather than reimplemented, so a searched
+ * address starts from exactly the same assumptions as a saved deal. A
+ * second copy of buildDefaults would drift, and the drift would show up
+ * as two different answers for one property depending on how the user
+ * arrived at it.
+ *
+ * Long-term comps stay seeded for now: the rental feed answers "what is
+ * listed in this market", not "what would this specific unit lease
+ * for", and the calculator's rent field is the first thing an operator
+ * overrides anyway.
+ */
+export function buildLtrCompsFor(
+  market: Market,
+  bedrooms: number,
+  seed: string
+): LtrComp[] {
+  return buildLtrComps(
+    market.medianRent2br,
+    bedrooms,
+    market.name,
+    market.stateCode,
+    seed,
+    new Rng(hashStr(seed))
+  );
+}
+
+export function buildDefaultsFor(
+  ltrComps: LtrComp[],
+  bedrooms: number,
+  seed: string
+): DealInputs {
+  return buildDefaults(ltrComps, bedrooms, new Rng(hashStr(seed)));
+}
+
+/**
+ * Modelled short-term comps for a market, when the live feed gave none.
+ *
+ * The fallback of last resort for a searched address. Without it a
+ * failed lookup leaves an empty comp set, and every derived figure on
+ * the page divides by zero — the analyzer renders as a row of dashes
+ * for a property that may be perfectly good.
+ *
+ * The caller MUST label these. They describe the market, not the
+ * address, and a modelled comp shown with the confidence of a measured
+ * one is the single most expensive mistake this product could make.
+ */
+export function buildStrCompsFor(
+  market: Market,
+  bedrooms: number,
+  seed: string
+): StrComp[] {
+  return buildStrComps(
+    market.adr,
+    market.occupancy,
+    bedrooms,
+    seed,
+    new Rng(hashStr(seed))
+  );
 }

@@ -3,6 +3,17 @@
 /**
  * Address in, projection out — the entry form.
  *
+ * It now does that. What was here searched a hardcoded list of invented
+ * addresses and, on submit, waited two seconds before opening one of
+ * thirty seeded analyses regardless of what had been typed. Any real
+ * address returned somebody else's property, convincingly.
+ *
+ * Suggestions come from the public federal geocoder — free, keyless,
+ * nothing billed — so they can be fetched on every debounced keystroke.
+ * Picking one carries its coordinates through to the result, where the
+ * comps are drawn around that exact point rather than around the
+ * market's centre.
+ *
  * Submitting consumes one pull (stated plainly, with the remaining count).
  * Free and out-of-pulls users never see an error: they get the upgrade
  * modal with their real result blurred behind it.
@@ -12,13 +23,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Crosshair, MapPin } from "lucide-react";
-import {
-  getAnalysis,
-  getRecentAnalyses,
-  runAddressPull,
-  searchAddresses,
-  type AddressSuggestion,
-} from "@/lib/data";
+import { getRecentAnalyses } from "@/lib/data";
 import type { Analysis, PropertyType } from "@/lib/mock/types";
 import { fmtDate } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
@@ -37,6 +42,12 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+/** A geocoded place: what the geocoder calls it, and where it is. */
+interface AddressMatch {
+  address: string;
+  point: { lat: number; lon: number } | null;
+}
+
 const BEDROOM_OPTIONS = [1, 2, 3, 4, 5];
 const BATHROOM_OPTIONS = ["1", "1.5", "2", "2.5", "3"];
 const TYPE_OPTIONS: { value: PropertyType; label: string }[] = [
@@ -48,21 +59,43 @@ const TYPE_OPTIONS: { value: PropertyType; label: string }[] = [
 
 export function AnalyzeEntry({
   initialAnalysis,
+  prefill = null,
 }: {
   initialAnalysis: Analysis | null;
+  /** A geocoded address handed over by the top-bar search, coordinates
+   *  and all, so this form does not resolve the same string twice. */
+  prefill?: AddressMatch | null;
 }) {
   const router = useRouter();
   const { ready, tier, canPull, pullsRemaining, consumePull, openUpgrade } =
     useSession();
 
   const [query, setQuery] = React.useState(
-    initialAnalysis
-      ? `${initialAnalysis.address}, ${initialAnalysis.city}, ${initialAnalysis.stateCode}`
-      : ""
+    prefill?.address ??
+      (initialAnalysis
+        ? `${initialAnalysis.address}, ${initialAnalysis.city}, ${initialAnalysis.stateCode}`
+        : "")
   );
-  const [selected, setSelected] = React.useState<Analysis | null>(initialAnalysis);
-  const [suggestions, setSuggestions] = React.useState<AddressSuggestion[]>([]);
+  /** The geocoded place this will analyse. Null until one is picked. */
+  const [place, setPlace] = React.useState<AddressMatch | null>(
+    prefill ??
+      (initialAnalysis
+        ? {
+            address: `${initialAnalysis.address}, ${initialAnalysis.city}, ${initialAnalysis.stateCode}`,
+            // No coordinates: a listing handed over from the Deal Finder
+            // carries an address but not a geocode, so the box asks for
+            // a pick before it will run. Better than projecting at a
+            // point we do not have.
+            point: null,
+          }
+        : null)
+  );
+  const [suggestions, setSuggestions] = React.useState<AddressMatch[]>([]);
   const [listOpen, setListOpen] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
+  /** Set when a lookup completed and matched nothing — a typo and an
+   *  outage look identical without it. */
+  const [noMatch, setNoMatch] = React.useState(false);
   const [bedrooms, setBedrooms] = React.useState(initialAnalysis?.bedrooms ?? 2);
   const [bathrooms, setBathrooms] = React.useState(
     String(initialAnalysis?.bathrooms ?? "2")
@@ -78,57 +111,80 @@ export function AnalyzeEntry({
   }, []);
 
   React.useEffect(() => {
-    if (selected || query.trim().length < 2) return;
+    const q = query.trim();
+    // Already resolved to the thing being shown; nothing to look up.
+    if (place?.address === q) return;
+    // Too short to look up. Clearing the list is the change handler's
+    // job, not this effect's — a synchronous setState here would run on
+    // every render that passes through a short query, and the compiler
+    // is right to refuse it.
+    if (q.length < 4) return;
+
     let cancelled = false;
-    const t = setTimeout(() => {
-      searchAddresses(query).then((results) => {
+    // Long enough that a street number and name are usually complete —
+    // the geocoder matches whole addresses, not prefixes, so firing on
+    // every character mostly buys empty results.
+    const t = setTimeout(async () => {
+      setSearching(true);
+      setNoMatch(false);
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const body = (await res.json()) as { matches?: AddressMatch[] };
         if (cancelled) return;
-        setSuggestions(results);
-        setListOpen(results.length > 0);
-      });
-    }, 150);
+        const matches = body.matches ?? [];
+        setSuggestions(matches);
+        setListOpen(matches.length > 0);
+        setNoMatch(matches.length === 0);
+      } catch {
+        if (!cancelled) setNoMatch(false);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 400);
+
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, selected]);
+  }, [query, place]);
 
-  const chooseSeq = React.useRef(0);
-
-  const choose = async (s: AddressSuggestion) => {
-    const seq = ++chooseSeq.current;
-    setQuery(s.label);
+  const choose = (match: AddressMatch) => {
+    setQuery(match.address);
+    setPlace(match);
     setListOpen(false);
     setSuggestions([]);
-    const analysis = await getAnalysis(s.analysisId);
-    // If the user resumed typing while this resolved, drop the stale pick.
-    if (seq !== chooseSeq.current) return;
-    setSelected(analysis);
-    if (analysis) {
-      setBedrooms(analysis.bedrooms);
-      setBathrooms(String(analysis.bathrooms));
-      setPropertyType(analysis.propertyType);
-    }
+    setNoMatch(false);
   };
 
-  const submit = async () => {
-    if (!selected) return;
+  const ready_ = place?.point != null;
+
+  const submit = () => {
+    if (!place?.point) return;
     if (!canPull) {
-      openUpgrade({ reason: "pulls", analysis: selected });
+      openUpgrade({ reason: "pulls" });
       return;
     }
     setPulling(true);
-    await runAddressPull(selected.id);
     consumePull();
-    router.push(`/analyze/${selected.id}`);
+    // The parameters are the analysis: shareable, reloadable, and no
+    // row to write or migration to run.
+    const params = new URLSearchParams({
+      a: place.address,
+      lat: String(place.point.lat),
+      lon: String(place.point.lon),
+      bd: String(bedrooms),
+      ba: bathrooms,
+      t: propertyType,
+    });
+    router.push(`/analyze/new?${params}`);
   };
 
-  if (pulling && selected) {
+  if (pulling && place) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 md:px-10">
         <MetricLabel>Running pull</MetricLabel>
         <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight md:text-3xl">
-          {selected.address}, {selected.city}
+          {place.address}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Reading nearby short-term rentals and lease listings…
@@ -181,7 +237,7 @@ export function AnalyzeEntry({
               : "You've used every pull this period."}{" "}
             <button
               type="button"
-              onClick={() => openUpgrade({ reason: "pulls", analysis: selected ?? undefined })}
+              onClick={() => openUpgrade({ reason: "pulls" })}
               className="font-medium text-gold underline-offset-2 transition-colors duration-150 hover:text-gold-bright hover:underline"
             >
               See plans
@@ -218,12 +274,15 @@ export function AnalyzeEntry({
                 value={query}
                 onChange={(e) => {
                   const value = e.target.value;
-                  chooseSeq.current += 1; // invalidate any in-flight pick
                   setQuery(value);
-                  setSelected(null);
-                  if (value.trim().length < 2) {
+                  // Typing invalidates the pick: the coordinates on
+                  // screen belong to the previous address, and running
+                  // a projection at them would be quietly wrong.
+                  setPlace(null);
+                  if (value.trim().length < 4) {
                     setSuggestions([]);
                     setListOpen(false);
+                    setNoMatch(false);
                   }
                 }}
                 className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-gold/50"
@@ -235,17 +294,17 @@ export function AnalyzeEntry({
                 role="listbox"
                 className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-sm border border-border bg-popover"
               >
-                {suggestions.map((s) => (
+                {suggestions.map((match) => (
                   <button
-                    key={s.analysisId}
+                    key={`${match.address}|${match.point?.lat}`}
                     type="button"
                     role="option"
                     aria-selected={false}
-                    onClick={() => choose(s)}
+                    onClick={() => choose(match)}
                     className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
                   >
                     <MapPin aria-hidden className="size-3.5 shrink-0 text-gold" />
-                    {s.label}
+                    {match.address}
                   </button>
                 ))}
               </div>
@@ -329,17 +388,21 @@ export function AnalyzeEntry({
           <Button
             size="lg"
             className="mt-8 w-full gap-2 sm:w-auto"
-            disabled={!selected || !ready}
+            disabled={!ready_ || !ready}
             onClick={submit}
           >
             Run the numbers
             <ArrowRight aria-hidden className="size-4" />
           </Button>
-          {!selected ? (
+          {ready_ ? null : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Pick an address from the suggestions to continue.
+              {searching
+                ? "Looking up that address…"
+                : noMatch
+                  ? "No match for that address. Check the street number and spelling, or add the city and state."
+                  : "Pick an address from the suggestions to continue."}
             </p>
-          ) : null}
+          )}
         </div>
       </section>
 

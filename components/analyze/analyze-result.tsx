@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtDate, fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
-import type { Analysis } from "@/lib/mock/types";
+import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
 import { AnimatedNumber } from "@/components/primitives/animated-number";
 import { BreakevenGauge } from "@/components/primitives/breakeven-gauge";
@@ -88,13 +88,26 @@ export function AnalyzeResult({
   analysis,
   marketCenter,
   liveComps = false,
+  searchedAddress = null,
 }: {
   analysis: Analysis;
   marketCenter: { lat: number; lon: number } | null;
   /** True when the comp set came from the live STR feed. */
   liveComps?: boolean;
+  /**
+   * Set when this came from a typed address rather than a saved deal.
+   *
+   * Carries which market's context was borrowed and how far away it is,
+   * because that distance is a real caveat: local regulation and the
+   * median lease come from the market, and a property forty miles out
+   * is borrowing both from somewhere it has little to do with.
+   */
+  searchedAddress?: { market: Market; milesAway: number } | null;
 }) {
   const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
+  // Far enough that the borrowed market context deserves saying out loud.
+  const distantMarket =
+    searchedAddress !== null && searchedAddress.milesAway > 25;
   const [inputs, setInputs] = React.useState<DealInputs>(analysis.defaults);
 
   const assumptions = React.useMemo(
@@ -171,6 +184,17 @@ export function AnalyzeResult({
                 <ArrowUpRight aria-hidden className="size-3" />
               </Link>
             </p>
+            {/* Regulation and the median lease come from the market, not
+                the address. Near its centre that is a fair swap; far
+                out it is a real assumption and gets said. */}
+            {distantMarket ? (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                Nearest covered market is {searchedAddress!.market.name},{" "}
+                <span className="tabular">{searchedAddress!.milesAway}</span> miles
+                away — local rules and the starting rent come from there.
+                Comps below are drawn around this address.
+              </p>
+            ) : null}
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               <StatusChip tone="outline">{analysis.bedrooms} bd</StatusChip>
               <StatusChip tone="outline">{analysis.bathrooms} ba</StatusChip>

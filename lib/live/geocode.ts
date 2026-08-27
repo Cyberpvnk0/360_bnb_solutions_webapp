@@ -110,6 +110,75 @@ export async function geocode(address: string): Promise<GeocodeResult> {
   return { point: null, source: null, failure: "no-match" };
 }
 
+export interface AddressCandidate {
+  /** The geocoder's own normalised spelling — what the property is
+   *  actually called, not what was typed at it. */
+  address: string;
+  point: Point;
+}
+
+/**
+ * Several matches for a partial or ambiguous address.
+ *
+ * `geocode` answers "where is this", which is the right question when a
+ * listing arrives with an address attached. A person typing into a box
+ * is asking something different — "did you find the place I mean" —
+ * and the honest answer to that is a short list they can pick from,
+ * not a silent choice of the first row.
+ *
+ * Census only, deliberately: this runs on every keystroke that clears
+ * the debounce, and the paid fallback exists for rows we must place,
+ * not for the letters somebody is still typing.
+ */
+export async function geocodeCandidates(
+  address: string,
+  limit = 6
+): Promise<AddressCandidate[]> {
+  const query = address.trim();
+  if (query.length < 4) return [];
+
+  const params = new URLSearchParams({
+    address: query,
+    benchmark: "Public_AR_Current",
+    format: "json",
+  });
+
+  try {
+    const res = await fetch(`${CENSUS}?${params}`, {
+      next: { revalidate: GEOCODE_REVALIDATE_SECONDS },
+    });
+    if (!res.ok) return [];
+    const body: unknown = await res.json().catch(() => null);
+    const matches = (
+      body as {
+        result?: {
+          addressMatches?: {
+            matchedAddress?: unknown;
+            coordinates?: Record<string, unknown>;
+          }[];
+        };
+      }
+    )?.result?.addressMatches;
+    if (!Array.isArray(matches)) return [];
+
+    const out: AddressCandidate[] = [];
+    for (const match of matches) {
+      // x is longitude. Reading them in the printed order is how you end
+      // up with a map of the Indian Ocean.
+      const point = usable(match?.coordinates?.y, match?.coordinates?.x);
+      const label =
+        typeof match?.matchedAddress === "string" ? match.matchedAddress : null;
+      if (point && label && !out.some((c) => c.address === label)) {
+        out.push({ address: label, point });
+      }
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /** Geocode many addresses, a few at a time. Order is preserved. */
 export async function geocodeAll(
   addresses: readonly string[],

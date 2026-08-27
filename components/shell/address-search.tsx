@@ -3,20 +3,31 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Search } from "lucide-react";
-import { searchAddresses, type AddressSuggestion } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 /**
  * The persistent top-bar address search — the product's primary flow.
  * Type an address, pick a suggestion, land on /analyze with it prefilled.
  * "/" focuses it from anywhere.
+ *
+ * Suggestions are real: the public federal geocoder, free and keyless,
+ * so a keystroke costs nothing. This searched a hardcoded list of
+ * invented addresses until now, and picking one handed the analyzer a
+ * seeded id — the same stub the entry form had, in a second place, which
+ * is exactly how a fake survives being fixed once.
  */
+
+/** A geocoded place: the geocoder's own spelling, and where it is. */
+interface AddressMatch {
+  address: string;
+  point: { lat: number; lon: number } | null;
+}
 export function AddressSearch({ className }: { className?: string }) {
   const router = useRouter();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState("");
-  const [suggestions, setSuggestions] = React.useState<AddressSuggestion[]>([]);
+  const [suggestions, setSuggestions] = React.useState<AddressMatch[]>([]);
   const [open, setOpen] = React.useState(false);
   const [highlighted, setHighlighted] = React.useState(0);
   const [searching, setSearching] = React.useState(false);
@@ -38,34 +49,52 @@ export function AddressSearch({ className }: { className?: string }) {
   }, []);
 
   React.useEffect(() => {
-    if (query.trim().length < 2) return;
+    // The geocoder matches whole addresses rather than prefixes, so
+    // firing on every character mostly buys empty results.
+    if (query.trim().length < 4) return;
     let cancelled = false;
-    const t = setTimeout(() => {
-      searchAddresses(query).then((results) => {
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/geocode?q=${encodeURIComponent(query.trim())}`
+        );
+        const body = (await res.json()) as { matches?: AddressMatch[] };
         if (cancelled) return;
-        setSuggestions(results);
-        setOpen(results.length > 0);
+        const matches = body.matches ?? [];
+        setSuggestions(matches);
+        setOpen(matches.length > 0);
         setHighlighted(0);
-        setSearching(false);
-      });
-    }, 150);
+      } catch {
+        // A failed lookup is not a match; leave the list as it was.
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 400);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [query]);
 
-  const choose = (s: AddressSuggestion) => {
+  const choose = (match: AddressMatch) => {
     setOpen(false);
     setSuggestions([]);
     setQuery("");
     inputRef.current?.blur();
-    router.push(`/analyze?address=${encodeURIComponent(s.analysisId)}`);
+    // Carry the coordinates through. The entry form would otherwise
+    // have to geocode the same string a second time, and could resolve
+    // it differently than the row the user actually clicked.
+    const params = new URLSearchParams({ address: match.address });
+    if (match.point) {
+      params.set("lat", String(match.point.lat));
+      params.set("lon", String(match.point.lon));
+    }
+    router.push(`/analyze?${params}`);
   };
 
   const onQueryChange = (value: string) => {
     setQuery(value);
-    if (value.trim().length < 2) {
+    if (value.trim().length < 4) {
       setSuggestions([]);
       setOpen(false);
       setSearching(false);
@@ -130,7 +159,7 @@ export function AddressSearch({ className }: { className?: string }) {
         >
           {suggestions.map((s, i) => (
             <button
-              key={s.analysisId}
+              key={`${s.address}|${s.point?.lat}`}
               type="button"
               role="option"
               aria-selected={i === highlighted}
@@ -143,7 +172,7 @@ export function AddressSearch({ className }: { className?: string }) {
               )}
             >
               <MapPin aria-hidden className="size-3.5 shrink-0 text-gold" />
-              <span className="truncate">{s.label}</span>
+              <span className="truncate">{s.address}</span>
             </button>
           ))}
           <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
