@@ -25,6 +25,7 @@ import {
   isFresh,
   readAllMarketStats,
   storeConfigured,
+  storeStatus,
   writeMarketStats,
 } from "@/lib/db/market-store";
 
@@ -64,6 +65,27 @@ export async function GET(request: Request) {
   }
   if (!hasAirRoiKey()) {
     return NextResponse.json({ error: "no AIRROI_API_KEY" }, { status: 503 });
+  }
+
+  /**
+   * Prove the store can round-trip BEFORE spending anything.
+   *
+   * The first real batch resolved five markets, reported success, and
+   * stored nothing: the write was failing and the writer was not
+   * looking at the response. Fifteen billed calls bought a number on a
+   * screen. A configured store is not the same claim as a working one,
+   * and only one of them is worth spending against.
+   */
+  const health = await storeStatus();
+  if (!health.ok) {
+    return NextResponse.json(
+      {
+        error: "the store cannot be written to — refusing to spend",
+        detail: health.detail,
+        spent: 0,
+      },
+      { status: 503 }
+    );
   }
 
   /**
@@ -107,6 +129,7 @@ export async function GET(request: Request) {
 
   const done: string[] = [];
   const failed: string[] = [];
+  const unsaved: { slug: string; detail: string | null }[] = [];
   // Sequential on purpose: three calls per market in parallel across a
   // batch is how a rate limit gets discovered the expensive way.
   for (const market of pending.slice(0, limit)) {
@@ -115,27 +138,45 @@ export async function GET(request: Request) {
       failed.push(market.slug);
       continue;
     }
-    await writeMarketStats(market.slug, {
+    const write = await writeMarketStats(market.slug, {
       ...live.summary,
       fullName: live.fullName,
       ...(live.monthly.length > 0 ? { monthly: live.monthly } : {}),
     });
-    done.push(market.slug);
+    // Resolved is not the same as kept. Counting a fetch as a success
+    // is how a batch reports five markets stored with an empty table
+    // behind it.
+    if (write.ok) done.push(market.slug);
+    else unsaved.push({ slug: market.slug, detail: write.detail });
   }
 
-  return NextResponse.json({
-    scope: courseOnly ? "course markets" : "every market",
-    resolved: done.length,
-    failed: failed.length,
-    /** What this run actually cost, in requests. */
-    callsMade: (done.length + failed.length) * CALLS_PER_MARKET,
-    remaining: pending.length - done.length,
-    callsToFinish: (pending.length - done.length) * CALLS_PER_MARKET,
-    slugs: done,
-    failedSlugs: failed,
-    note:
-      failed.length > 0
-        ? "Failures cost their calls too — a market with no coverage answers, it just answers with nothing usable."
-        : null,
-  });
+  // A store that rejects every write mid-run turns each further batch
+  // into pure waste, so say it plainly rather than leaving a count to
+  // be noticed.
+  const storeBroken = unsaved.length > 0 && done.length === 0;
+
+  return NextResponse.json(
+    {
+      scope: courseOnly ? "course markets" : "every market",
+      /** Fetched AND kept. Anything else is money spent for nothing. */
+      stored: done.length,
+      fetchFailed: failed.length,
+      writeFailed: unsaved.length,
+      /** What this run actually cost, in requests. */
+      callsMade: (done.length + failed.length + unsaved.length) * CALLS_PER_MARKET,
+      remaining: pending.length - done.length,
+      callsToFinish: (pending.length - done.length) * CALLS_PER_MARKET,
+      slugs: done,
+      failedSlugs: failed,
+      unsaved,
+      note: storeBroken
+        ? "NOTHING WAS KEPT. Every write was rejected, so this batch spent its calls for nothing — fix the store before running another."
+        : unsaved.length > 0
+          ? "Some markets were fetched but not saved. Those calls bought nothing and the markets are still pending."
+          : failed.length > 0
+            ? "Failures cost their calls too — a market with no coverage answers, it just answers with nothing usable."
+            : null,
+    },
+    { status: storeBroken ? 500 : 200 }
+  );
 }

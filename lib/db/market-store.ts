@@ -197,16 +197,35 @@ export async function readMarketStore(
   }
 }
 
+export interface WriteResult {
+  ok: boolean;
+  /** Why it failed, in the database's own words. */
+  detail: string | null;
+}
+
 /**
  * Upsert one slice of a market's row. PostgREST only touches the
  * columns present in the body, which is what lets the listings writer
  * and the photo writer share a row without clobbering each other.
+ *
+ * REPORTS FAILURE. The first version of this fired the request and
+ * returned void without looking at the response, on the reasoning that
+ * a failed write costs only the acceleration it would have bought.
+ * That reasoning is right for a cache and badly wrong for anything
+ * that spent money to produce the value being stored: a backfill
+ * resolved markets, called the write, saw no error, and reported five
+ * markets stored when the column did not exist and nothing had been
+ * saved at all. Fifteen billed calls, discarded, reported as success.
+ *
+ * Callers on the request path may still ignore the result — that is
+ * the cache case, and it is a choice they make out loud. Callers that
+ * paid for the data must not.
  */
-async function upsert(body: Record<string, unknown>): Promise<void> {
+async function upsert(body: Record<string, unknown>): Promise<WriteResult> {
   const cfg = config();
-  if (!cfg) return;
+  if (!cfg) return { ok: false, detail: "no store configured" };
   try {
-    await fetch(`${cfg.url}/rest/v1/market_cache`, {
+    const res = await fetch(`${cfg.url}/rest/v1/market_cache`, {
       method: "POST",
       headers: {
         ...headers(cfg.key),
@@ -216,17 +235,21 @@ async function upsert(body: Record<string, unknown>): Promise<void> {
       signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
       cache: "no-store",
     });
+    if (res.ok) return { ok: true, detail: null };
+    const detail = (await res.text().catch(() => ""))
+      .replace(/\s+/g, " ")
+      .slice(0, 240);
+    return { ok: false, detail: detail || `HTTP ${res.status}` };
   } catch {
-    // A write that fails cost nothing but the acceleration it would
-    // have bought. The next request simply computes again.
+    return { ok: false, detail: "unreachable or timed out" };
   }
 }
 
 export async function writeMarketListings(
   slug: string,
   listings: RentalListing[]
-): Promise<void> {
-  await upsert({
+): Promise<WriteResult> {
+  return upsert({
     market_slug: slug,
     listings,
     listings_at: new Date().toISOString(),
@@ -236,8 +259,8 @@ export async function writeMarketListings(
 export async function writeMarketPhotoMerge(
   slug: string,
   merge: StoredPhotoMerge
-): Promise<void> {
-  await upsert({
+): Promise<WriteResult> {
+  return upsert({
     market_slug: slug,
     photo_merge: merge,
     photo_merge_at: new Date().toISOString(),
@@ -304,8 +327,8 @@ export async function readAllMarketStats(): Promise<
 export async function writeMarketStats(
   slug: string,
   stats: StoredMarketStats
-): Promise<void> {
-  await upsert({
+): Promise<WriteResult> {
+  return upsert({
     market_slug: slug,
     stats,
     stats_at: new Date().toISOString(),
@@ -360,11 +383,11 @@ export async function readListingDetail(
 export async function writeListingDetail(
   listingUrl: string,
   detail: StoredListingDetail
-): Promise<void> {
+): Promise<WriteResult> {
   const cfg = config();
-  if (!cfg) return;
+  if (!cfg) return { ok: false, detail: "no store configured" };
   try {
-    await fetch(`${cfg.url}/rest/v1/listing_cache`, {
+    const res = await fetch(`${cfg.url}/rest/v1/listing_cache`, {
       method: "POST",
       headers: {
         ...headers(cfg.key),
@@ -380,9 +403,15 @@ export async function writeListingDetail(
       signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
       cache: "no-store",
     });
+    if (res.ok) return { ok: true, detail: null };
+    // Not `detail`: that is this function's own parameter, and
+    // shadowing it reads as a typo whichever one you meant.
+    const why = (await res.text().catch(() => ""))
+      .replace(/\s+/g, " ")
+      .slice(0, 240);
+    return { ok: false, detail: why || `HTTP ${res.status}` };
   } catch {
-    // Same as above: a failed write costs only the saving it would
-    // have made.
+    return { ok: false, detail: "unreachable or timed out" };
   }
 }
 
