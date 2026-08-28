@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
-import { storeConfigured } from "@/lib/db/market-store";
+import { storeConfigured, storeCounts } from "@/lib/db/market-store";
 import { photoPages } from "@/lib/live/redfin";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,9 @@ export async function GET() {
   const passes = 1 + (process.env.REDFIN_PHOTO_TYPES?.split(",").filter(Boolean).length ?? 1);
 
   const airroi = airRoiBudget();
+  // One database, so this answers across instances where the in-memory
+  // counter cannot.
+  const stored = await storeCounts().catch(() => null);
 
   return NextResponse.json({
     usage,
@@ -55,6 +58,12 @@ export async function GET() {
     },
     durability: {
       storeConfigured: storeConfigured(),
+      /**
+       * The real test of whether anything is being kept. `keyed` counts
+       * cached property analyses and listing details; run one analysis
+       * and it should go up by one, reload it and it should not move.
+       */
+      rows: stored,
       detail:
         "Nothing pre-fetches: a market costs credits when someone searches it and not before. With the store configured, that search's result AND any listing details opened from it survive deploys, so the next student rides for free. Without it both fall back to the framework cache, which every deployment discards — that is what made a day of pushes cost a day of credits.",
     },

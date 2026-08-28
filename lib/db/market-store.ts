@@ -286,6 +286,61 @@ export async function writeMarketPhotoMerge(
 }
 
 /**
+ * How much is actually in the store.
+ *
+ * The in-memory call counter cannot answer "is caching working": it
+ * lives in one instance's memory, and the request that spent a call and
+ * the request that reads the counter routinely land on different
+ * instances. Row counts do not have that problem — there is one
+ * database, and it either has the row or it does not.
+ *
+ * Counts only. No content leaves this function.
+ */
+export async function storeCounts(): Promise<{
+  markets: number;
+  marketsWithStats: number;
+  keyed: number;
+  error: string | null;
+}> {
+  const empty = { markets: 0, marketsWithStats: 0, keyed: 0 };
+  const cfg = config();
+  if (!cfg) return { ...empty, error: "no store configured" };
+
+  // PostgREST returns the count in a Content-Range header when asked
+  // for it, so this reads no rows at all.
+  const count = async (table: string, query = ""): Promise<number> => {
+    const res = await fetch(`${cfg.url}/rest/v1/${table}?select=*${query}`, {
+      headers: { ...headers(cfg.key), prefer: "count=exact", range: "0-0" },
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (!res.ok) return -1;
+    const range = res.headers.get("content-range") ?? "";
+    const total = Number(range.split("/")[1]);
+    return Number.isFinite(total) ? total : -1;
+  };
+
+  try {
+    const [markets, marketsWithStats, keyed] = await Promise.all([
+      count("market_cache"),
+      count("market_cache", "&stats=not.is.null"),
+      count("listing_cache"),
+    ]);
+    return {
+      markets,
+      marketsWithStats,
+      keyed,
+      error:
+        markets < 0 || keyed < 0
+          ? "a table did not answer — it may not exist, or the key may lack access"
+          : null,
+    };
+  } catch {
+    return { ...empty, error: "unreachable or timed out" };
+  }
+}
+
+/**
  * Every stored KPI row, in one query.
  *
  * The markets grid draws 409 cards. Reading them one at a time would be
