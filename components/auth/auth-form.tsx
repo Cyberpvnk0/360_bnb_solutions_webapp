@@ -24,7 +24,15 @@ import { MetricLabel } from "@/components/primitives/metric-label";
  *  someone has already typed a password they liked. */
 const MIN_PASSWORD = 6;
 
-export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
+export function AuthForm({
+  mode,
+  setupProblem = null,
+}: {
+  mode: "signin" | "signup";
+  /** Set when the deployment cannot authenticate at all. Passed from a
+   *  server component, which can see variables the browser cannot. */
+  setupProblem?: string | null;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") ?? "/dashboard";
@@ -36,6 +44,22 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
   const [sent, setSent] = React.useState(false);
 
   const signingUp = mode === "signup";
+
+  // A form that cannot possibly succeed should say so rather than
+  // accept a password and fail quietly.
+  if (setupProblem) {
+    return (
+      <div className="rounded-sm border border-border bg-card p-6">
+        <MetricLabel>Setup needed</MetricLabel>
+        <h1 className="mt-1.5 font-display text-xl font-medium tracking-tight text-foreground">
+          Sign-in isn&apos;t switched on yet
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          {setupProblem}
+        </p>
+      </div>
+    );
+  }
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
