@@ -306,17 +306,33 @@ export async function storeCounts(): Promise<{
   const cfg = config();
   if (!cfg) return { ...empty, error: "no store configured" };
 
-  // PostgREST returns the count in a Content-Range header when asked
-  // for it, so this reads no rows at all.
+  /**
+   * The count from PostgREST's Content-Range header.
+   *
+   * NO Range header. Asking for rows 0-0 of an empty table is answered
+   * 416 Range Not Satisfiable, which made every empty table report as
+   * unreachable — collapsing "nothing stored yet" and "no such table"
+   * into one number, which is the precise confusion this function was
+   * added to prevent. `limit=1` gets the same count with no such edge.
+   *
+   * A 416 is still tolerated below, because being wrong about this
+   * twice would be careless.
+   */
   const count = async (table: string, query = ""): Promise<number> => {
-    const res = await fetch(`${cfg.url}/rest/v1/${table}?select=*${query}`, {
-      headers: { ...headers(cfg.key), prefer: "count=exact", range: "0-0" },
-      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `${cfg.url}/rest/v1/${table}?select=*&limit=1${query}`,
+      {
+        headers: { ...headers(cfg.key), prefer: "count=exact" },
+        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    // 416 means the range was unsatisfiable, which for a count means
+    // there was nothing to range over.
+    if (res.status === 416) return 0;
     if (!res.ok) return -1;
-    const range = res.headers.get("content-range") ?? "";
-    const total = Number(range.split("/")[1]);
+    // "0-0/12", or "*/0" when the table is empty.
+    const total = Number((res.headers.get("content-range") ?? "").split("/")[1]);
     return Number.isFinite(total) ? total : -1;
   };
 
