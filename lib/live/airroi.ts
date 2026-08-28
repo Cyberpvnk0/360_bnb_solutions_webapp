@@ -106,20 +106,25 @@ export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
  * while the bill still runs away, because none of them counts the thing
  * that costs money. This counts calls.
  *
- * Deliberately low by default. These are priced in tens of cents, not
- * the hundredth of a dollar the published floor suggests, so a balance
- * that sounds like plenty is a couple of dozen requests. A ceiling that
- * only bites in an emergency is a ceiling set too high to notice the
- * emergency.
+ * Fifty a day. The measured price is $0.18 a call — eighteen times the
+ * published floor, which evidently applies to some endpoint this
+ * product does not use — so fifty is about nine dollars of exposure per
+ * instance per day.
  *
  * Per-instance and per-day, like the quota beside it. A serverless
- * fleet means the true figure is this times however many instances are
- * warm — so it is a brake, not a lock, and the number is chosen with
- * that multiple in mind.
+ * fleet means the true figure is this times however many instances
+ * happen to be warm, so it is a brake rather than a lock. Worth
+ * knowing before treating it as a guarantee: three warm instances is
+ * roughly twenty-seven dollars a day, which is most of a small balance.
+ *
+ * A cached analysis never reaches this counter, and with students
+ * converging on one course city list most analyses are cached. The
+ * ceiling exists for the day something goes wrong, not for the
+ * ordinary case.
  */
 const DAILY_CALL_BUDGET = (() => {
   const raw = Number(process.env.AIRROI_DAILY_CALLS);
-  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 12;
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 50;
 })();
 
 let spentDay = "";
