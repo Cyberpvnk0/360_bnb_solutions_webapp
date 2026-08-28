@@ -1,13 +1,4 @@
-import {
-  Columns3,
-  Contact,
-  Crosshair,
-  LayoutGrid,
-  Map,
-  Settings,
-  ShieldCheck,
-  type LucideIcon,
-} from "lucide-react";
+import {Columns3,Contact,Crosshair,LayoutGrid,Settings,ShieldCheck,type LucideIcon} from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -23,12 +14,6 @@ export const NAV_MAIN: NavItem[] = [
     label: "Dashboard",
     icon: LayoutGrid,
     match: (p) => p.startsWith("/dashboard"),
-  },
-  {
-    href: "/markets",
-    label: "Markets",
-    icon: Map,
-    match: (p) => p.startsWith("/markets"),
   },
   {
     href: "/analyze",

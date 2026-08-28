@@ -180,10 +180,10 @@ export function AnalyzeResult({
             <p className="mt-0.5 text-sm text-muted-foreground">
               {analysis.city}, {analysis.stateCode} ·{" "}
               <Link
-                href={`/markets/${analysis.marketSlug}`}
+                href={`/deals?market=${analysis.marketSlug}`}
                 className="inline-flex items-center gap-0.5 text-gold transition-colors duration-150 hover:text-gold-bright"
               >
-                View market
+                Rentals here
                 <ArrowUpRight aria-hidden className="size-3" />
               </Link>
             </p>

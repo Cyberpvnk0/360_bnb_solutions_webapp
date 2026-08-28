@@ -324,7 +324,7 @@ export function ListingDetailDialog({
                   className="mt-3 w-full"
                   asChild
                 >
-                  <Link href={`/markets/${market.slug}`}>
+                  <Link href={`/deals?market=${market.slug}`}>
                     See the {market.name} market
                   </Link>
                 </Button>

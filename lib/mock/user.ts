@@ -95,7 +95,7 @@ export const ACTIVITY: ActivityEvent[] = [
     type: "market-watched",
     message: "Watching Columbus, OH",
     at: `${daysAgo(4)}T13:25:00Z`,
-    href: "/markets/columbus",
+    href: "/deals?market=columbus",
   },
   {
     id: "ev-09",

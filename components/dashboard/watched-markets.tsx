@@ -56,7 +56,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
           Watched markets
         </h2>
         <Link
-          href="/markets"
+          href="/deals"
           className="text-xs font-medium text-gold transition-colors duration-150 hover:text-gold-bright"
         >
           Manage
@@ -71,7 +71,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
             description="Watch a market to keep its ADR, occupancy and RevPAR on your desk."
             action={
               <Button asChild variant="outline">
-                <Link href="/markets">Browse markets</Link>
+                <Link href="/deals">Browse markets</Link>
               </Button>
             }
           />
@@ -115,7 +115,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                 : watched.map((m) => (
                     <Link
                       key={m.slug}
-                      href={`/markets/${m.slug}`}
+                      href={`/deals?market=${m.slug}`}
                       className={cn(
                         ROW_GRID,
                         "px-6 py-3.5 transition-colors duration-150 hover:bg-secondary/40"

@@ -177,10 +177,10 @@ function DealDrawerBody({ deal }: { deal: Deal }) {
             <Link href={`/analyze/${deal.analysisId}`}>Open full analysis</Link>
           </Button>
           <Link
-            href={`/markets/${deal.marketSlug}`}
+            href={`/deals?market=${deal.marketSlug}`}
             className="inline-flex items-center gap-0.5 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
-            View market
+            Rentals here
             <ArrowUpRight aria-hidden className="size-3" />
           </Link>
         </div>

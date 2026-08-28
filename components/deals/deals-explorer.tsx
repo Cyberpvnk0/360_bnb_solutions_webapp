@@ -181,10 +181,23 @@ interface DealsExplorerProps {
   markets: Market[];
   /** Coverage figures for the opening invitation. */
   totals: { rentals: number; markets: number };
+  /** A location to open on, from ?market= — how a deal, an analysis or
+   *  a listing hands off to "the rentals here". */
+  initialQuery?: string;
 }
 
-export function DealsExplorer({ markets, totals }: DealsExplorerProps) {
-  const [filters, setFilters] = React.useState<DealFilters>(DEFAULT_DEAL_FILTERS);
+export function DealsExplorer({
+  markets,
+  totals,
+  initialQuery = "",
+}: DealsExplorerProps) {
+  const [filters, setFilters] = React.useState<DealFilters>(
+    // Seeded from ?market=, so arriving from a deal or an analysis lands
+    // on that market's inventory rather than an empty search box.
+    initialQuery
+      ? { ...DEFAULT_DEAL_FILTERS, query: initialQuery }
+      : DEFAULT_DEAL_FILTERS
+  );
   const [sort, setSort] = React.useState<SortKey>("spread");
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);

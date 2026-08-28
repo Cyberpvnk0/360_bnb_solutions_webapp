@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { cn } from "@/lib/utils";
 
-/** Deal Finder ships with the /deals screen; it slots in above Markets
- *  here so config/nav.ts stays untouched by that feature. */
+/** Deal Finder ships with the /deals screen rather than config/nav.ts,
+ *  so it is inserted here — second, right after the dashboard, now that
+ *  it is the way into inventory rather than one option beside a market
+ *  browser. */
 const DEAL_FINDER: NavItem = {
   href: "/deals",
   label: "Deal Finder",
@@ -20,9 +22,7 @@ const DEAL_FINDER: NavItem = {
 
 const MAIN_ITEMS: NavItem[] = (() => {
   const items = NAV_MAIN.filter((i) => i.href !== DEAL_FINDER.href);
-  const marketsIdx = items.findIndex((i) => i.href === "/markets");
-  const at = marketsIdx === -1 ? 1 : marketsIdx;
-  return [...items.slice(0, at), DEAL_FINDER, ...items.slice(at)];
+  return [items[0], DEAL_FINDER, ...items.slice(1)].filter(Boolean);
 })();
 
 function NavLink({
