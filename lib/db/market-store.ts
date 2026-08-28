@@ -69,6 +69,24 @@ export interface StoredListingDetail {
   depositMax?: number;
 }
 
+/**
+ * One property's comp pull, kept.
+ *
+ * The most expensive recurring call in the product: every analysis of
+ * every address, at a per-call price measured in tens of cents rather
+ * than the hundredth of a dollar the vendor's floor suggested. It was
+ * held only in the framework's cache, which is bound to a deployment —
+ * so a push threw away every comp set anyone had paid for, and with
+ * thousands of students the same address gets bought again and again.
+ */
+export interface StoredEstimate {
+  comps: unknown[];
+  monthlyRevenue: number[] | null;
+  revenue: number | null;
+  adr: number | null;
+  occupancy: number | null;
+}
+
 /** A market's live KPIs, as stored. Shape mirrors the feed's summary
  *  so a schema change surfaces here rather than three screens later. */
 export interface StoredMarketStats {
@@ -336,6 +354,34 @@ export async function writeMarketStats(
 }
 
 /* ------------------------------------------------------------------ */
+/* Keyed JSON cache — listing details and property estimates           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A cache key for one property's comp pull.
+ *
+ * Coordinates rounded to about a hundred metres, because two analyses a
+ * few doors apart draw the same comps and paying twice for them is a
+ * choice. Bedrooms, baths and guests are part of the key since they
+ * change the query the vendor answers.
+ *
+ * Prefixed and stored in the same keyed table as listing details: both
+ * are "a text key holding a JSON blob with a timestamp", the table
+ * already exists, and inventing a second one would mean another
+ * migration that has to land before the deploy that needs it.
+ */
+export function estimateKey(spec: {
+  lat: number;
+  lon: number;
+  bedrooms: number;
+  baths: number;
+  guests: number;
+}): string {
+  const round = (n: number) => n.toFixed(3);
+  return `estimate:${round(spec.lat)},${round(spec.lon)}:${spec.bedrooms}:${spec.baths}:${spec.guests}`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Listing details — the expensive rows                                */
 /* ------------------------------------------------------------------ */
 
@@ -353,6 +399,54 @@ export async function writeMarketStats(
  * Same posture as the rest of this file: degrade to null, never throw,
  * never fail a request that could still be served live.
  */
+/** Read any keyed blob from the shared cache table. */
+async function readKeyed<T>(
+  key: string,
+  usable: (value: unknown) => value is T
+): Promise<{ value: T; at: string | null } | null> {
+  const cfg = config();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/listing_cache?listing_url=eq.${encodeURIComponent(key)}&select=detail,detail_at`,
+      {
+        headers: headers(cfg.key),
+        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as { detail?: unknown; detail_at?: string | null }[];
+    const row = rows?.[0];
+    if (!row || !usable(row.detail)) return null;
+    return { value: row.detail, at: row.detail_at ?? null };
+  } catch {
+    return null;
+  }
+}
+
+function isEstimate(value: unknown): value is StoredEstimate {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Array.isArray((value as StoredEstimate).comps)
+  );
+}
+
+export async function readEstimate(
+  key: string
+): Promise<{ estimate: StoredEstimate; at: string | null } | null> {
+  const hit = await readKeyed(key, isEstimate);
+  return hit ? { estimate: hit.value, at: hit.at } : null;
+}
+
+export async function writeEstimate(
+  key: string,
+  estimate: StoredEstimate
+): Promise<WriteResult> {
+  return writeListingDetail(key, estimate as unknown as StoredListingDetail);
+}
+
 export async function readListingDetail(
   listingUrl: string
 ): Promise<{ detail: StoredListingDetail; at: string | null } | null> {
