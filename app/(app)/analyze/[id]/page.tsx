@@ -12,12 +12,27 @@ import { AnalyzeResult } from "@/components/analyze/analyze-result";
 
 const TYPES: PropertyType[] = ["apartment", "house", "condo", "townhome"];
 
+/** What a two-bedroom, two-bath unit is: the shape most of this
+ *  strategy is run on, and the least surprising thing to assume when
+ *  nobody has said. */
+const ASSUMED_BEDROOMS = 2;
+const ASSUMED_BATHROOMS = 2;
+
 /**
  * A searched address arrives as query parameters rather than a stored
  * row: the parameters ARE the analysis, so the URL is shareable, needs
  * no table, and survives a deploy without a migration.
+ *
+ * Bedrooms and baths are OPTIONAL. A listing handed over from the Deal
+ * Finder knows both and says so; somebody typing a street address into
+ * a box does not, and making them answer before seeing anything is a
+ * form standing between a person and the thing they came for. Assume
+ * the common shape, run the numbers, and let them correct it on the
+ * result — where they can see what the correction changes.
  */
-function specFrom(sp: Record<string, string | string[] | undefined>): AddressSpec | null {
+function specFrom(
+  sp: Record<string, string | string[] | undefined>
+): (AddressSpec & { assumedSize: boolean }) | null {
   const one = (k: string) => {
     const v = sp[k];
     return Array.isArray(v) ? v[0] : v;
@@ -32,16 +47,29 @@ function specFrom(sp: Record<string, string | string[] | undefined>): AddressSpe
   if (!address || address.length < 4) return null;
   if (!Number.isFinite(lat) || Math.abs(lat) > 90) return null;
   if (!Number.isFinite(lon) || Math.abs(lon) > 180) return null;
-  if (!Number.isFinite(bedrooms) || bedrooms < 0 || bedrooms > 20) return null;
-  if (!Number.isFinite(bathrooms) || bathrooms <= 0 || bathrooms > 20) return null;
+
+  // Out-of-range is treated as absent rather than fatal: a bad size in
+  // a hand-edited URL should still produce an analysis someone can fix,
+  // not a 404 with no explanation.
+  const bd =
+    Number.isFinite(bedrooms) && bedrooms >= 0 && bedrooms <= 20
+      ? Math.round(bedrooms)
+      : null;
+  const ba =
+    Number.isFinite(bathrooms) && bathrooms > 0 && bathrooms <= 20
+      ? bathrooms
+      : null;
 
   return {
     address,
     lat,
     lon,
-    bedrooms: Math.round(bedrooms),
-    bathrooms,
+    bedrooms: bd ?? ASSUMED_BEDROOMS,
+    bathrooms: ba ?? ASSUMED_BATHROOMS,
     propertyType: type && TYPES.includes(type) ? type : "house",
+    /** True when nobody told us the size and we picked one. The result
+     *  page says so rather than presenting a guess as a reading. */
+    assumedSize: bd === null || ba === null,
   };
 }
 
@@ -84,7 +112,7 @@ export default async function AnalyzeResultPage({
         analysis={withComps}
         marketCenter={point}
         liveComps={liveComps}
-        searchedAddress={{ market, milesAway }}
+        searchedAddress={{ market, milesAway, assumedSize: spec.assumedSize }}
       />
     );
   }

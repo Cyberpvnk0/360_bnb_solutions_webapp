@@ -24,7 +24,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Crosshair, MapPin } from "lucide-react";
 import { getRecentAnalyses } from "@/lib/data";
-import type { Analysis, PropertyType } from "@/lib/mock/types";
+import type { Analysis } from "@/lib/mock/types";
 import { fmtDate } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
 import { EmptyState } from "@/components/primitives/empty-state";
@@ -33,13 +33,6 @@ import { PageHeader } from "@/components/primitives/page-header";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 /** A geocoded place: what the geocoder calls it, and where it is. */
@@ -48,14 +41,6 @@ interface AddressMatch {
   point: { lat: number; lon: number } | null;
 }
 
-const BEDROOM_OPTIONS = [1, 2, 3, 4, 5];
-const BATHROOM_OPTIONS = ["1", "1.5", "2", "2.5", "3"];
-const TYPE_OPTIONS: { value: PropertyType; label: string }[] = [
-  { value: "apartment", label: "Apartment" },
-  { value: "house", label: "House" },
-  { value: "condo", label: "Condo" },
-  { value: "townhome", label: "Townhome" },
-];
 
 export function AnalyzeEntry({
   initialAnalysis,
@@ -96,13 +81,6 @@ export function AnalyzeEntry({
   /** Set when a lookup completed and matched nothing — a typo and an
    *  outage look identical without it. */
   const [noMatch, setNoMatch] = React.useState(false);
-  const [bedrooms, setBedrooms] = React.useState(initialAnalysis?.bedrooms ?? 2);
-  const [bathrooms, setBathrooms] = React.useState(
-    String(initialAnalysis?.bathrooms ?? "2")
-  );
-  const [propertyType, setPropertyType] = React.useState<PropertyType>(
-    initialAnalysis?.propertyType ?? "apartment"
-  );
   const [pulling, setPulling] = React.useState(false);
   const [recent, setRecent] = React.useState<Analysis[] | null>(null);
 
@@ -168,13 +146,15 @@ export function AnalyzeEntry({
     consumePull();
     // The parameters are the analysis: shareable, reloadable, and no
     // row to write or migration to run.
+    //
+    // No size. Asking for bedrooms and baths before showing anything
+    // put three questions between a person and the answer they came
+    // for — and the result page can offer the same correction against a
+    // projection they can watch respond to it.
     const params = new URLSearchParams({
       a: place.address,
       lat: String(place.point.lat),
       lon: String(place.point.lon),
-      bd: String(bedrooms),
-      ba: bathrooms,
-      t: propertyType,
     });
     router.push(`/analyze/new?${params}`);
   };
@@ -309,80 +289,6 @@ export function AnalyzeEntry({
                 ))}
               </div>
             ) : null}
-          </div>
-
-          {/* Unit details */}
-          <div className="mt-6 grid gap-6 sm:grid-cols-[1fr_1fr_1.2fr]">
-            <div>
-              <MetricLabel className="pb-2">Bedrooms</MetricLabel>
-              <div
-                role="radiogroup"
-                aria-label="Bedrooms"
-                className="flex overflow-hidden rounded-sm border border-border"
-              >
-                {BEDROOM_OPTIONS.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={bedrooms === n}
-                    onClick={() => setBedrooms(n)}
-                    className={cn(
-                      "h-9 flex-1 border-r border-border text-sm transition-colors duration-150 last:border-r-0 tabular",
-                      bedrooms === n
-                        ? "bg-secondary font-semibold text-gold"
-                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                    )}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <MetricLabel className="pb-2">Bathrooms</MetricLabel>
-              <div
-                role="radiogroup"
-                aria-label="Bathrooms"
-                className="flex overflow-hidden rounded-sm border border-border"
-              >
-                {BATHROOM_OPTIONS.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={bathrooms === n}
-                    onClick={() => setBathrooms(n)}
-                    className={cn(
-                      "h-9 flex-1 border-r border-border text-xs transition-colors duration-150 last:border-r-0 tabular",
-                      bathrooms === n
-                        ? "bg-secondary font-semibold text-gold"
-                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                    )}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <MetricLabel className="pb-2">Property type</MetricLabel>
-              <Select
-                value={propertyType}
-                onValueChange={(v) => setPropertyType(v as PropertyType)}
-              >
-                <SelectTrigger aria-label="Property type" className="h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TYPE_OPTIONS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <Button

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
 import { ListingGallery } from "./listing-gallery";
+import { analyzeHref } from "@/lib/live/analyze-href";
 import { cn } from "@/lib/utils";
 
 function Figure({
@@ -141,7 +142,7 @@ export function ListingDetailDialog({
             <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
               <AddToListMenu listing={listing} />
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/analyze?address=${listing.analysisId}`}>
+                <Link href={analyzeHref(listing)}>
                   Run the numbers
                 </Link>
               </Button>

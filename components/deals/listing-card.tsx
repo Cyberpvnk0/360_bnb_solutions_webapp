@@ -16,6 +16,7 @@ import type { RentalListing } from "@/lib/mock/types";
 import { PropertyImage } from "./property-image";
 import { Button } from "@/components/ui/button";
 import { TYPE_LABEL } from "./deal-filters";
+import { analyzeHref } from "@/lib/live/analyze-href";
 import { cn } from "@/lib/utils";
 
 interface ListingCardProps {
@@ -160,7 +161,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             onClick={(e) => e.stopPropagation()}
           >
             <Button size="sm" asChild>
-              <Link href={`/analyze?address=${l.analysisId}`}>
+              <Link href={analyzeHref(l)}>
                 Run the numbers
               </Link>
             </Button>

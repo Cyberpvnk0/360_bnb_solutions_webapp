@@ -35,6 +35,7 @@ import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { CalculatorInputs } from "./calculator-inputs";
 import { SeasonalityStrip } from "./seasonality-strip";
+import { SizeControl } from "./size-control";
 import { CompsExplorer } from "./comps-explorer";
 import { LtrCompsTable } from "./comps-tables";
 import { PropertyThumb } from "./property-thumb";
@@ -102,7 +103,12 @@ export function AnalyzeResult({
    * median lease come from the market, and a property forty miles out
    * is borrowing both from somewhere it has little to do with.
    */
-  searchedAddress?: { market: Market; milesAway: number } | null;
+  searchedAddress?: {
+    market: Market;
+    milesAway: number;
+    /** True when the size was assumed rather than supplied. */
+    assumedSize: boolean;
+  } | null;
 }) {
   const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
   // Far enough that the borrowed market context deserves saying out loud.
@@ -187,6 +193,13 @@ export function AnalyzeResult({
             {/* Regulation and the median lease come from the market, not
                 the address. Near its centre that is a fair swap; far
                 out it is a real assumption and gets said. */}
+            {searchedAddress?.assumedSize ? (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                Sized as a {analysis.bedrooms} bed, {analysis.bathrooms} bath
+                because nothing said otherwise — every figure below moves
+                with it, so set it if that is wrong.
+              </p>
+            ) : null}
             {distantMarket ? (
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                 Nearest covered market is {searchedAddress!.market.name},{" "}
@@ -196,8 +209,20 @@ export function AnalyzeResult({
               </p>
             ) : null}
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <StatusChip tone="outline">{analysis.bedrooms} bd</StatusChip>
-              <StatusChip tone="outline">{analysis.bathrooms} ba</StatusChip>
+              {searchedAddress ? (
+                // Correctable here, where the effect of correcting it is
+                // on screen, rather than asked for on a form beforehand.
+                <SizeControl
+                  bedrooms={analysis.bedrooms}
+                  bathrooms={analysis.bathrooms}
+                  assumed={searchedAddress.assumedSize}
+                />
+              ) : (
+                <>
+                  <StatusChip tone="outline">{analysis.bedrooms} bd</StatusChip>
+                  <StatusChip tone="outline">{analysis.bathrooms} ba</StatusChip>
+                </>
+              )}
               <StatusChip tone="outline">Sleeps {sleeps}</StatusChip>
               <StatusChip tone="outline">
                 {PROPERTY_TYPE_LABEL[analysis.propertyType]}
