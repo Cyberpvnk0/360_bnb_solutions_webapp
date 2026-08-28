@@ -100,6 +100,16 @@ export interface StoredMarketStats {
   /** What the feed calls this place, at its own granularity. */
   fullName: string | null;
   /**
+   * How wide these figures are.
+   *
+   * "zip" came from a coordinate lookup and covers the ZIP the market's
+   * centre falls in; "city" was addressed by name and covers the whole
+   * locality. Same endpoint, same fields, genuinely different areas —
+   * so a row that does not say which is a row nobody can compare.
+   * Absent on rows written before the distinction existed.
+   */
+  scope?: "zip" | "city";
+  /**
    * Twelve months of history, when the feed had it.
    *
    * Deliberately inside this jsonb rather than in a column of its own:

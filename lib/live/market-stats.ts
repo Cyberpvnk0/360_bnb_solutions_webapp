@@ -41,6 +41,10 @@ export async function marketStats(market: Market): Promise<MarketStats | null> {
   const stats: StoredMarketStats = {
     ...live.summary,
     fullName: live.fullName,
+    // A district means the feed answered about a ZIP, not a city. The
+    // row has to carry which, or two rows written by two different
+    // routes stop being comparable without anyone noticing.
+    scope: live.ref.district ? "zip" : "city",
     ...(live.monthly.length > 0 ? { monthly: live.monthly } : {}),
   };
   // Write, but never let a storage failure cost the answer we just

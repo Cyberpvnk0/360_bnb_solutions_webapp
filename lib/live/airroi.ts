@@ -640,7 +640,7 @@ export async function fetchMarketSummary(market: {
   region?: string;
   locality?: string;
   district?: string;
-}): Promise<MarketSummary | null> {
+}): Promise<{ summary: MarketSummary; fullName: string | null } | null> {
   const body = await call(MARKET_SUMMARY_PATH, {}, MARKET_REVALIDATE_SECONDS, {
     market,
     currency: "native",
@@ -648,13 +648,20 @@ export async function fetchMarketSummary(market: {
   const row = (body && typeof body === "object" ? body : null) as Row | null;
   if (!row) return null;
   return {
-    adr: pickNumber(row, ["average_daily_rate"]),
-    occupancy: toFraction(pickNumber(row, ["occupancy"])),
-    revpar: pickNumber(row, ["rev_par", "revpar"]),
-    revenue: pickNumber(row, ["revenue"]),
-    activeListings: pickNumber(row, ["active_listings_count"]),
-    bookingLeadTime: pickNumber(row, ["booking_lead_time"]),
-    lengthOfStay: pickNumber(row, ["length_of_stay"]),
+    summary: {
+      adr: pickNumber(row, ["average_daily_rate"]),
+      occupancy: toFraction(pickNumber(row, ["occupancy"])),
+      revpar: pickNumber(row, ["rev_par", "revpar"]),
+      revenue: pickNumber(row, ["revenue"]),
+      activeListings: pickNumber(row, ["active_listings_count"]),
+      bookingLeadTime: pickNumber(row, ["booking_lead_time"]),
+      lengthOfStay: pickNumber(row, ["length_of_stay"]),
+    },
+    // Free: whatever this response calls the area it just measured.
+    // Worth reading here because it is the only way to learn the feed's
+    // own name for a market without paying for the lookup that used to
+    // be the only source of it.
+    fullName: fullNameOf(body),
   };
 }
 
