@@ -17,6 +17,17 @@ import {
   type DealInputs,
 } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
+import { authConfigured } from "@/lib/supabase/config";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import {
+  loadUserData,
+  persistActivity,
+  persistDeal,
+  persistDealPatch,
+  persistLandlord,
+  persistPullsUsed,
+  persistWatch,
+} from "@/lib/db/user-data";
 import {
   getActivity,
   getDeals,
@@ -113,7 +124,38 @@ function nextId(prefix: string): string {
   return `${prefix}-${idCounter}`;
 }
 
+/**
+ * An id for something that will be stored.
+ *
+ * A uuid, because the tables use one as their primary key: a counter
+ * like "d-101" would be rejected, and letting the database mint its own
+ * would leave the deal on screen and the row behind it with different
+ * names — so every later stage change would update nothing, silently.
+ *
+ * Falls back to the counter where crypto is unavailable, which is only
+ * ever an old browser and only ever affects the signed-out demo.
+ */
+function storedId(prefix: string): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : nextId(prefix);
+}
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
+  /**
+   * The signed-in account's id, and the client that speaks for it.
+   *
+   * Null means signed out or auth not configured, and everything below
+   * then behaves exactly as it did before: seeded data, held in memory,
+   * gone on refresh. That is a demo, and it should keep working —
+   * somebody should be able to look around before making an account.
+   */
+  const [userId, setUserId] = React.useState<string | null>(null);
+  const supabase = React.useMemo(
+    () => (authConfigured() ? supabaseBrowser() : null),
+    []
+  );
+
   const [ready, setReady] = React.useState(false);
   const [user, setUser] = React.useState<SessionUser | null>(null);
   const [deals, setDeals] = React.useState<Deal[]>([]);
@@ -131,23 +173,67 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     let cancelled = false;
-    Promise.all([getSessionUser(), getDeals(), getLandlords(), getActivity()]).then(
-      ([u, d, l, a]) => {
+
+    const boot = async () => {
+      // Lists stay on the device either way: they are a scratchpad of
+      // rentals worth a second look, not a record worth an account.
+      const localLists = readLists(window.localStorage) ?? defaultLists();
+
+      const auth = supabase ? await supabase.auth.getUser() : null;
+      const id = auth?.data.user?.id ?? null;
+
+      if (cancelled) return;
+      setUserId(id);
+
+      if (supabase && id) {
+        // A real account: their rows, and nothing seeded. An empty
+        // pipeline for a new user is the truth, and dressing it with
+        // sample deals they never saved would be worse than empty.
+        const data = await loadUserData(supabase, id);
+        if (cancelled) return;
+        const joined = auth?.data.user?.created_at ?? new Date().toISOString();
+        setUser({
+          id,
+          name: data.profile?.fullName ?? auth?.data.user?.email ?? "You",
+          email: data.profile?.email ?? auth?.data.user?.email ?? "",
+          tier: (data.profile?.tier ?? "free") as TierId,
+          pullsUsed: data.profile?.pullsUsed ?? 0,
+          watchedMarketSlugs: data.watchedMarketSlugs,
+          joinedAt: joined,
+          // No billing yet. A period end invented here would show a
+          // renewal date nobody is going to be charged on, which is a
+          // worse lie than an honest blank.
+          periodEnd: null,
+          billingCycle: null,
+        });
+        setDeals(data.deals);
+        setLandlords(data.landlords);
+        setActivity(data.activity);
+      } else {
+        // Signed out: the seeded world, so the app is explorable.
+        const [u, d, l, a] = await Promise.all([
+          getSessionUser(),
+          getDeals(),
+          getLandlords(),
+          getActivity(),
+        ]);
         if (cancelled) return;
         setUser(u);
         setDeals(d);
         setLandlords(l);
         setActivity(a);
-        // Lists are local to this device until accounts land.
-        setLists(readLists(window.localStorage) ?? defaultLists());
-        setListsLoaded(true);
-        setReady(true);
       }
-    );
+
+      setLists(localLists);
+      setListsLoaded(true);
+      setReady(true);
+    };
+
+    void boot();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [supabase]);
 
   // Persist after the first load only — otherwise the default would
   // overwrite this device's saved lists before they're read.
@@ -162,16 +248,55 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const pullsRemaining = Math.max(0, pullLimit - pullsUsed);
   const canPull = pullsRemaining > 0;
 
-  const pushActivity = React.useCallback((event: Omit<ActivityEvent, "id">) => {
-    setActivity((prev) => [{ ...event, id: nextId("ev") }, ...prev]);
-  }, []);
+  /**
+   * Write through to the account, when there is one.
+   *
+   * Every mutation below updates React state first so the UI responds
+   * immediately, then persists. Signed out, `persist` is a no-op and
+   * the app behaves as the seeded demo it was.
+   *
+   * A failure is logged rather than swallowed. It cannot block the
+   * interaction — the change is already on screen — but a person who
+   * believes their pipeline is saved and finds it gone tomorrow
+   * deserves to have had it recorded somewhere.
+   */
+  const persist = React.useCallback(
+    (
+      what: string,
+      run: (client: NonNullable<typeof supabase>, id: string) => Promise<{ ok: boolean; error: string | null }>
+    ) => {
+      if (!supabase || !userId) return;
+      void run(supabase, userId).then((r) => {
+        if (!r.ok) console.error(`[arbicore] failed to save ${what}:`, r.error);
+      });
+    },
+    [supabase, userId]
+  );
+
+  const pushActivity = React.useCallback(
+    (event: Omit<ActivityEvent, "id">) => {
+      setActivity((prev) => [{ ...event, id: nextId("ev") }, ...prev]);
+      persist("activity", (client, id) =>
+        persistActivity(client, id, {
+          kind: event.type,
+          title: event.message,
+          href: event.href,
+        })
+      );
+    },
+    [persist]
+  );
 
   const consumePull = React.useCallback((): boolean => {
     if (!user) return false;
     if (TIERS[user.tier].pullLimit - user.pullsUsed <= 0) return false;
-    setUser((prev) => (prev ? { ...prev, pullsUsed: prev.pullsUsed + 1 } : prev));
+    const next = user.pullsUsed + 1;
+    setUser((prev) => (prev ? { ...prev, pullsUsed: next } : prev));
+    // Held per account, not per browser: clearing cookies used to reset
+    // somebody's allowance, and every analysis costs real money.
+    persist("pull count", (client, id) => persistPullsUsed(client, id, next));
     return true;
-  }, [user]);
+  }, [user, persist]);
 
   const isAnalysisSaved = React.useCallback(
     (analysisId: string) => deals.some((d) => d.analysisId === analysisId),
@@ -192,7 +317,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const assumptions = deriveMarketAssumptions(analysis.strComps);
       const now = new Date().toISOString().slice(0, 10);
       const deal: Deal = {
-        id: nextId("d"),
+        id: storedId("d"),
         analysisId: analysis.id,
         address: analysis.address,
         city: analysis.city,
@@ -213,6 +338,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         updatedAt: now,
       };
       setDeals((prev) => [deal, ...prev]);
+      persist("deal", (client, id) => persistDeal(client, id, deal));
       pushActivity({
         type: "deal-saved",
         message: `Saved ${analysis.address}, ${analysis.city} to Prospecting`,
@@ -221,7 +347,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
       return { ok: true, dealId: deal.id };
     },
-    [deals, tier.savedDealLimit, pushActivity]
+    [deals, tier.savedDealLimit, pushActivity, persist]
   );
 
   const moveDeal = React.useCallback(
@@ -233,19 +359,33 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             : d
         )
       );
+      persist("pipeline stage", (client) =>
+        persistDealPatch(client, dealId, { stage })
+      );
     },
-    []
+    [persist]
   );
 
-  const updateDeal = React.useCallback((dealId: string, patch: Partial<Deal>) => {
-    setDeals((prev) =>
-      prev.map((d) =>
-        d.id === dealId
-          ? { ...d, ...patch, updatedAt: new Date().toISOString().slice(0, 10) }
-          : d
-      )
-    );
-  }, []);
+  const updateDeal = React.useCallback(
+    (dealId: string, patch: Partial<Deal>) => {
+      let updated: Deal | undefined;
+      setDeals((prev) =>
+        prev.map((d) => {
+          if (d.id !== dealId) return d;
+          updated = { ...d, ...patch, updatedAt: new Date().toISOString().slice(0, 10) };
+          return updated;
+        })
+      );
+      // The whole row rather than the patch: notes and landlord links
+      // live in the snapshot, so a partial write would drop whichever
+      // of them this particular edit did not touch.
+      if (updated) {
+        const row = updated;
+        persist("deal", (client, id) => persistDeal(client, id, row));
+      }
+    },
+    [persist]
+  );
 
   const addLandlord = React.useCallback(
     (
@@ -253,11 +393,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     ): Landlord => {
       const landlord: Landlord = {
         ...data,
-        id: nextId("ll"),
+        id: storedId("ll"),
         dealIds: data.dealIds ?? [],
         createdAt: new Date().toISOString().slice(0, 10),
       };
       setLandlords((prev) => [landlord, ...prev]);
+      persist("landlord", (client, id) => persistLandlord(client, id, landlord));
       pushActivity({
         type: "landlord-added",
         message: `Added landlord contact ${landlord.name}`,
@@ -266,16 +407,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
       return landlord;
     },
-    [pushActivity]
+    [pushActivity, persist]
   );
 
   const updateLandlord = React.useCallback(
     (id: string, patch: Partial<Landlord>) => {
+      let updated: Landlord | undefined;
       setLandlords((prev) =>
-        prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
+        prev.map((l) => {
+          if (l.id !== id) return l;
+          updated = { ...l, ...patch };
+          return updated;
+        })
       );
+      if (updated) {
+        const row = updated;
+        persist("landlord", (client, uid) => persistLandlord(client, uid, row));
+      }
     },
-    []
+    [persist]
   );
 
   const linkLandlordToDeal = React.useCallback(
@@ -298,18 +448,32 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const toggleWatchMarket = React.useCallback((slug: string) => {
-    setUser((prev) => {
-      if (!prev) return prev;
-      const watching = prev.watchedMarketSlugs.includes(slug);
-      return {
-        ...prev,
-        watchedMarketSlugs: watching
-          ? prev.watchedMarketSlugs.filter((s) => s !== slug)
-          : [...prev.watchedMarketSlugs, slug],
-      };
-    });
-  }, []);
+  const toggleWatchMarket = React.useCallback(
+    (slug: string) => {
+      const already = (user?.watchedMarketSlugs ?? []).includes(slug);
+      // Decided out here so the write and the state change agree on
+      // which direction this went. Reading it back out of setState
+      // would be a guess, and an earlier draft had two variables named
+      // `watching` meaning opposite things.
+      const nowWatching = !already;
+
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              watchedMarketSlugs: nowWatching
+                ? [...prev.watchedMarketSlugs, slug]
+                : prev.watchedMarketSlugs.filter((s) => s !== slug),
+            }
+          : prev
+      );
+
+      persist("watched market", (client, id) =>
+        persistWatch(client, id, slug, nowWatching)
+      );
+    },
+    [user, persist]
+  );
 
   const createList = React.useCallback((name: string) => {
     const created: DealList = {

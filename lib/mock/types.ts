@@ -337,10 +337,18 @@ export interface SessionUser {
   tier: TierId;
   pullsUsed: number;
   /** ISO date the current billing period resets. */
-  periodEnd: string;
+  /**
+   * When the current billing period ends.
+   *
+   * Null on a free account, which genuinely has no period — and every
+   * screen that shows it has to handle that rather than print a
+   * renewal date nobody will be charged on.
+   */
+  periodEnd: string | null;
   joinedAt: string;
   watchedMarketSlugs: string[];
-  billingCycle: "monthly" | "annual";
+  /** Null until there is a subscription to have a cycle. */
+  billingCycle: "monthly" | "annual" | null;
 }
 
 export interface Invoice {

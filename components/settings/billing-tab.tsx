@@ -116,7 +116,7 @@ export function BillingTab() {
           <p className="mt-1 text-sm text-muted-foreground tabular">
             {priceLine}
           </p>
-          {isPaid ? (
+          {isPaid && user.periodEnd ? (
             <p className="mt-0.5 text-xs text-muted-foreground tabular">
               Renews {fmtDate(user.periodEnd)}
             </p>
@@ -144,8 +144,8 @@ export function BillingTab() {
                 />
               </div>
               <p className="mt-3 text-xs text-muted-foreground tabular">
-                {fmtNum(pullsUsed)} of {fmtNum(pullLimit)} used · resets{" "}
-                {fmtDate(user.periodEnd)}
+                {fmtNum(pullsUsed)} of {fmtNum(pullLimit)} used
+                {user.periodEnd ? <> · resets {fmtDate(user.periodEnd)}</> : null}
               </p>
             </>
           ) : (

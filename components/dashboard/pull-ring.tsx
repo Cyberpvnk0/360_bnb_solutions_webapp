@@ -90,7 +90,9 @@ export function PullRing({ className }: { className?: string }) {
         </Button>
       ) : null}
 
-      {!isFree && user ? (
+      {/* Narrowed on the date itself, not the tier: a free account has
+          no period, and neither does a paid one before billing exists. */}
+      {!isFree && user?.periodEnd ? (
         <p className="text-xs text-muted-foreground tabular">
           Resets {fmtDate(user.periodEnd)}
         </p>

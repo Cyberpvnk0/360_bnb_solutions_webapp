@@ -112,6 +112,14 @@ drop policy if exists "own landlords" on public.landlords;
 create policy "own landlords" on public.landlords
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+/* Added after the first cut. `create table if not exists` does nothing
+   to an existing table, so new columns need saying explicitly — and
+   this file has to stay safe to re-run, because it will be. */
+alter table public.landlords
+  add column if not exists units_controlled integer not null default 0,
+  add column if not exists allows_str text not null default 'unknown',
+  add column if not exists last_contacted timestamptz;
+
 create index if not exists landlords_user_idx on public.landlords (user_id, updated_at desc);
 
 /* ------------------------------------------------------------------ */
