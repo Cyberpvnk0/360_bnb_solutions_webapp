@@ -15,7 +15,11 @@
 import { NextResponse } from "next/server";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
-import { storeConfigured, storeCounts } from "@/lib/db/market-store";
+import {
+  storeConfigured,
+  storeCounts,
+  storeStatus,
+} from "@/lib/db/market-store";
 import { photoPages } from "@/lib/live/redfin";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +35,21 @@ export async function GET() {
   // One database, so this answers across instances where the in-memory
   // counter cannot.
   const stored = await storeCounts().catch(() => null);
+  /**
+   * The only check that distinguishes the two ways storage fails.
+   *
+   * `storeConfigured` says the variables exist, which is not the same
+   * claim as the key working — and with row-level security on and no
+   * policies, an under-privileged key does not error loudly, it returns
+   * a cheerful nothing. Counts cannot tell that apart from an empty
+   * table either. This writes a sentinel row and reads it back, so it
+   * answers the actual question and names the reason when the answer is
+   * no.
+   */
+  const health = await storeStatus().catch(() => ({
+    ok: false,
+    detail: "health check threw",
+  }));
 
   return NextResponse.json({
     usage,
@@ -58,6 +77,9 @@ export async function GET() {
     },
     durability: {
       storeConfigured: storeConfigured(),
+      /** Write-then-read, so this is "can it store", not "is it set up". */
+      writable: health.ok,
+      writeDetail: health.ok ? null : health.detail,
       /**
        * The real test of whether anything is being kept. `keyed` counts
        * cached property analyses and listing details; run one analysis
