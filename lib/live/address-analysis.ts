@@ -113,7 +113,17 @@ export function buildAddressAnalysis(
       bedrooms: spec.bedrooms,
       bathrooms: spec.bathrooms,
       propertyType: spec.propertyType,
-      createdAt: new Date().toISOString(),
+      /**
+       * A bare YYYY-MM-DD, matching the seeded analyses.
+       *
+       * fmtDate appends "T00:00:00" to whatever it is handed — the
+       * convention across this data is a plain date, not a timestamp —
+       * so a full ISO string became "…ZT00:00:00" and rendered as
+       * "Invalid Date". Harmless where it was showing, and not harmless
+       * at all once a searched property is saved into the pipeline,
+       * which reads the same field.
+       */
+      createdAt: new Date().toISOString().slice(0, 10),
       strComps: [],
       ltrComps,
       defaults: buildDefaultsFor(ltrComps, spec.bedrooms, id),

@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
-import { fmtDate, fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
 import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
 import { AnimatedNumber } from "@/components/primitives/animated-number";
@@ -174,9 +174,6 @@ export function AnalyzeResult({
             className="h-28 w-full max-w-44 shrink-0 md:h-[104px] md:w-[152px]"
           />
           <div className="min-w-0 flex-1">
-            <MetricLabel>
-              Address pull · {fmtDate(analysis.createdAt)}
-            </MetricLabel>
             <h1 className="mt-1 truncate font-display text-2xl font-medium tracking-tight text-foreground md:text-3xl">
               {analysis.address}
             </h1>
