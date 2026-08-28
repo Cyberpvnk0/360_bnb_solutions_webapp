@@ -24,7 +24,7 @@ import {
   SearchX,
 } from "lucide-react";
 import {
-  getMarketPhotoMerge,
+  getMarketExtraListings,
   getLiveRentals,
   getLiveRentalsByZip,
   type LiveFailureReason,
@@ -336,44 +336,43 @@ export function DealsExplorer({
   );
 
   /* ---------------------------------------------------------------- */
-  /* Photos, fetched after the rows are already on screen              */
+  /* The listings the feed misses, fetched after its own are on screen  */
   /*                                                                    */
-  /* The rentals feed ships no imagery, so a picture has to come from a
-     second source that takes about as long as the first. Asking for
+  /* A second source that takes about as long as the first. Asking for
      both before rendering anything meant the wait was the sum of two
      vendors; asking afterwards means rows appear at the speed of one
-     and fill in their pictures a moment later. Nothing here is
-     load-bearing: no answer just leaves the sketches in place.        */
+     and the remainder lands a moment later. Nothing here is
+     load-bearing: no answer just means fewer rows.
+
+     It used to lend photos too. Those are copyrighted separately from
+     the listing facts around them, so the rows stay and the pictures
+     go — every card draws a Street View of the kerb, with a link out
+     to the page licensed to show the interiors.                       */
   /* ---------------------------------------------------------------- */
 
-  const [photos, setPhotos] = React.useState<{
+  const [extras, setExtras] = React.useState<{
     slug: string;
-    byListingId: Record<string, string>;
-    /** Photo-bearing listings the feed doesn't carry, shown alongside
-     *  its rows — the Furnished approach, applied everywhere. */
-    extras: RentalListing[];
+    listings: RentalListing[];
   } | null>(null);
 
   /** Only worth asking for real inventory: the preview set's addresses
    *  are generated, so nothing out there could match them. */
-  const photoTarget = liveActive ? live!.slug : null;
+  const extrasTarget = liveActive ? live!.slug : null;
 
   React.useEffect(() => {
-    if (!photoTarget) return;
+    if (!extrasTarget) return;
     let cancelled = false;
-    getMarketPhotoMerge(photoTarget).then(({ photos: byListingId, listings }) => {
+    getMarketExtraListings(extrasTarget).then((listings) => {
       if (cancelled) return;
-      setPhotos({ slug: photoTarget, byListingId, extras: listings });
+      setExtras({ slug: extrasTarget, listings });
     });
     return () => {
       cancelled = true;
     };
-  }, [photoTarget]);
+  }, [extrasTarget]);
 
-  const photosFor =
-    photos && photos.slug === photoTarget ? photos.byListingId : null;
   const extraRows =
-    photos && photos.slug === photoTarget ? photos.extras : null;
+    extras && extras.slug === extrasTarget ? extras.listings : null;
 
   // Join listings with their market once — cushion comes through
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
@@ -392,9 +391,9 @@ export function DealsExplorer({
           ? zipResult!.listings
           : []
         : marketRows
-          ? // The feed's rows, plus the photo source's own listings for
+          ? // The feed's rows, plus the second source's listings for
             // buildings the feed doesn't carry — the same rows the
-            // Furnished view shows, welded photo and all.
+            // Furnished view shows.
             [...marketRows, ...(extraRows ?? [])]
           : listFilter
             ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
@@ -402,11 +401,7 @@ export function DealsExplorer({
     return source.flatMap((raw) => {
       const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
-      // A borrowed photo, if one arrived and this row still has none.
-      // Matched on the server, so this is a lookup by id and there is
-      // no second copy of the address rules to keep in step.
-      const borrowed = raw.photoUrl ? undefined : photosFor?.[raw.id];
-      const listing = borrowed ? { ...raw, photoUrl: borrowed } : raw;
+      const listing = raw;
       return [
         {
           listing,
@@ -436,7 +431,6 @@ export function DealsExplorer({
     lists,
     redfinActive,
     redfin,
-    photosFor,
     extraRows,
   ]);
 

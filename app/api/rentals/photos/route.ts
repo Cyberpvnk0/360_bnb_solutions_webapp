@@ -3,21 +3,27 @@
  *   /api/rentals/photos?market=tampa
  *   /api/rentals/photos?market=tampa&shape=1   ← why a match missed
  *
- * Split out from /api/rentals on purpose. The rentals feed carries no
- * imagery in any of its fields, so a photo has to come from a second
- * source — and that source is a proxied scrape that can take as long as
- * the rentals call itself. Awaiting it before answering meant a student
- * watched an empty map for the sum of two vendors instead of the slower
- * one, to get a picture they hadn't asked for yet. So: rows ship first,
- * pictures land after.
+ * NO LONGER SERVES PHOTOS, despite the path. What it serves is the
+ * listings the rentals feed misses.
  *
- * And the second source is not just a photo mine. It is the same search
- * the Furnished view shows outright, so its rows arrive as complete
- * listings — photo welded on, nothing to match. A row the feed also
- * carries lends that row its photo; a row the feed DOESN'T carry is
- * returned as a listing in its own right rather than discarded. That is
- * the Furnished approach, replicated: where a photo exists at the
- * source, the property on screen has it, because it IS that row.
+ * A listing photo is copyrighted separately from the listing — the
+ * photographer's, then the brokerage's, under display rules we hold no
+ * licence to. Facts about a property are not: an address, a rent, a
+ * bedroom count. So the rows stay and the pictures go, every card draws
+ * a Street View of the kerb instead, and a "View photos" link sends
+ * anyone who wants the interiors to the page that is licensed to show
+ * them. A link is not a copy.
+ *
+ * The match is still COMPUTED, and still reported under ?shape=1: it is
+ * how coverage gets diagnosed, it costs nothing extra because the same
+ * fetch produces it, and if a licence ever exists the wiring is here.
+ * It just does not reach a browser.
+ *
+ * Split out from /api/rentals on purpose. The second source is a
+ * proxied scrape that can take as long as the rentals call itself, and
+ * awaiting it before answering meant a student watched an empty map for
+ * the sum of two vendors rather than the slower one. Rows ship first;
+ * the extra inventory lands after.
  *
  * The match happens HERE, not in the browser, and the answer is keyed
  * by listing id. Both feeds are already in the server's cache, so it
@@ -26,8 +32,8 @@
  * had the client re-derive the same keys, which is two implementations
  * that have to agree forever.
  *
- * Never fails: a market this can't cover returns an empty map and the
- * rows keep their sketch.
+ * Never fails: a market this can't cover returns an empty list and the
+ * feed's own rows stand alone.
  */
 
 import { NextResponse } from "next/server";
@@ -40,6 +46,22 @@ import {
 import { buildMarketPhotoMerge } from "@/lib/live/photo-merge";
 import { probeHouseFilters, redfinCoversMarket } from "@/lib/live/redfin";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
+import type { RentalListing } from "@/lib/mock/types";
+
+/**
+ * Strip the borrowed photo on the way out.
+ *
+ * Here rather than at the merge, because stored rows were written when
+ * photos still shipped and would otherwise keep serving them until
+ * every row aged out. One boundary, both cases.
+ */
+function withoutPhotos(rows: RentalListing[]): RentalListing[] {
+  return rows.map((row) => {
+    const shed: RentalListing = { ...row };
+    delete shed.photoUrl;
+    return shed;
+  });
+}
 
 /** Two paginated searches plus geocoding on a cold market. The plan's
  *  whole ceiling, because the first visit to a big market genuinely
@@ -50,7 +72,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const market = MARKET_BY_SLUG.get(searchParams.get("market") ?? "");
   if (!market) {
-    return NextResponse.json({ photos: {} }, { status: 404 });
+    return NextResponse.json({ listings: [] }, { status: 404 });
   }
   const shape = searchParams.get("shape");
 
@@ -73,8 +95,8 @@ export async function GET(request: Request) {
   if (!redfinCoversMarket(market)) {
     return NextResponse.json({
       market: market.slug,
-      photos: {},
-      ...(shape ? { verdict: "No photo source is mapped for this market." } : {}),
+      listings: [],
+      ...(shape ? { verdict: "No second source is mapped for this market." } : {}),
     });
   }
 
@@ -88,8 +110,7 @@ export async function GET(request: Request) {
     const kept = stored.photoMerge;
     return NextResponse.json({
       market: market.slug,
-      photos: kept.photos,
-      listings: kept.extras,
+      listings: withoutPhotos(kept.extras),
       matched: kept.matched,
       extrasAdded: kept.extras.length,
       rows: kept.rows,
@@ -109,8 +130,7 @@ export async function GET(request: Request) {
     const kept = stored.photoMerge;
     return NextResponse.json({
       market: market.slug,
-      photos: kept.photos,
-      listings: kept.extras,
+      listings: withoutPhotos(kept.extras),
       matched: kept.matched,
       extrasAdded: kept.extras.length,
       rows: kept.rows,
@@ -134,10 +154,9 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     market: market.slug,
-    photos,
-    /** Complete listings the feed doesn't carry — shown, not mined. */
-    listings: extras,
-    /** Coverage, not a claim that every row has one. */
+    /** Complete listings the feed doesn't carry — facts, not pictures. */
+    listings: withoutPhotos(extras),
+    /** Match coverage, for the probe. No photo rides along with it. */
     matched: Object.keys(photos).length,
     extrasAdded: extras.length,
     rows: merge.rows,

@@ -11,26 +11,13 @@
 import * as React from "react";
 import type { RentalListing } from "@/lib/mock/types";
 import { PropertyThumb } from "@/components/analyze/property-thumb";
+import {
+  streetViewConfigured,
+  streetViewSrc,
+} from "@/lib/live/street-view-probe";
 import { cn } from "@/lib/utils";
 
 type Stage = "photo" | "street" | "sketch";
-
-/**
- * Whether Street View is wired up at all, asked once per session.
- *
- * Without this every photo-less card fires its own request to find out,
- * so a page of twenty-four spends twenty-four round trips discovering
- * the same thing — and on a deployment with no Google key, discovering
- * nothing. One request now answers for the whole session.
- */
-let streetViewProbe: Promise<boolean> | null = null;
-function streetViewConfigured(): Promise<boolean> {
-  streetViewProbe ??= fetch("/api/street-view?probe=1")
-    .then((r) => (r.ok ? r.json() : { configured: false }))
-    .then((d: { configured?: boolean }) => Boolean(d?.configured))
-    .catch(() => false);
-  return streetViewProbe;
-}
 
 export function PropertyImage({
   listing,
@@ -94,7 +81,7 @@ export function PropertyImage({
   const src =
     stage === "photo"
       ? listing.photoUrl!
-      : `/api/street-view?lat=${listing.lat}&lon=${listing.lon}`;
+      : streetViewSrc(listing.lat, listing.lon);
 
   return (
     <div className={cn("relative overflow-hidden bg-secondary/60", className)}>

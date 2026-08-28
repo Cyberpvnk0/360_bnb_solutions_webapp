@@ -111,6 +111,9 @@ export default async function AnalyzeResultPage({
       <AnalyzeResult
         analysis={withComps}
         marketCenter={point}
+        // The searched address IS the property, so the curb shot is of
+        // the building somebody typed rather than of a city centre.
+        propertyPoint={point}
         liveComps={liveComps}
         searchedAddress={{ market, milesAway, assumedSize: spec.assumedSize }}
       />

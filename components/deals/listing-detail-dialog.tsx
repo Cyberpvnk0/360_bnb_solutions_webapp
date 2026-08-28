@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
+import { PhotosLink } from "./photos-link";
 import { ListingGallery } from "./listing-gallery";
 import { analyzeHref } from "@/lib/live/analyze-href";
 import { cn } from "@/lib/utils";
@@ -146,6 +147,7 @@ export function ListingDetailDialog({
                   Run the numbers
                 </Link>
               </Button>
+              <PhotosLink place={listing} real={isLive} />
             </div>
 
             {/* Who to call — the step between "this pencils" and a lease. */}

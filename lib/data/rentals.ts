@@ -94,38 +94,29 @@ export async function getLiveRentals(
   }
 }
 
-export interface MarketPhotoMerge {
-  /** listing id → photo URL, for rows the feed already shows. */
-  photos: Record<string, string>;
-  /** Complete listings the feed doesn't carry, photos welded on — the
-   *  same rows the Furnished view would show. */
-  listings: RentalListing[];
-}
-
 /**
- * Photos and photo-bearing listings for a market, a beat after the rows.
+ * The listings the feed misses, a beat after its own rows.
  *
- * A second call on purpose: the rows come back without imagery so they
- * can render as soon as the feed answers, and this fills in behind
- * them — pictures onto the rows the feed has, whole listings for the
- * ones it hasn't. Returns nothing for anything it can't cover; the
- * caller merges what it gets and leaves the rest alone.
+ * A second call on purpose: the feed's rows render as soon as it
+ * answers, and this fills in behind them from a slower source. Returns
+ * nothing for anything it can't cover; the caller appends what it gets
+ * and leaves the rest alone.
  *
- * By id, not by address, because the address matching lives on the
- * server next to both feeds. Nothing here needs to know how two
- * vendors spell a street.
+ * NO PHOTOS. It used to also lend pictures to rows the feed carried,
+ * and those pictures are copyrighted separately from the listing facts
+ * around them. The rows are facts and stay; every card draws a Street
+ * View of the kerb, and a link sends anyone who wants the interiors to
+ * the page licensed to show them.
  */
-export async function getMarketPhotoMerge(
+export async function getMarketExtraListings(
   marketSlug: string
-): Promise<MarketPhotoMerge> {
-  const empty: MarketPhotoMerge = { photos: {}, listings: [] };
-  const attempt = async (): Promise<MarketPhotoMerge | null> => {
+): Promise<RentalListing[]> {
+  const attempt = async (): Promise<RentalListing[] | null> => {
     const res = await fetch(
       `/api/rentals/photos?market=${encodeURIComponent(marketSlug)}`
     ).catch(() => null);
     if (!res?.ok) return null;
     const data = (await res.json().catch(() => null)) as {
-      photos?: Record<string, string>;
       listings?: RentalListing[];
     } | null;
     if (!data) return null;
@@ -133,14 +124,14 @@ export async function getMarketPhotoMerge(
     // Registered like any live rows, so "Run the numbers" resolves them
     // after a navigation exactly as it does for the feed's own.
     registerLiveListings(listings);
-    return { photos: data.photos ?? {}, listings };
+    return listings;
   };
 
   // One retry, because the failure worth planning for is a cold big
   // market outrunning the server's clock. That first attempt is not
   // wasted — every page fetched and address placed before the timeout
   // is cached — so the second ask finishes on the warmed remainder.
-  return (await attempt()) ?? (await attempt()) ?? empty;
+  return (await attempt()) ?? (await attempt()) ?? []
 }
 
 export interface ZipRentalsResult extends LiveRentalsResult {

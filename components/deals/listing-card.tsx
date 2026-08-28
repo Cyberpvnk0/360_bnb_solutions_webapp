@@ -3,9 +3,12 @@
 /**
  * One rental listing in the Deal Finder grid: sketch thumb up top (with a
  * "New" chip inside its first days), the asking rent big, the unit line,
- * the address, and a footer pairing the cushion estimate with the two
- * actions — hand the listing to the analyzer, or open the address on
- * Zillow. Hovering syncs the map's price pill.
+ * the address, and a footer pairing the cushion estimate with the
+ * analyzer hand-off. Hovering syncs the map's price pill.
+ *
+ * The image is a curb shot, and a pill on it links out to the listing's
+ * own photos. We do not hold a licence to the interiors, and the place
+ * that does is one click away.
  */
 
 import * as React from "react";
@@ -14,6 +17,7 @@ import { TriangleAlert } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import { PropertyImage } from "./property-image";
+import { PhotosLink } from "./photos-link";
 import { Button } from "@/components/ui/button";
 import { TYPE_LABEL } from "./deal-filters";
 import { analyzeHref } from "@/lib/live/analyze-href";
@@ -80,6 +84,15 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
               New
             </span>
           ) : null}
+          {/* Bottom-LEFT: the image tags itself bottom-right, and two
+              overlays fighting for one corner is how a card gets ugly
+              at narrow widths. */}
+          <PhotosLink
+            place={l}
+            real={l.id.startsWith("live--")}
+            variant="pill"
+            className="absolute bottom-2 left-2"
+          />
         </div>
 
         <div className="px-5 pb-4 pt-3.5">

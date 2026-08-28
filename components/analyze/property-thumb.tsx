@@ -1,10 +1,22 @@
+"use client";
+
 /**
- * Deterministic placeholder for the property photo. Real street imagery
- * arrives with the live data integration; this keeps the slot honest —
- * an abstract roofline sketch seeded by the analysis id, never a fake
- * photograph.
+ * The analyzer's property image, and the sketch it falls back to.
+ *
+ * CurbShot draws Google Street View of the property's own coordinates.
+ * PropertyThumb is the honest placeholder for everything else — an
+ * abstract roofline seeded by the analysis id, never a fake photograph.
+ *
+ * A point is required, not optional-with-a-default. The market's centre
+ * is several miles from most properties, and a picture of city hall
+ * captioned with somebody's address is worse than no picture at all.
  */
 
+import * as React from "react";
+import {
+  streetViewConfigured,
+  streetViewSrc,
+} from "@/lib/live/street-view-probe";
 import { cn } from "@/lib/utils";
 
 function hash(str: string): number {
@@ -80,6 +92,64 @@ export function PropertyThumb({
       </svg>
       <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-muted-foreground/70">
         {label}
+      </span>
+    </div>
+  );
+}
+
+export function CurbShot({
+  seed,
+  point,
+  alt,
+  className,
+}: {
+  /** Seeds the sketch when there is no imagery. */
+  seed: string;
+  /** The PROPERTY's coordinates. Null falls straight through to the
+   *  sketch rather than guessing at the market's centre. */
+  point: { lat: number; lon: number } | null;
+  alt: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = React.useState(false);
+  const [configured, setConfigured] = React.useState<boolean | null>(null);
+  const [loaded, setLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!point) return;
+    let cancelled = false;
+    streetViewConfigured().then((ok) => {
+      if (!cancelled) setConfigured(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [point]);
+
+  if (!point || failed || configured === false) {
+    return <PropertyThumb seed={seed} className={className} label="No photo" />;
+  }
+
+  return (
+    <div className={cn("relative overflow-hidden rounded-sm bg-secondary/60", className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- served by
+          our own route so the key stays on the server; next/image would
+          add a second hop for no benefit. */}
+      <img
+        src={streetViewSrc(point.lat, point.lon)}
+        alt={alt}
+        loading="eager"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        className={cn(
+          "size-full object-cover transition-opacity duration-300",
+          loaded ? "opacity-100" : "opacity-0"
+        )}
+      />
+      {/* Said out loud: this is the kerb, not the listing's photos. */}
+      <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]">
+        Street View
       </span>
     </div>
   );

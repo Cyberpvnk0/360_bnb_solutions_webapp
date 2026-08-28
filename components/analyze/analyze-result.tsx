@@ -38,7 +38,8 @@ import { SeasonalityStrip } from "./seasonality-strip";
 import { SizeControl } from "./size-control";
 import { CompsExplorer } from "./comps-explorer";
 import { LtrCompsTable } from "./comps-tables";
-import { PropertyThumb } from "./property-thumb";
+import { CurbShot } from "./property-thumb";
+import { PhotosLink } from "@/components/deals/photos-link";
 import { RevenueRange } from "./revenue-range";
 import { cn } from "@/lib/utils";
 
@@ -88,11 +89,21 @@ function OutputTile({
 export function AnalyzeResult({
   analysis,
   marketCenter,
+  propertyPoint = null,
   liveComps = false,
   searchedAddress = null,
 }: {
   analysis: Analysis;
   marketCenter: { lat: number; lon: number } | null;
+  /**
+   * The PROPERTY's own coordinates, when they are known.
+   *
+   * Separate from marketCenter on purpose: for a searched address the
+   * two happen to be the same value, and for a saved analysis the
+   * centre is a city hall several miles away. One prop doing both jobs
+   * would put a picture of downtown under somebody's street address.
+   */
+  propertyPoint?: { lat: number; lon: number } | null;
   /** True when the comp set came from the live STR feed. */
   liveComps?: boolean;
   /**
@@ -111,6 +122,16 @@ export function AnalyzeResult({
   } | null;
 }) {
   const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
+  /**
+   * Does this address exist?
+   *
+   * A typed address does by construction. A live listing's analysis is
+   * minted with an `r--live--` id and carries the feed's own address.
+   * Everything else is seeded: a plausible street on a real map that no
+   * building stands on.
+   */
+  const realAddress =
+    searchedAddress !== null || analysis.id.startsWith("r--live--");
   // Far enough that the borrowed market context deserves saying out loud.
   const distantMarket =
     searchedAddress !== null && searchedAddress.milesAway > 25;
@@ -169,8 +190,10 @@ export function AnalyzeResult({
       <section className="overflow-hidden rounded-sm border border-border bg-card">
         {/* Identity + actions */}
         <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center">
-          <PropertyThumb
+          <CurbShot
             seed={analysis.id}
+            point={propertyPoint}
+            alt={`${analysis.address}, ${analysis.city}`}
             className="h-28 w-full max-w-44 shrink-0 md:h-[104px] md:w-[152px]"
           />
           <div className="min-w-0 flex-1">
@@ -187,6 +210,14 @@ export function AnalyzeResult({
                 <ArrowUpRight aria-hidden className="size-3" />
               </Link>
             </p>
+            {/* The image above is the kerb. Interior photos live on the
+                listing's own page, and a link is not a copy. Offered
+                only for a real address — a seeded one is a plausible
+                street that does not exist, and searching it lands on
+                somebody else's house. */}
+            <div className="mt-2">
+              <PhotosLink place={analysis} real={realAddress} variant="chip" />
+            </div>
             {/* Regulation and the median lease come from the market, not
                 the address. Near its centre that is a fair swap; far
                 out it is a real assumption and gets said. */}
