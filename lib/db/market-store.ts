@@ -653,13 +653,33 @@ export async function storeStatus(): Promise<StoreStatus> {
   }
 
   if (!write.ok) {
-    const body = (await write.text().catch(() => "")).slice(0, 200);
-    const hint =
-      write.status === 401 || write.status === 403
-        ? "the key was rejected — a publishable key cannot write here; use the secret key"
-        : write.status === 404
-          ? "no market_cache table — run supabase/schema.sql in the SQL editor"
-          : "see the body";
+    const body = (await write.text().catch(() => "")).slice(0, 400);
+
+    /**
+     * The database's own diagnosis, before any of ours.
+     *
+     * A 403 here was reported as "a publishable key cannot write here;
+     * use the secret key", which sent someone to check a key that was
+     * correct. The real cause was Postgres 42501 — the right key,
+     * authenticating as the right role, on tables that role had never
+     * been granted anything on. Postgres said so, and included the
+     * exact GRANT to run; our guess printed over it.
+     *
+     * So the specific codes are read first, and a guess is only offered
+     * where there is nothing better.
+     */
+    let hint: string;
+    if (body.includes("42501")) {
+      hint =
+        "the key is fine but its role has no rights on the table — run the GRANT in the hint below";
+    } else if (write.status === 404 || body.includes("42P01")) {
+      hint = "that table does not exist — create it before this can store anything";
+    } else if (write.status === 401 || write.status === 403) {
+      hint =
+        "the key was rejected — check it is the secret key rather than the publishable one";
+    } else {
+      hint = "see the body";
+    }
     return { ok: false, detail: `Write failed ${write.status}: ${hint}. ${body}` };
   }
 
