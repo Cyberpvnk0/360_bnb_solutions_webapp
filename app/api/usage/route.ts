@@ -14,6 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { scraperUsage } from "@/lib/live/scraper-usage";
+import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
 import { storeConfigured } from "@/lib/db/market-store";
 import { photoPages } from "@/lib/live/redfin";
 
@@ -26,8 +27,25 @@ export async function GET() {
   // type, each paginated. The structured endpoint bills one per page.
   const passes = 1 + (process.env.REDFIN_PHOTO_TYPES?.split(",").filter(Boolean).length ?? 1);
 
+  const airroi = airRoiBudget();
+
   return NextResponse.json({
     usage,
+    /**
+     * The OTHER meter. Two vendors bill this product and only one of
+     * them was visible here, which is how a balance gets spent by a
+     * code path nobody was watching.
+     */
+    airroi: {
+      configured: hasAirRoiKey(),
+      callsToday: airroi.used,
+      dailyCap: airroi.cap,
+      left: airroi.left,
+      note:
+        "Per-instance and per-day, so the fleet total is this times however many instances are warm. " +
+        "AIRROI_DAILY_CALLS raises it. Their calls are priced in tens of cents, not the published floor, so the default is deliberately small. " +
+        "A cached analysis costs nothing and never reaches this counter.",
+    },
     costModel: {
       pagesPerPass: pages,
       passesPerSearch: passes,

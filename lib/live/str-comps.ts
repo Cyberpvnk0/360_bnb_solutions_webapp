@@ -117,6 +117,9 @@ export async function withLiveComps(
       liveComps: true,
     };
   } catch {
+    // Budget spent, feed down, key rejected — all the same answer here:
+    // show the modelled comps and label them. The page must never fail
+    // because a vendor did.
     return { analysis, liveComps: false };
   }
 }

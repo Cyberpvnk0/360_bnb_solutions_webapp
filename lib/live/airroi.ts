@@ -97,9 +97,55 @@ export const ESTIMATE_PATH = "/calculator/estimate";
 export const COMPS_REVALIDATE_SECONDS = 86_400; // 1 day
 export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
 
+/**
+ * A hard ceiling on billed calls, counted here rather than trusted to
+ * the callers.
+ *
+ * Every guard above this one rations something adjacent — distinct
+ * areas per day, markets per batch — and each of them can be right
+ * while the bill still runs away, because none of them counts the thing
+ * that costs money. This counts calls.
+ *
+ * Deliberately low by default. These are priced in tens of cents, not
+ * the hundredth of a dollar the published floor suggests, so a balance
+ * that sounds like plenty is a couple of dozen requests. A ceiling that
+ * only bites in an emergency is a ceiling set too high to notice the
+ * emergency.
+ *
+ * Per-instance and per-day, like the quota beside it. A serverless
+ * fleet means the true figure is this times however many instances are
+ * warm — so it is a brake, not a lock, and the number is chosen with
+ * that multiple in mind.
+ */
+const DAILY_CALL_BUDGET = (() => {
+  const raw = Number(process.env.AIRROI_DAILY_CALLS);
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 12;
+})();
+
+let spentDay = "";
+let spentCalls = 0;
+
+function budget(): { used: number; cap: number; left: number } {
+  const today = new Date().toISOString().slice(0, 10);
+  if (spentDay !== today) {
+    spentDay = today;
+    spentCalls = 0;
+  }
+  return {
+    used: spentCalls,
+    cap: DAILY_CALL_BUDGET,
+    left: Math.max(0, DAILY_CALL_BUDGET - spentCalls),
+  };
+}
+
+/** What this instance has spent today. Surfaced by /api/usage. */
+export function airRoiBudget(): { used: number; cap: number; left: number } {
+  return budget();
+}
+
 export class AirRoiError extends Error {
   constructor(
-    readonly reason: "no-key" | "auth" | "quota" | "http" | "network",
+    readonly reason: "no-key" | "auth" | "quota" | "http" | "network" | "budget",
     readonly status?: number,
     /** What the service said went wrong. A rejected request explains
      *  itself in the body, and the first version of this class dropped
@@ -377,6 +423,21 @@ async function call(
 ): Promise<unknown> {
   const key = process.env.AIRROI_API_KEY;
   if (!key) throw new AirRoiError("no-key");
+
+  // Counted before the request, not after: a call that times out or
+  // errors has still been made and, on most metered APIs, still
+  // billed. Counting successes only is how a budget gets quietly
+  // exceeded by the failures.
+  const remaining = budget();
+  if (remaining.left <= 0) {
+    throw new AirRoiError(
+      "budget",
+      undefined,
+      `daily call budget spent (${remaining.used}/${remaining.cap}). ` +
+        "Raise AIRROI_DAILY_CALLS deliberately; the default is low because these calls are not cheap."
+    );
+  }
+  spentCalls += 1;
 
   const url = body
     ? `${BASE}${path}`
