@@ -356,39 +356,35 @@ export async function storeCounts(): Promise<{
   }
 }
 
+type StatsRows = Map<string, { stats: StoredMarketStats; at: string | null }>;
+
 /**
- * Every stored KPI row, in one query.
+ * KPI rows from the store, in one query.
  *
- * The markets grid draws 409 cards. Reading them one at a time would be
- * 409 round trips to serve a single page, and fetching them from the
- * vendor instead would be over a thousand billed calls for a scroll.
- * One `in` query costs one request and nothing at the vendor: the grid
- * shows measured figures for whatever has already been paid for, and
- * the seeded model everywhere else.
- *
- * Slugs are filtered to the safe character set before interpolation.
- * They come from our own catalogue rather than a user, but a query
- * built by string concatenation should not depend on that staying true.
+ * Reading them one market at a time would be a round trip per card;
+ * fetching them from the vendor instead would be a billed call per
+ * card. One request costs one round trip and nothing at the vendor:
+ * whatever has already been paid for shows measured figures, and
+ * everything else keeps its modelled ones.
  */
-export async function readAllMarketStats(): Promise<
-  Map<string, { stats: StoredMarketStats; at: string | null }>
-> {
-  const out = new Map<string, { stats: StoredMarketStats; at: string | null }>();
+async function readStatsWhere(filter: string | null): Promise<StatsRows> {
+  const out: StatsRows = new Map();
   const cfg = config();
   if (!cfg) return out;
 
+  const query = [filter, "stats=not.is.null", "select=market_slug,stats,stats_at"]
+    .filter(Boolean)
+    .join("&");
+
   try {
-    const res = await fetch(
-      `${cfg.url}/rest/v1/market_cache?stats=not.is.null&select=market_slug,stats,stats_at`,
-      {
-        headers: headers(cfg.key),
-        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
-        cache: "no-store",
-      }
-    );
+    const res = await fetch(`${cfg.url}/rest/v1/market_cache?${query}`, {
+      headers: headers(cfg.key),
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+      cache: "no-store",
+    });
     // A schema without the column rejects the whole select, exactly as
     // the single-row read had to be taught. An empty map is the right
-    // answer: every card falls back to the seeded model.
+    // answer: every caller falls back to the seeded model.
     if (!res.ok) return out;
     const rows = (await res.json()) as {
       market_slug?: string;
@@ -404,6 +400,29 @@ export async function readAllMarketStats(): Promise<
   } catch {
     return out;
   }
+}
+
+/** Every stored KPI row. The backfill's view: what is already paid for. */
+export async function readAllMarketStats(): Promise<StatsRows> {
+  return readStatsWhere(null);
+}
+
+/**
+ * Stored KPI rows for a named set of markets.
+ *
+ * What one operator's desk needs: the handful of markets they watch or
+ * hold deals in, not the catalogue. Reading everything to draw three
+ * rows would grow the page's payload with the store rather than with
+ * the person looking at it — and the store is meant to grow.
+ *
+ * Slugs are filtered to the safe character set before interpolation.
+ * They come from our own catalogue rather than a text box, but a query
+ * built by string concatenation should not depend on that staying true.
+ */
+export async function readMarketStatsFor(slugs: string[]): Promise<StatsRows> {
+  const safe = [...new Set(slugs)].filter((s) => /^[a-z0-9-]{1,64}$/i.test(s));
+  if (safe.length === 0) return new Map();
+  return readStatsWhere(`market_slug=in.(${safe.join(",")})`);
 }
 
 /**

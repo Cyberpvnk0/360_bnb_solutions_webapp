@@ -5,25 +5,42 @@ import Link from "next/link";
 import { Eye } from "lucide-react";
 import { getMarkets } from "@/lib/data";
 import type { Market } from "@/lib/mock/types";
-import { revpar } from "@/lib/calc/arbitrage";
-import { fmtDeltaPct, fmtDeltaPts, fmtMoney, fmtPct } from "@/lib/format";
+import { displayFigures } from "@/lib/live/market-figures";
+import { fmtDayMonth, fmtDeltaPct, fmtDeltaPts, fmtMoney, fmtPct } from "@/lib/format";
 import { DeltaIndicator } from "@/components/primitives/delta-indicator";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import type { MarketStatsBySlug } from "./use-market-stats";
 
 // Every row is its own grid, so all tracks must resolve identically
 // across rows: minmax+fr keeps numeric columns aligned.
 const ROW_GRID =
-  "grid grid-cols-[minmax(8rem,1.4fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)] items-center gap-x-4";
+  "grid grid-cols-[minmax(10rem,1.8fr)_minmax(5rem,1fr)_minmax(6rem,1fr)_minmax(4.5rem,0.9fr)] items-center gap-x-4";
 
 /**
  * Watched-markets module: ADR, occupancy and RevPAR for every market the
  * operator watches, in a card with rows flush to its edges.
+ *
+ * Two sources, never mixed inside one row. Where the store holds a
+ * measured summary the row shows it and dates it; where it doesn't, the
+ * row shows the model and says so. The month-over-month deltas are part
+ * of the model, so a measured row carries none — a real level with an
+ * invented trend under it reads as one measurement and is two.
  */
-export function WatchedMarkets({ slugs }: { slugs: string[] }) {
+export function WatchedMarkets({
+  slugs,
+  liveStats = {},
+  statsReady = true,
+}: {
+  slugs: string[];
+  /** Measured figures by slug, for whichever of these markets the store
+   *  has already paid for. Free to read; no vendor call. */
+  liveStats?: MarketStatsBySlug;
+  statsReady?: boolean;
+}) {
   const [bySlug, setBySlug] = React.useState<Map<string, Market> | null>(null);
 
   React.useEffect(() => {
@@ -37,11 +54,12 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
     };
   }, []);
 
-  const watched = bySlug
-    ? slugs
-        .map((slug) => bySlug.get(slug))
-        .filter((m): m is Market => Boolean(m))
-    : null;
+  const watched =
+    bySlug && statsReady
+      ? slugs
+          .map((slug) => bySlug.get(slug))
+          .filter((m): m is Market => Boolean(m))
+      : null;
 
   return (
     <section
@@ -78,7 +96,7 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <div className="min-w-[560px]">
+          <div className="min-w-[600px]">
             <div
               className={cn(
                 ROW_GRID,
@@ -112,49 +130,73 @@ export function WatchedMarkets({ slugs }: { slugs: string[] }) {
                       </div>
                     </div>
                   ))
-                : watched.map((m) => (
-                    <Link
-                      key={m.slug}
-                      href={`/deals?market=${m.slug}`}
-                      className={cn(
-                        ROW_GRID,
-                        "px-6 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {m.name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {m.state}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-foreground tabular">
-                          {fmtMoney(m.adr)}
-                        </p>
-                        <DeltaIndicator
-                          value={m.deltas.adr}
-                          label={fmtDeltaPct(m.deltas.adr)}
-                        />
-                      </div>
-                      <div>
-                        <p className="text-sm text-foreground tabular">
-                          {fmtPct(m.occupancy)}
-                        </p>
-                        <DeltaIndicator
-                          value={m.deltas.occupancy}
-                          label={fmtDeltaPts(m.deltas.occupancy)}
-                        />
-                      </div>
-                      <div>
-                        <p className="text-sm text-foreground tabular">
-                          {fmtMoney(revpar(m.adr, m.occupancy))}
-                        </p>
-                        <p className="text-xs text-muted-foreground">per night</p>
-                      </div>
-                    </Link>
-                  ))}
+                : watched.map((m) => {
+                    const f = displayFigures(
+                      m,
+                      liveStats[m.slug],
+                      liveStats[m.slug]?.asOf ?? null
+                    );
+                    return (
+                      <Link
+                        key={m.slug}
+                        href={`/deals?market=${m.slug}`}
+                        className={cn(
+                          ROW_GRID,
+                          "px-6 py-3.5 transition-colors duration-150 hover:bg-secondary/40"
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {m.name}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {m.state}
+                            {" · "}
+                            {f.measured ? (
+                              <span className="text-gold">
+                                {/* Dated, never dressed up as now. The
+                                    year is dropped on purpose: the store
+                                    ages rows out inside a month, and the
+                                    six extra characters were enough to
+                                    truncate the whole line. */}
+                                Measured{f.asOf ? ` ${fmtDayMonth(f.asOf)}` : ""}
+                              </span>
+                            ) : (
+                              "Modelled"
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-foreground tabular">
+                            {fmtMoney(f.adr)}
+                          </p>
+                          {f.measured ? null : (
+                            <DeltaIndicator
+                              value={m.deltas.adr}
+                              label={fmtDeltaPct(m.deltas.adr)}
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm text-foreground tabular">
+                            {fmtPct(f.occupancy)}
+                          </p>
+                          {f.measured ? null : (
+                            <DeltaIndicator
+                              value={m.deltas.occupancy}
+                              label={fmtDeltaPts(m.deltas.occupancy)}
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm text-foreground tabular">
+                            {fmtMoney(f.revpar)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">per night</p>
+                        </div>
+                      </Link>
+                    );
+                  })}
             </div>
           </div>
         </div>
