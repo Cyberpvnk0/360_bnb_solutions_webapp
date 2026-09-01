@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imageFieldsIn } from "./mashvisor";
+import { idFieldsIn, imageFieldsIn } from "./mashvisor";
 
 describe("finding pictures in a payload nobody has mapped yet", () => {
   it("collapses a row's photo array into one finding, not forty", () => {
@@ -63,5 +63,36 @@ describe("finding pictures in a payload nobody has mapped yet", () => {
   it("keeps a query string on the sample URL", () => {
     const found = imageFieldsIn({ photo: "https://cdn.example.com/a.jpg?w=800" });
     expect(found[0].sample).toBe("https://cdn.example.com/a.jpg?w=800");
+  });
+});
+
+describe("finding an id to feed the next call", () => {
+  it("pulls ids out of a search result without knowing the schema", () => {
+    const payload = {
+      content: { properties: [{ id: 43148625, address: "1 Main St" }] },
+    };
+    expect(idFieldsIn(payload)).toEqual([
+      { path: "content.properties[].id", sample: "43148625" },
+    ]);
+  });
+
+  it("takes the vendor's other spellings of the same thing", () => {
+    const found = idFieldsIn({ rows: [{ property_id: 7, mls_id: "X-9" }] });
+    expect(found.map((f) => f.path).sort()).toEqual([
+      "rows[].mls_id",
+      "rows[].property_id",
+    ]);
+  });
+
+  it("ignores fields that merely contain 'id'", () => {
+    // "paid", "video", "guid" — a substring match would take all three
+    // and hand a useless value to the next call.
+    expect(idFieldsIn({ paid: true, video: "x", guid_url: "y" })).toEqual([]);
+  });
+
+  it("keeps one sample per path, not one per row", () => {
+    const found = idFieldsIn({ rows: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+    expect(found).toHaveLength(1);
+    expect(found[0].sample).toBe("1");
   });
 });

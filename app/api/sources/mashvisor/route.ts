@@ -6,10 +6,20 @@
  *   /api/sources/mashvisor?secret=…&key=1          ← free, spends nothing
  *
  * ONE QUESTION, ASKED OF THE SERVICE RATHER THAN OF MEMORY. Their docs
- * are not reachable from where this was written, so every path here is
- * a hypothesis and the response is the evidence. Three AirROI mappers
- * were written from remembered field names against a payload that did
- * not exist; each cost an afternoon, and this route is the alternative.
+ * are not reachable from where this was written, so the response is the
+ * evidence. Three AirROI mappers were written from remembered field
+ * names against a payload that did not exist; each cost an afternoon,
+ * and this route is the alternative.
+ *
+ * WHAT THE PAPER TRAIL SAYS, AND WHY IT STILL GETS TESTED. Two of their
+ * endpoints are documented to carry images — a property profile and an
+ * STR listing detail. Their own material also says MLS data served
+ * through the API is INACTIVE LISTINGS ONLY, a restriction the MLSs
+ * impose rather than one they chose. If that holds, the pictures are of
+ * properties nobody can lease, which is worth knowing before any of
+ * this reaches a card. Their marketplace also carries off-market stock
+ * that is not MLS and may not be covered by the same rule. Only the
+ * service can settle which.
  *
  * `path` takes ANY path relative to their client base, so an endpoint
  * read off the docs in a browser can be tested here without a code
@@ -28,6 +38,7 @@
 import { NextResponse } from "next/server";
 import {
   hasMashvisorKey,
+  idFieldsIn,
   imageFieldsIn,
   mashvisorCall,
   mashvisorKeyMissingMessage,
@@ -41,25 +52,29 @@ export const maxDuration = 120;
 const OURS = new Set(["secret", "path", "sweep", "key", "raw"]);
 
 /**
- * Paths to try when sweeping. HYPOTHESES, not documentation.
+ * Paths to try when sweeping.
  *
- * Kept short on purpose. A long guess list is a long bill for a lot of
- * 404s, and the useful move is usually to read one path off the docs
- * and pass it in `path=`. The only reason a sweep exists at all is
- * that a wrong path often answers with the right one — their layer,
- * like the last vendor's, tends to explain itself when it refuses.
+ * Every one of these appears in their own examples, their own product
+ * material, or working third-party code against this API — an earlier
+ * cut of this list was half invented, which is a bill for 404s dressed
+ * up as a measurement. Reading one path off the docs and passing it in
+ * `path=` is still the better move; the sweep is for when you want the
+ * lay of the land in one go.
  */
-const CANDIDATES = [
-  // The one endpoint search results actually confirm exists, as a
-  // control: if this fails too, the answer is the key or the plan, not
-  // the path.
+const CANDIDATES: readonly string[] = [
+  // Confirmed by their own examples, as a control: if this fails too,
+  // the answer is the key or the plan, not the path.
   "/rental-rates",
+  // Documented to return a full property profile INCLUDING IMAGES.
+  // The headline candidate.
+  "/get-property",
+  // Bulk active and inactive MLS listings plus off-market stock. The
+  // only documented path that claims ACTIVE inventory, which is the
+  // only kind a student can lease.
+  "/marketplace-listings-search",
+  // Both confirmed live in third-party code against this API.
   "/city/investment/{state}/{city}",
-  "/city/traditional/listing",
-  "/trends/summary/{state}/{city}",
-  "/neighborhood/{state}/{city}",
-  "/search/marketplace",
-  "/property",
+  "/airbnb-property/market-summary",
 ];
 
 function fill(path: string, state: string, city: string): string {
@@ -88,6 +103,8 @@ async function probe(path: string, params: Record<string, string>) {
     /** THE ANSWER. Empty means this endpoint carries no imagery. */
     images,
     hasImages: images.length > 0,
+    /** What a follow-up call could be made about. */
+    ids: idFieldsIn(res.body),
   };
 }
 
@@ -140,8 +157,50 @@ export async function GET(request: Request) {
   const state = forwarded.state ?? "FL";
   const city = forwarded.city ?? "Tampa";
 
+  /**
+   * search → property profile, in one request.
+   *
+   * The endpoint documented to carry images takes a property id, and a
+   * property id cannot be known in advance — it has to fall out of a
+   * search first. Doing that by hand is two round trips and a
+   * copy-paste, and the copy-paste is where a probe stops getting run.
+   *
+   * Two billed calls. It is the only sequence that answers the actual
+   * question: can we get a picture of a specific property.
+   */
+  if (searchParams.get("chain")) {
+    const search = await probe(
+      fill("/marketplace-listings-search", state, city),
+      forwarded
+    );
+    const id = search.ids[0]?.sample;
+    if (!id) {
+      return NextResponse.json({
+        step1: search,
+        verdict: search.ok
+          ? "The search answered but carried no id, so there is nothing to look a property up by. Read `fields` for what it did return."
+          : "The search itself was refused — read step1.error. Nothing was looked up.",
+      });
+    }
+
+    // Both spellings, because their own examples use one and their
+    // product material the other, and one of the two costs a call to
+    // rule out.
+    const detail = await probe(`/get-property`, { ...forwarded, id });
+    return NextResponse.json({
+      usedId: id,
+      step1: search,
+      step2: detail,
+      verdict: detail.hasImages
+        ? `Images found on the property profile for id ${id}. Open a sample URL — and check whether this listing is ACTIVE, because their MLS terms are said to limit API listings to inactive ones, and a photo of a property nobody can lease is not a photo source.`
+        : detail.ok
+          ? "The property profile answered with no images. Either this plan excludes them, or they live under a path this probe did not walk — pass &raw=1 on a direct ?path=/get-property&id=… call and look."
+          : "The property profile was refused — read step2.error.",
+    });
+  }
+
   if (searchParams.get("sweep")) {
-    const results = [];
+    const results: Awaited<ReturnType<typeof probe>>[] = [];
     // Sequential: a burst of unknown endpoints is how a rate limit gets
     // discovered the expensive way.
     for (const candidate of CANDIDATES) {
@@ -150,7 +209,7 @@ export async function GET(request: Request) {
     const withImages = results.filter((r) => r.hasImages);
     return NextResponse.json({
       swept: results.length,
-      note: "Every path here is a GUESS except /rental-rates. A 404 costs a call and usually names the right path in its message — read `error`.",
+      note: "A 404 costs a call and usually names the right path in its message — read `error`. Use ?chain=1 to follow a search result into the property profile, which is where images are documented to live.",
       verdict: withImages.length
         ? `Imagery found on: ${withImages.map((r) => r.path).join(", ")}. Open a sample URL before believing it.`
         : "No imagery on any candidate path. Either these are the wrong endpoints, or this plan does not include photos.",
@@ -161,7 +220,7 @@ export async function GET(request: Request) {
   const path = searchParams.get("path");
   if (!path) {
     return NextResponse.json({
-      error: "pass ?path=/some/endpoint (from their docs), or ?sweep=1 to try candidates",
+      error: "pass ?path=/some/endpoint (from their docs), ?sweep=1 to try the documented candidates, or ?chain=1 to search then open a property profile",
       candidates: CANDIDATES,
       base: "https://api.mashvisor.com/v1.1/client",
       hint: "Any parameter other than secret/path/sweep/key/raw is forwarded to the vendor verbatim.",

@@ -199,3 +199,54 @@ export function imageFieldsIn(value: unknown, maxDepth = 8): ImageField[] {
     .map(([path, { count, sample }]) => ({ path, count, sample }))
     .sort((a, b) => b.count - a.count);
 }
+
+/* ------------------------------------------------------------------ */
+/* The second question: what can we ask about next?                    */
+/* ------------------------------------------------------------------ */
+
+/** A field whose name reads like a record identifier. */
+const ID_KEY = /(?:^|[._[])(?:id|property_id|propertyId|mls_id|mlsId|listing_id|listingId)$/i;
+
+export interface IdField {
+  path: string;
+  sample: string;
+}
+
+/**
+ * Identifiers in a payload, so a search result can feed a detail call.
+ *
+ * The endpoint documented to carry images takes a property id, and a
+ * property id is not something we can know in advance — it has to come
+ * out of a search. Finding them without being told the schema is what
+ * lets the probe chain one call into the next.
+ */
+export function idFieldsIn(value: unknown, maxDepth = 6): IdField[] {
+  const found = new Map<string, string>();
+
+  const walk = (node: unknown, path: string, depth: number): void => {
+    if (depth > maxDepth || found.size > 20) return;
+
+    if (typeof node === "string" || typeof node === "number") {
+      if (!ID_KEY.test(path)) return;
+      const key = collapse(path);
+      // First one wins: a sample is for feeding into the next call, and
+      // any row's id does that job.
+      if (!found.has(key)) found.set(key, String(node).slice(0, 64));
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const [i, item] of node.slice(0, 3).entries()) {
+        walk(item, `${path}[${i}]`, depth + 1);
+      }
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        walk(v, path ? `${path}.${k}` : k, depth + 1);
+      }
+    }
+  };
+
+  walk(value, "", 0);
+  return [...found.entries()].map(([path, sample]) => ({ path, sample }));
+}
