@@ -14,6 +14,8 @@
  * Results cache for 30 days — a building doesn't move.
  */
 
+import { googleMapsKey } from "@/lib/live/photos";
+
 const CENSUS =
   "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress";
 const GOOGLE = "https://maps.googleapis.com/maps/api/geocode/json";
@@ -68,7 +70,7 @@ async function viaCensus(address: string): Promise<Point | null> {
 }
 
 async function viaGoogle(address: string): Promise<Point | null> {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = googleMapsKey();
   if (!key) return null;
   const params = new URLSearchParams({ address, key, region: "us" });
   const res = await fetch(`${GOOGLE}?${params}`, {

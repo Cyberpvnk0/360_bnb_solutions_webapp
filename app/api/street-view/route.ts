@@ -7,7 +7,12 @@
  * No imagery for a spot → 404, and the card falls back to its sketch.
  */
 
-import { fetchStreetView, streetViewExists, hasGoogleKey } from "@/lib/live/photos";
+import {
+  fetchStreetView,
+  googleKeyNamesSeen,
+  hasGoogleKey,
+  streetViewExists,
+} from "@/lib/live/photos";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -19,7 +24,13 @@ export async function GET(request: Request) {
   // twenty-four learns the same thing twenty-four times.
   if (searchParams.get("probe")) {
     return Response.json(
-      { configured: hasGoogleKey() },
+      {
+        configured: hasGoogleKey(),
+        // Names only, never values. "Is the key even visible to this
+        // deployment" is the question behind half of all vendor
+        // failures, and it should be answerable without a redeploy.
+        namesSeen: googleKeyNamesSeen(),
+      },
       { headers: { "cache-control": "public, max-age=3600" } }
     );
   }
