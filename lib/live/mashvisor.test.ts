@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { idFieldsIn, imageFieldsIn } from "./mashvisor";
+import { idFieldsIn, imageFieldsIn, unknownPathFrom } from "./mashvisor";
 
 describe("finding pictures in a payload nobody has mapped yet", () => {
   it("collapses a row's photo array into one finding, not forty", () => {
@@ -94,5 +94,36 @@ describe("finding an id to feed the next call", () => {
     const found = idFieldsIn({ rows: [{ id: 1 }, { id: 2 }, { id: 3 }] });
     expect(found).toHaveLength(1);
     expect(found[0].sample).toBe("1");
+  });
+});
+
+describe("telling a missing route from a refused request", () => {
+  it("reads the path out of their router's 404 page", () => {
+    // The real body, verbatim, from a live call. Their router serves
+    // Express's default page, and the one useful sentence in it was
+    // being buried under "not JSON".
+    const body =
+      '<!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> ' +
+      "<title>Error</title> </head> <body> " +
+      "<pre>Cannot GET /v1.1/client/marketplace-listings-search</pre> </body> </html>";
+    expect(unknownPathFrom(body)).toBe("/v1.1/client/marketplace-listings-search");
+  });
+
+  it("takes any method, not just GET", () => {
+    expect(unknownPathFrom("<pre>Cannot POST /v1.1/client/x</pre>")).toBe(
+      "/v1.1/client/x"
+    );
+  });
+
+  it("says nothing for a body that is merely not JSON", () => {
+    // An HTML error page from a proxy or a gateway is a different
+    // problem, and calling it "no such route" would send somebody
+    // hunting for a path when the path was fine.
+    expect(unknownPathFrom("<html><body>502 Bad Gateway</body></html>")).toBeNull();
+    expect(unknownPathFrom("")).toBeNull();
+  });
+
+  it("says nothing for a JSON refusal", () => {
+    expect(unknownPathFrom('{"status":"error","message":"invalid key"}')).toBeNull();
   });
 });

@@ -11,15 +11,22 @@
  * names against a payload that did not exist; each cost an afternoon,
  * and this route is the alternative.
  *
- * WHAT THE PAPER TRAIL SAYS, AND WHY IT STILL GETS TESTED. Two of their
- * endpoints are documented to carry images — a property profile and an
- * STR listing detail. Their own material also says MLS data served
- * through the API is INACTIVE LISTINGS ONLY, a restriction the MLSs
- * impose rather than one they chose. If that holds, the pictures are of
- * properties nobody can lease, which is worth knowing before any of
- * this reaches a card. Their marketplace also carries off-market stock
- * that is not MLS and may not be covered by the same rule. Only the
- * service can settle which.
+ * WHAT THE PAPER TRAIL SAYS, AND WHY IT STILL GETS TESTED. Their
+ * material says a property profile carries images, and separately that
+ * MLS data served through the API is INACTIVE LISTINGS ONLY — a
+ * restriction the MLSs impose rather than one they chose. If that
+ * holds, the pictures are of properties nobody can lease.
+ *
+ * Their marketing also named an endpoint, /marketplace-listings-search,
+ * that their router does not have: it answered "Cannot GET". Marketing
+ * copy is not a route table, which is the second reason nothing here
+ * gets written from prose alone.
+ *
+ * The angle worth measuring: a property profile is keyed by ADDRESS,
+ * not by listing. If it carries images, a rental row from the other
+ * feed could borrow a picture of the same building whether or not this
+ * vendor lists it for rent — at the cost of the photo being from
+ * whenever that building last changed hands.
  *
  * `path` takes ANY path relative to their client base, so an endpoint
  * read off the docs in a browser can be tested here without a code
@@ -62,18 +69,19 @@ const OURS = new Set(["secret", "path", "sweep", "key", "raw"]);
  * lay of the land in one go.
  */
 const CANDIDATES: readonly string[] = [
-  // Confirmed by their own examples, as a control: if this fails too,
-  // the answer is the key or the plan, not the path.
+  // Confirmed by their own examples. The control: if this fails, the
+  // answer is the key or the plan, not the path.
   "/rental-rates",
-  // Documented to return a full property profile INCLUDING IMAGES.
-  // The headline candidate.
-  "/get-property",
-  // Bulk active and inactive MLS listings plus off-market stock. The
-  // only documented path that claims ACTIVE inventory, which is the
-  // only kind a student can lease.
-  "/marketplace-listings-search",
-  // Both confirmed live in third-party code against this API.
+  // Property detail. The likeliest home for imagery, and the one that
+  // would let a rental row borrow a picture of the same building by
+  // address rather than by listing.
+  "/property",
+  "/property/nearby",
+  "/property/price-estimates",
+  // Confirmed live in third-party code against this API.
   "/city/investment/{state}/{city}",
+  "/city/neighborhoods/{state}/{city}",
+  "/trends/neighborhoods",
   "/airbnb-property/market-summary",
 ];
 
@@ -94,6 +102,9 @@ async function probe(path: string, params: Record<string, string>) {
     status: res.status,
     ok: res.ok,
     error: res.error,
+    /** True when their ROUTER refused, not their application. Means the
+     *  path is wrong and everything else is fine. */
+    unknownPath: res.unknownPath,
     /** Where the records are, without needing to know the schema. */
     arrays: res.body ? arrayPaths(res.body).slice(0, 12) : [],
     /** Field names and types. No values. */
@@ -169,10 +180,13 @@ export async function GET(request: Request) {
    * question: can we get a picture of a specific property.
    */
   if (searchParams.get("chain")) {
-    const search = await probe(
-      fill("/marketplace-listings-search", state, city),
-      forwarded
-    );
+    // Configurable, because the first path this was hardcoded to did
+    // not exist — their router said so — and a chain welded to a dead
+    // route can only ever report the same dead route.
+    const asked = searchParams.get("chain") ?? "1";
+    const searchPath =
+      asked === "1" || asked === "" ? "/city/investment/{state}/{city}" : asked;
+    const search = await probe(fill(searchPath, state, city), forwarded);
     const id = search.ids[0]?.sample;
     if (!id) {
       return NextResponse.json({
@@ -183,10 +197,7 @@ export async function GET(request: Request) {
       });
     }
 
-    // Both spellings, because their own examples use one and their
-    // product material the other, and one of the two costs a call to
-    // rule out.
-    const detail = await probe(`/get-property`, { ...forwarded, id });
+    const detail = await probe("/property", { ...forwarded, id });
     return NextResponse.json({
       usedId: id,
       step1: search,
@@ -220,7 +231,7 @@ export async function GET(request: Request) {
   const path = searchParams.get("path");
   if (!path) {
     return NextResponse.json({
-      error: "pass ?path=/some/endpoint (from their docs), ?sweep=1 to try the documented candidates, or ?chain=1 to search then open a property profile",
+      error: "pass ?path=/some/endpoint (from their docs), ?sweep=1 to try the known candidates, or ?chain=1 (or ?chain=/some/search/path) to search then open a property profile",
       candidates: CANDIDATES,
       base: "https://api.mashvisor.com/v1.1/client",
       hint: "Any parameter other than secret/path/sweep/key/raw is forwarded to the vendor verbatim.",

@@ -69,6 +69,27 @@ export interface MashvisorResponse {
   /** What the service said when it refused. Validation prose, safe to
    *  surface, and the whole point of asking. */
   error: string | null;
+  /**
+   * Their router answered "no such route", as opposed to their
+   * application answering "no".
+   *
+   * Worth its own flag because the two mean opposite things and look
+   * identical in a raw body: one says the path is wrong and the base,
+   * the key and the network are all fine; the other says the path is
+   * right and something about the request or the plan is not. The first
+   * version of this reported the router's HTML under "not JSON", which
+   * buried the single most useful sentence the service had said.
+   */
+  unknownPath: boolean;
+}
+
+/**
+ * Express's default 404 page, which is what their router serves for a
+ * path it does not have: "Cannot GET /v1.1/client/whatever".
+ */
+export function unknownPathFrom(text: string): string | null {
+  const m = text.match(/Cannot (?:GET|POST|PUT|DELETE)\s+([^\s<]+)/i);
+  return m ? m[1] : null;
 }
 
 /**
@@ -84,7 +105,13 @@ export async function mashvisorCall(
 ): Promise<MashvisorResponse> {
   const key = apiKey();
   if (!key) {
-    return { ok: false, status: 0, body: null, error: mashvisorKeyMissingMessage() };
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      error: mashvisorKeyMissingMessage(),
+      unknownPath: false,
+    };
   }
 
   const clean = path.startsWith("/") ? path : `/${path}`;
@@ -99,10 +126,17 @@ export async function mashvisorCall(
       cache: "no-store",
     });
   } catch {
-    return { ok: false, status: 0, body: null, error: "network or timeout" };
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      error: "network or timeout",
+      unknownPath: false,
+    };
   }
 
   const text = await res.text().catch(() => "");
+  const missing = unknownPathFrom(text);
   let body: unknown = null;
   try {
     body = JSON.parse(text);
@@ -111,7 +145,10 @@ export async function mashvisorCall(
       ok: false,
       status: res.status,
       body: null,
-      error: `not JSON: ${text.replace(/\s+/g, " ").slice(0, 200)}`,
+      error: missing
+        ? `no such route: ${missing}. The base URL, the key and the network are all fine — this path does not exist.`
+        : `not JSON: ${text.replace(/\s+/g, " ").slice(0, 200)}`,
+      unknownPath: missing !== null,
     };
   }
 
@@ -120,6 +157,7 @@ export async function mashvisorCall(
     status: res.status,
     body,
     error: res.ok ? null : text.replace(/\s+/g, " ").slice(0, 300),
+    unknownPath: missing !== null,
   };
 }
 
