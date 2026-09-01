@@ -38,6 +38,7 @@ import {
 import {
   isFresh,
   readAllMarketStats,
+  STATS_TTL_MS,
   storeConfigured,
   storeStatus,
   writeMarketStats,
@@ -208,7 +209,9 @@ export async function GET(request: Request) {
   const stored = await readAllMarketStats();
   const pending = queue.filter((m) => {
     const row = stored.get(m.slug);
-    return !row || !isFresh(row.at);
+    // Same TTL the request path reads with, or a backfill re-buys
+    // markets the app would have served from the store anyway.
+    return !row || !isFresh(row.at, STATS_TTL_MS);
   });
 
   if (searchParams.get("dry")) {

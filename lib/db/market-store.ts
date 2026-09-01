@@ -43,6 +43,30 @@ export const STORE_TTL_MS = (() => {
   return hours * 60 * 60 * 1000;
 })();
 
+/**
+ * How long a stored MARKET SUMMARY counts as current.
+ *
+ * Separate from STORE_TTL_MS, and much longer, because the two things
+ * age at completely different rates. Rental inventory turns over — a
+ * listing gone in three days is a listing somebody drives to and finds
+ * leased. A market's trailing-twelve-month ADR and occupancy barely
+ * move week to week; the vendor's own cache header for market
+ * endpoints is seven days against one day for comps, which is them
+ * saying the same thing.
+ *
+ * Sharing one TTL made a backfill nearly pointless: buy 75 markets
+ * cheaply overnight, and the first page view of each one 24 hours later
+ * re-bought it at full price. A day of measured figures for $13.50, and
+ * then the same bill again tomorrow.
+ *
+ * STATS_TTL_HOURS overrides it. Capped at 30 days, like its sibling.
+ */
+export const STATS_TTL_MS = (() => {
+  const raw = Number(process.env.STATS_TTL_HOURS);
+  const hours = Number.isFinite(raw) && raw > 0 ? Math.min(24 * 30, raw) : 24 * 7;
+  return hours * 60 * 60 * 1000;
+})();
+
 const READ_TIMEOUT_MS = 4_000;
 const WRITE_TIMEOUT_MS = 8_000;
 

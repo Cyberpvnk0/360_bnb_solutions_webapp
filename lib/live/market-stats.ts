@@ -11,6 +11,7 @@
 import { fetchLiveMarket } from "@/lib/live/market-live";
 import {
   isFresh,
+  STATS_TTL_MS,
   readMarketStore,
   writeMarketStats,
   type StoredMarketStats,
@@ -27,7 +28,10 @@ export interface MarketStats {
 
 export async function marketStats(market: Market): Promise<MarketStats | null> {
   const stored = await readMarketStore(market.slug);
-  if (stored?.stats && isFresh(stored.statsAt)) {
+  // STATS_TTL_MS, not the listings TTL: a market's trailing-twelve
+  // figures barely move week to week, and re-buying them daily is what
+  // makes a backfill evaporate.
+  if (stored?.stats && isFresh(stored.statsAt, STATS_TTL_MS)) {
     return {
       stats: stored.stats,
       asOf: stored.statsAt ?? new Date().toISOString(),
