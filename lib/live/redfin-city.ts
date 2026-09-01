@@ -15,6 +15,7 @@
  * later search rides it for free.
  */
 
+import { readCityId, writeCityId } from "@/lib/db/market-store";
 import type { Market } from "@/lib/mock/types";
 
 const AUTOCOMPLETE =
@@ -771,14 +772,42 @@ export function resetCityIdCache(): void {
 /**
  * This market's Redfin city id, or null if we can't be sure of one.
  *
- * Null is a real answer: the caller reports that the market isn't wired
- * up rather than searching a city we merely hope is right.
+ * Four tiers, cheapest first:
+ *
+ *   1. the static map — free, and covers the markets already committed
+ *   2. this instance's memory — free, and covers a repeat within one
+ *      warm lambda
+ *   3. the durable store — one fast database read, and covers every
+ *      other instance and every later deploy
+ *   4. Redfin's own autocomplete — slow, billed, and the only tier that
+ *      can learn something new
+ *
+ * Tier 3 is the one that makes the Furnished filter dependable rather
+ * than merely possible. Without it a resolved id lived only in the
+ * lambda that resolved it, so the two hundred and fifty-odd markets
+ * outside the static map re-bought the same slow answer on every deploy
+ * and every cold start — which reads, from a student's chair, as a
+ * filter that sometimes works.
+ *
+ * Null is a real answer and gets stored as one: the caller reports that
+ * the market isn't wired up rather than searching a city we merely hope
+ * is right.
  */
 export async function cityIdFor(market: Market): Promise<number | null> {
   const seeded = REDFIN_CITY_ID[market.slug];
   if (seeded !== undefined) return seeded;
+
   const cached = resolved.get(market.slug);
   if (cached !== undefined) return cached;
+
+  // A remembered miss counts. Treating {id: null} as "nothing stored"
+  // would re-run the slow lookup for every market Redfin does not have,
+  // every time, which is the exact cost the store exists to remove.
+  const stored = await readCityId(market.slug).catch(() => null);
+  if (stored) {
+    resolved.set(market.slug, stored.id);
+    return stored.id;
+  }
 
   const key = process.env.SCRAPERAPI_KEY;
   if (!key) return null;
@@ -792,8 +821,17 @@ export async function cityIdFor(market: Market): Promise<number | null> {
   } catch {
     // An unreachable resolver is an unwired market, not an error to
     // propagate: the search above it already knows how to say so.
+    //
+    // Deliberately NOT stored. A network failure is not evidence about
+    // whether Redfin has this city, and writing it as a miss would sell
+    // one bad night as a week of a broken filter.
+    resolved.set(market.slug, null);
+    return null;
   }
 
   resolved.set(market.slug, id);
+  // Both outcomes are worth keeping: a hit for a year, a miss for a
+  // week. Never let a storage failure cost the answer we just bought.
+  await writeCityId(market.slug, id).catch(() => {});
   return id;
 }

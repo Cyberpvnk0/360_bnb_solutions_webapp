@@ -547,6 +547,84 @@ export async function writeEstimate(
   return writeListingDetail(key, estimate as unknown as StoredListingDetail);
 }
 
+/* ------------------------------------------------------------------ */
+/* Redfin city ids — looked up once, ever                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A resolved city id, kept.
+ *
+ * Redfin addresses a city by an opaque number that cannot be derived
+ * from its name, and resolving one means a slow bypass request against
+ * an undocumented endpoint. Before this it was memoised per instance,
+ * which means re-paid on every deploy and by every cold lambda — so the
+ * Furnished filter was quietly buying the same three-second answer over
+ * and over for the two hundred and fifty markets not in the static map.
+ *
+ * Stored as {id: null} when the lookup came back with nothing, because
+ * a market Redfin genuinely does not have is an answer worth keeping
+ * too. It just does not keep as long: see CITY_ID_MISS_TTL_MS.
+ */
+export interface StoredCityId {
+  id: number | null;
+}
+
+/** A found id is permanent — Redfin's ids do not change. */
+export const CITY_ID_HIT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+/**
+ * A miss is not. It might be a market Redfin has never carried, or it
+ * might be one bad night at the resolver, and those look identical from
+ * here. A week means a transient failure costs a week of a degraded
+ * filter rather than forever.
+ */
+export const CITY_ID_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long this answer keeps, given what it says.
+ *
+ * Pure and exported because the asymmetry is the whole design and it is
+ * the thing a later reader will be tempted to flatten into one number.
+ * Flattening it either way is a bug: one TTL for both means a bad night
+ * at the resolver is remembered for a year, or an id that never changes
+ * is re-bought every week.
+ */
+export function cityIdTtlMs(stored: StoredCityId): number {
+  return stored.id === null ? CITY_ID_MISS_TTL_MS : CITY_ID_HIT_TTL_MS;
+}
+
+function cityIdKey(slug: string): string {
+  return `redfin-city:${slug}`;
+}
+
+function isCityId(value: unknown): value is StoredCityId {
+  if (!value || typeof value !== "object") return false;
+  const id = (value as StoredCityId).id;
+  return id === null || (typeof id === "number" && Number.isFinite(id));
+}
+
+/**
+ * The stored id for a market, or null when nothing usable is stored.
+ *
+ * Returns `{id: null}` for a remembered miss inside its TTL — which is
+ * a different answer from "nothing stored", and the caller must treat
+ * it as one or the negative caching does nothing.
+ */
+export async function readCityId(slug: string): Promise<StoredCityId | null> {
+  const hit = await readKeyed(cityIdKey(slug), isCityId);
+  if (!hit) return null;
+  return isFresh(hit.at, cityIdTtlMs(hit.value)) ? hit.value : null;
+}
+
+export async function writeCityId(
+  slug: string,
+  id: number | null
+): Promise<WriteResult> {
+  return writeListingDetail(
+    cityIdKey(slug),
+    { id } as unknown as StoredListingDetail
+  );
+}
+
 export async function readListingDetail(
   listingUrl: string
 ): Promise<{ detail: StoredListingDetail; at: string | null } | null> {

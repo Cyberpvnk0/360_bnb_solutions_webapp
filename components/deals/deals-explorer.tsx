@@ -220,6 +220,10 @@ export function DealsExplorer({
     reason?: LiveFailureReason;
     center?: { lat: number; lon: number } | null;
     remaining?: number;
+    /** The covered market this ZIP sits in. Anchors cushion math — and
+     *  it is the only thing Furnished can be asked about, because that
+     *  filter is answered by a city search and a ZIP is not a city. */
+    market?: string | null;
     listings: RentalListing[];
   } | null>(null);
 
@@ -235,6 +239,7 @@ export function DealsExplorer({
         reason: result.reason,
         center: result.center,
         remaining: result.remaining,
+        market: result.market,
         listings: result.listings,
       });
     });
@@ -318,9 +323,27 @@ export function DealsExplorer({
    *  it, so nothing is assigned synchronously inside an effect. */
   const [redfinChecked, setRedfinChecked] = React.useState<string | null>(null);
 
-  /** Furnished is only answerable for a single named market. */
+  /**
+   * The market Furnished gets asked about.
+   *
+   * Furnished is answered by a city search, so a ZIP cannot be asked
+   * directly. But a ZIP sits inside a city and that city can be, which
+   * turns "this filter does nothing here" into an answer — a WIDER one
+   * than was searched, which the chip and the count both say out loud
+   * rather than quietly swapping the area under somebody.
+   */
+  const furnishedMarket = React.useMemo(() => {
+    if (liveTarget) return liveTarget;
+    const slug = zipResult?.zip === zip ? zipResult.market : null;
+    return slug ? (markets.find((m) => m.slug === slug) ?? null) : null;
+  }, [liveTarget, zipResult, zip, markets]);
+
+  /** True when the furnished set covers a whole city rather than the
+   *  ZIP that was actually typed. */
+  const furnishedWidened = Boolean(!liveTarget && furnishedMarket);
+
   const furnishedTarget =
-    filters.furnishedOnly && liveTarget ? liveTarget.slug : null;
+    filters.furnishedOnly && furnishedMarket ? furnishedMarket.slug : null;
   /** True once Redfin has answered for the market we're asking about. */
   const redfinActive = Boolean(
     furnishedTarget && redfin?.slug === furnishedTarget
@@ -447,7 +470,7 @@ export function DealsExplorer({
   // The Furnished chip stays usable whenever something can answer it:
   // rows that already know their amenities, or a market Redfin can be
   // asked about. It only greys out once Redfin has said it can't help.
-  const canAskRedfin = Boolean(liveTarget) && redfinReason === null;
+  const canAskRedfin = Boolean(furnishedMarket) && redfinReason === null;
   const featuresKnown =
     rows.length === 0 ||
     rows.some((r) => r.listing.featuresKnown !== false) ||
@@ -615,7 +638,9 @@ export function DealsExplorer({
   const countLabel = idle
     ? `${fmtNum(totals.rentals)} rentals across ${fmtNum(totals.markets)} markets`
     : redfinActive
-      ? `${fmtNum(filtered.length)} furnished rentals in ${liveTarget!.name}`
+      ? `${fmtNum(filtered.length)} furnished rentals in ${
+          furnishedMarket?.name ?? "this area"
+        }${furnishedWidened ? `, not just ZIP ${zip}` : ""}`
       : zipActive
       ? `${fmtNum(filtered.length)} live rentals in ZIP ${zip}`
       : liveActive
@@ -720,6 +745,11 @@ export function DealsExplorer({
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
               <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
               Furnished
+              {furnishedWidened ? (
+                <span className="font-normal text-muted-foreground">
+                  · {furnishedMarket?.name} city-wide
+                </span>
+              ) : null}
             </span>
           ) : redfinReason ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
@@ -900,18 +930,27 @@ export function DealsExplorer({
               <EmptyState
                 icon={SearchX}
                 title={
-                  zipFailed
+                  // Furnished FIRST: when it is on, the result set IS
+                  // the furnished set. A ZIP search with Furnished on
+                  // was reporting "no active rentals in ZIP 33602"
+                  // while running a city-wide furnished query, which
+                  // blames the wrong thing and hides the real one.
+                  redfinActive && (redfin?.listings.length ?? 0) === 0
+                    ? `No furnished rentals listed in ${
+                        furnishedMarket?.name ?? "this area"
+                      }`
+                    : zipFailed
                     ? liveFailureLabel(zipResult?.reason)
                     : zipActive
                       ? `No active rentals in ZIP ${zip}`
-                      : redfinActive && (redfin?.listings.length ?? 0) === 0
-                        ? `No furnished rentals listed in ${liveTarget!.name}`
-                        : marketEmpty
+                      : marketEmpty
                           ? `Nothing listed for rent in ${liveTarget!.name} right now`
                           : "No rentals match"
                 }
                 description={
-                  zipFailed
+                  redfinActive && (redfin?.listings.length ?? 0) === 0
+                    ? "The feed carries no furnished units here today. Turn Furnished off to see everything else listed."
+                    : zipFailed
                     ? zipResult?.reason === "auth"
                       ? "The rental feed rejected the API key. Check RENTCAST_API_KEY, then search again — ZIP search reads live inventory only."
                       : zipResult?.reason === "daily-cap"
@@ -921,9 +960,7 @@ export function DealsExplorer({
                           : "ZIP search reads live inventory only, and the feed didn't answer. Search a market by name to browse the preview set."
                       : zipActive
                         ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
-                        : redfinActive && (redfin?.listings.length ?? 0) === 0
-                          ? "The feed carries no furnished units here today. Turn Furnished off to see everything else listed in this market."
-                          : marketEmpty
+                        : marketEmpty
                             ? "The feed answered for this market and had no active rentals in it — this isn't a filter you can loosen. Try a nearby market, or check back: inventory changes daily."
                             : filters.query
                               ? "Check the spelling, or pick a market from the search suggestions — they cover all 387."
