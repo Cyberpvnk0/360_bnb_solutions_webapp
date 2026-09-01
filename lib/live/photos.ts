@@ -53,13 +53,47 @@ export function hasGoogleKey(): boolean {
   return googleMapsKey() !== null;
 }
 
-/** Free metadata probe: does Street View have this spot at all? */
-export async function streetViewExists(
+/**
+ * What the free metadata endpoint says about a spot.
+ *
+ * Their statuses mean very different things and the first version of
+ * this collapsed all of them into a boolean:
+ *
+ *   OK              imagery exists — go buy it
+ *   ZERO_RESULTS    genuinely nothing here, and that is fine
+ *   REQUEST_DENIED  the key, the enabled APIs, or the restrictions are
+ *                   wrong. Nothing to do with this coordinate.
+ *   OVER_QUERY_LIMIT  billing or quota
+ *
+ * A boolean turned the last two into "no photo at this address", so a
+ * key with the API switched off rendered as a page of sketches and
+ * looked like rural coverage. That is the whole failure mode of this
+ * integration, and it was invisible.
+ *
+ * Free: the metadata endpoint is not billed, which is what lets every
+ * blank spot cost nothing and lets a setup check be run at will.
+ */
+export interface StreetViewProbe {
+  /** Imagery exists and is worth paying for. */
+  ok: boolean;
+  /** Their status string, or null when the call itself failed. */
+  status: string | null;
+  /** True when the problem is our configuration, not the coordinate. */
+  denied: boolean;
+  /** Google's own explanation. On REQUEST_DENIED this names the actual
+   *  cause — API not enabled, referer restriction, billing — and it is
+   *  the single most useful sentence in this whole integration. */
+  detail: string | null;
+}
+
+export async function streetViewProbe(
   lat: number,
   lon: number
-): Promise<boolean> {
+): Promise<StreetViewProbe> {
   const key = googleMapsKey();
-  if (!key) return false;
+  if (!key) {
+    return { ok: false, status: null, denied: true, detail: "no key configured" };
+  }
   const params = new URLSearchParams({
     location: `${lat},${lon}`,
     key,
@@ -69,12 +103,37 @@ export async function streetViewExists(
     const res = await fetch(`${STREET_VIEW}/metadata?${params}`, {
       next: { revalidate: PHOTO_REVALIDATE_SECONDS },
     });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { status?: string };
-    return body.status === "OK";
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: null,
+        denied: false,
+        detail: `metadata HTTP ${res.status}`,
+      };
+    }
+    const body = (await res.json()) as {
+      status?: string;
+      error_message?: string;
+    };
+    const status = body.status ?? null;
+    return {
+      ok: status === "OK",
+      status,
+      denied: status === "REQUEST_DENIED" || status === "OVER_QUERY_LIMIT",
+      detail: body.error_message ?? null,
+    };
   } catch {
-    return false;
+    return { ok: false, status: null, denied: false, detail: "network or timeout" };
   }
+}
+
+/** Does Street View have this spot? Kept for callers that only need
+ *  the yes/no and have no way to act on the difference. */
+export async function streetViewExists(
+  lat: number,
+  lon: number
+): Promise<boolean> {
+  return (await streetViewProbe(lat, lon)).ok;
 }
 
 /** The billed image request — only ever made after the probe says OK. */

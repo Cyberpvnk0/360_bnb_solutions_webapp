@@ -11,7 +11,7 @@ import {
   fetchStreetView,
   googleKeyNamesSeen,
   hasGoogleKey,
-  streetViewExists,
+  streetViewProbe,
 } from "@/lib/live/photos";
 
 export async function GET(request: Request) {
@@ -35,6 +35,32 @@ export async function GET(request: Request) {
     );
   }
 
+  /**
+   * End-to-end setup check, free and safe to hammer:
+   *   /api/street-view?check=1
+   *
+   * Asks the unbilled metadata endpoint about a coordinate that
+   * certainly has imagery, so anything other than OK is our
+   * configuration rather than the address. Exists because the honest
+   * failure — a key whose API is not enabled — otherwise renders as a
+   * page of sketches and reads as thin coverage.
+   */
+  if (searchParams.get("check")) {
+    // Times Square. If Street View does not cover this, the problem is
+    // not the coordinate.
+    const probe = await streetViewProbe(40.758896, -73.98513);
+    return Response.json({
+      configured: hasGoogleKey(),
+      namesSeen: googleKeyNamesSeen(),
+      ...probe,
+      verdict: probe.ok
+        ? "Working. Cards will show real curb photos."
+        : probe.denied
+          ? `Google refused this key: ${probe.detail ?? "no reason given"}. Enable the Street View Static API on the SAME project the key belongs to, link billing, and make sure the key is not restricted to HTTP referrers — these calls come from the server.`
+          : `Unexpected: status ${probe.status ?? "none"}${probe.detail ? ` (${probe.detail})` : ""}.`,
+    });
+  }
+
   if (!hasGoogleKey()) {
     return new Response("Street View not configured", { status: 503 });
   }
@@ -48,7 +74,18 @@ export async function GET(request: Request) {
   }
 
   // Free probe first — never pay for an image that doesn't exist.
-  if (!(await streetViewExists(lat, lon))) {
+  const probe = await streetViewProbe(lat, lon);
+  if (!probe.ok) {
+    // A refused key is OUR problem and must not masquerade as an
+    // address with no coverage: 404 tells the card to draw a sketch and
+    // tells whoever is debugging that rural Florida is thin, which is
+    // how a switched-off API hides for a week.
+    if (probe.denied) {
+      return new Response(
+        `Street View refused: ${probe.detail ?? probe.status ?? "unknown"}`,
+        { status: 502 }
+      );
+    }
     return new Response("No imagery here", { status: 404 });
   }
 
