@@ -1,16 +1,32 @@
--- ArbiCore market store. Run once in the Supabase SQL editor.
+-- ArbiCore shared cache. Run in the Supabase SQL editor.
 --
--- One row per market: the day's feed listings and the day's photo
--- merge, each with its own timestamp so the two writers never fight.
--- Payloads are the exact JSON the API routes already serve — the store
--- is a durable copy of work, not a second schema to keep in step.
+-- IDEMPOTENT: safe to re-run any time. Every statement is create-if-
+-- not-exists, add-column-if-not-exists, or a grant that can be issued
+-- twice. Re-running is the fix for most "the store cannot be written
+-- to" reports, so it must never be scary to run.
 --
--- Row level security is enabled with NO policies on purpose: the only
--- key that can read or write is the service role key, which lives in
--- Vercel env and never reaches a browser. The anon key has no access
--- at all, so there is nothing to lock down client-side later.
+-- One row per market: the day's feed listings, the day's photo merge,
+-- and the market's measured KPIs, each with its own timestamp so the
+-- writers never fight. Plus a keyed table for anything that belongs to
+-- a property rather than a market.
+--
+-- SECURITY MODEL. Row level security is on with NO policies, on
+-- purpose: the only key that can reach these tables is the SECRET key,
+-- which lives in Vercel env and never reaches a browser. A publishable
+-- key gets nothing. That is the opposite of the user tables in
+-- auth-schema.sql, which are policy-guarded precisely so the browser
+-- CAN touch them.
+--
+-- Note that RLS-with-no-policies still requires table GRANTs for the
+-- role to act at all. service_role bypasses RLS but is not
+-- automatically granted on tables created later, which is exactly how
+-- a write can succeed and a read come back empty.
 
-create table if not exists market_cache (
+/* ------------------------------------------------------------------ */
+/* One row per market                                                  */
+/* ------------------------------------------------------------------ */
+
+create table if not exists public.market_cache (
   market_slug     text primary key,
   listings        jsonb,
   listings_at     timestamptz,
@@ -18,4 +34,46 @@ create table if not exists market_cache (
   photo_merge_at  timestamptz
 );
 
-alter table market_cache enable row level security;
+-- Added after the first release. A deployment created before this
+-- migration has the table without them, and a select naming a missing
+-- column fails the WHOLE query — which is why the reader falls back to
+-- the core columns rather than assuming.
+alter table public.market_cache add column if not exists stats jsonb;
+alter table public.market_cache add column if not exists stats_at timestamptz;
+
+alter table public.market_cache enable row level security;
+
+/* ------------------------------------------------------------------ */
+/* Keyed blobs: listing details, property estimates, city ids          */
+/* ------------------------------------------------------------------ */
+
+-- Keyed by an opaque string rather than by market, because these
+-- belong to a property or a lookup, not to a city. The most expensive
+-- calls in the product land here, so losing this table means re-buying
+-- comp sets somebody already paid for.
+create table if not exists public.listing_cache (
+  listing_url  text primary key,
+  detail       jsonb,
+  detail_at    timestamptz
+);
+
+alter table public.listing_cache enable row level security;
+
+/* ------------------------------------------------------------------ */
+/* Grants                                                              */
+/* ------------------------------------------------------------------ */
+
+-- RLS decides which ROWS a role may see; grants decide whether it may
+-- touch the table at all. Both are needed, and the second one is the
+-- quiet failure: Postgres answers 42501 with the exact grant to run,
+-- and an app that prints its own guess over that message costs an
+-- afternoon.
+grant select, insert, update, delete on public.market_cache  to service_role;
+grant select, insert, update, delete on public.listing_cache to service_role;
+
+-- Explicitly nothing for the browser-facing roles. Stated rather than
+-- left to the default, so a later `grant all on all tables` cannot
+-- widen these by accident without somebody deleting a line that says
+-- not to.
+revoke all on public.market_cache  from anon, authenticated;
+revoke all on public.listing_cache from anon, authenticated;

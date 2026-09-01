@@ -724,6 +724,44 @@ function describePresent(): string {
   return seen.length > 0 ? seen.sort().join(", ") : "no SUPABASE_* variables at all";
 }
 
+/**
+ * What KIND of key this is, from its own shape. Never its value.
+ *
+ * The single most useful fact when the store misbehaves, and the one
+ * the health check kept guessing at. "The key lacks privileged access"
+ * is a hypothesis; "this is a publishable key" is the answer, and it
+ * costs nothing to read — the kind is written on the front of the key.
+ *
+ * Two generations in the wild: the new sb_secret_ / sb_publishable_
+ * prefixes, and the older JWTs whose unverified payload carries a role
+ * claim. Decoding a payload without verifying it is fine here: we are
+ * reading our OWN key to describe it, not trusting a token.
+ */
+export function describeKeyKind(key: string): string {
+  if (key.startsWith("sb_secret_")) return "secret (sb_secret_…)";
+  if (key.startsWith("sb_publishable_")) return "PUBLISHABLE (sb_publishable_…)";
+  const parts = key.split(".");
+  if (parts.length === 3) {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(parts[1], "base64url").toString("utf8")
+      ) as { role?: string };
+      if (payload.role === "service_role") return "service_role JWT";
+      if (payload.role) return `${payload.role.toUpperCase()} JWT`;
+      return "JWT with no role claim";
+    } catch {
+      return "unreadable JWT";
+    }
+  }
+  return "unrecognised format";
+}
+
+/** True for a key that can be relied on to bypass row level security. */
+function keyIsPrivileged(key: string): boolean {
+  const kind = describeKeyKind(key);
+  return kind.startsWith("secret") || kind === "service_role JWT";
+}
+
 /** A slug no market will ever have, so the check writes nothing real. */
 const HEALTH_SLUG = "__healthcheck__";
 
@@ -816,11 +854,21 @@ export async function storeStatus(): Promise<StoreStatus> {
 
   const back = await readMarketStore(HEALTH_SLUG);
   if (back?.listingsAt !== stamp) {
+    const kind = describeKeyKind(cfg.key);
+    // Say WHICH problem, from the key's own shape, rather than
+    // asserting the likeliest one. A publishable key and a privileged
+    // key that cannot SELECT produce the same symptom and need
+    // completely different fixes, and guessing sent somebody to check
+    // a key that was already correct once before.
     return {
       ok: false,
-      detail:
-        "Wrote without error but read nothing back — the key lacks privileged access, so row level security is hiding the row it just wrote.",
+      detail: keyIsPrivileged(cfg.key)
+        ? `Wrote without error but read nothing back, and SUPABASE_SECRET_KEY is a ${kind} — so the key is the right kind and the problem is the table. Either the row was never really written, or this role can INSERT but not SELECT. Re-run supabase/schema.sql: it is idempotent and grants both.`
+        : `SUPABASE_SECRET_KEY holds a ${kind}, not a secret key. The cache tables have row level security on and NO policies on purpose, so a publishable key can write nothing and read nothing back. Copy the SECRET key from Supabase → Project Settings → API keys, replace the value in Vercel, and redeploy.`,
     };
   }
-  return { ok: true, detail: "Read and wrote a sentinel row." };
+  return {
+    ok: true,
+    detail: `Read and wrote a sentinel row with a ${describeKeyKind(cfg.key)}.`,
+  };
 }
