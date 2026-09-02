@@ -11,14 +11,17 @@
  * other, so an overlay built from 1px rules on one flat sheet has
  * nothing for the eye to catch: every section blends into the next.
  * Here the overlay's own ground is the grey canvas and each concern is
- * a white panel floating on it — identity, the deal, who to call, the
- * market. Three tones and a shadow do the work six invisible rules
- * were failing to do.
+ * a white panel floating on it — identity, the deal, who to call.
+ * Three tones and a shadow do the work six invisible rules were
+ * failing to do.
  *
  * The order is the order of the decision: what is it, does it pencil,
- * who do I call, is the market worth being in. Every figure comes
- * through lib/calc with the same benchmark inputs the cards use, so
- * nothing here can disagree with the grid behind it.
+ * who do I call. Every figure comes through lib/calc with the same
+ * benchmark inputs the cards use, so nothing here can disagree with
+ * the grid behind it. The market's own figures are not restated here —
+ * the line under the deal heading says which market's ADR and
+ * occupancy the projection stands on, and that is the only claim about
+ * a market this panel needs to make.
  */
 
 import * as React from "react";
@@ -434,91 +437,56 @@ export function ListingDetailDialog({
             </Panel>
 
             {/* ---------------------------------------------------- */}
-            {/* Who to call, and whether the market is worth it       */}
+            {/* Who to call                                           */}
             {/* ---------------------------------------------------- */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Panel className="flex flex-col p-4 sm:p-5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <MetricLabel>{contact?.role ?? "Contact"}</MetricLabel>
-                  {!isLive ? (
-                    <StatusChip tone="neutral">Preview</StatusChip>
+            {/* Full width, and the details laid out across it rather
+                than stacked in a column: this used to be half of a
+                two-up row beside a market panel, and on its own that
+                column left the right half of the overlay empty. */}
+            <Panel className="p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <MetricLabel>{contact?.role ?? "Contact"}</MetricLabel>
+                {!isLive ? <StatusChip tone="neutral">Preview</StatusChip> : null}
+              </div>
+
+              {contact ? (
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-7">
+                  <ContactRow icon={User}>
+                    <span className="font-medium">{contact.name}</span>
+                    {contact.company ? (
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {contact.company}
+                      </span>
+                    ) : null}
+                  </ContactRow>
+                  {contact.phone ? (
+                    <ContactRow
+                      icon={Phone}
+                      href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}
+                    >
+                      <span className="tabular">{contact.phone}</span>
+                    </ContactRow>
+                  ) : null}
+                  {contact.email ? (
+                    <ContactRow icon={Mail} href={`mailto:${contact.email}`}>
+                      {contact.email}
+                    </ContactRow>
                   ) : null}
                 </div>
-
-                {contact ? (
-                  <div className="mt-3 space-y-2">
-                    <ContactRow icon={User}>
-                      <span className="font-medium">{contact.name}</span>
-                      {contact.company ? (
-                        <span className="text-muted-foreground">
-                          {" · "}
-                          {contact.company}
-                        </span>
-                      ) : null}
-                    </ContactRow>
-                    {contact.phone ? (
-                      <ContactRow
-                        icon={Phone}
-                        href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}
-                      >
-                        <span className="tabular">{contact.phone}</span>
-                      </ContactRow>
-                    ) : null}
-                    {contact.email ? (
-                      <ContactRow icon={Mail} href={`mailto:${contact.email}`}>
-                        {contact.email}
-                      </ContactRow>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                    No contact details published for this listing.
-                    {/* Only promise the lister where the link actually
-                        reaches the listing. The address search that
-                        stands in for rows without their own page lands
-                        near the property, not on it. */}
-                    {hasOwnListingPage(listing)
-                      ? " The listing page behind View photos has the lister's details."
-                      : ""}
-                  </p>
-                )}
-              </Panel>
-
-              <Panel className="flex flex-col p-4 sm:p-5">
-                {/* The market link is a header link, not a footer
-                    button: as a full-width button it made this panel
-                    taller than the contact panel beside it, and the
-                    stretched pair left a card's worth of empty white
-                    under the phone number. */}
-                <div className="flex items-baseline justify-between gap-3">
-                  <MetricLabel>Market context</MetricLabel>
-                  <Link
-                    href={`/deals?market=${market.slug}`}
-                    className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-gold transition-colors duration-150 hover:text-gold-bright"
-                  >
-                    See the market
-                    <ArrowRight aria-hidden className="size-3" />
-                  </Link>
-                </div>
-                <dl className="mt-2 divide-y divide-border/70 text-sm">
-                  {[
-                    ["Nightly rate", fmtMoney(market.adr)],
-                    ["Occupancy", fmtPct(market.occupancy)],
-                    ["Median 2 bd rent", fmtMoney(market.medianRent2br)],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="flex items-baseline justify-between gap-4 py-2"
-                    >
-                      <dt className="text-muted-foreground">{label}</dt>
-                      <dd className="font-medium text-foreground tabular">
-                        {value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </Panel>
-            </div>
+              ) : (
+                <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                  No contact details published for this listing.
+                  {/* Only promise the lister where the link actually
+                      reaches the listing. The address search that
+                      stands in for rows without their own page lands
+                      near the property, not on it. */}
+                  {hasOwnListingPage(listing)
+                    ? " The listing page behind View photos has the lister's details."
+                    : ""}
+                </p>
+              )}
+            </Panel>
 
             {/* Seeded inventory only. A live row's description is the
                 source's own prose, which this product does not

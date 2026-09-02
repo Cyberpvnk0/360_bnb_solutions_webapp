@@ -112,7 +112,7 @@ export function MarketSearchBox({
           }
           if (e.key === "Escape") setFocused(false);
         }}
-        placeholder="City or ZIP — try Jacksonville, FL"
+        placeholder="Search a city or ZIP"
         className="h-8 w-64 rounded-full border border-border bg-surface pl-8 pr-8 text-xs text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-gold/50"
       />
       {text ? (
