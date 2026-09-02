@@ -9,7 +9,7 @@
  * Everything a hunter needs before making the call lives here: the
  * unit's facts, who to contact, the deal read at this market's actual
  * ADR and occupancy, and the actions — add to a list, run the full
- * numbers, open the original listing. Every figure comes through
+ * numbers, see the photos on the listing's own page. Every figure comes through
  * lib/calc with the
  * same benchmark inputs the cards use, so nothing can disagree.
  */
@@ -34,6 +34,7 @@ import { AddToListMenu } from "./add-to-list-menu";
 import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
 import { analyzeHref } from "@/lib/live/analyze-href";
+import { hasOwnListingPage } from "@/lib/live/listing-links";
 import { cn } from "@/lib/utils";
 
 function Figure({
@@ -186,8 +187,14 @@ export function ListingDetailDialog({
                 </div>
               ) : (
                 <p className="mt-1.5 text-sm text-muted-foreground">
-                  No contact details published for this listing. Open the
-                  original listing to reach the lister.
+                  No contact details published for this listing.
+                  {/* Only promise the lister where the link actually
+                      reaches the listing. The address search that
+                      stands in for rows without their own page lands
+                      near the property, not on it. */}
+                  {hasOwnListingPage(listing)
+                    ? " The listing page behind View photos has the lister's details."
+                    : ""}
                 </p>
               )}
             </div>

@@ -5,9 +5,16 @@
  *
  * CurbShot draws whatever imagery the server can get for the property's
  * own coordinates — a Street View kerb shot where Google is working, an
- * aerial otherwise — and says which. PropertyThumb is the honest
- * placeholder for everything else: an abstract roofline seeded by the
- * analysis id, never a fake photograph.
+ * aerial otherwise — and says which, from the stage whose image actually
+ * loaded rather than from what the deployment has keys for. PropertyThumb
+ * is the honest placeholder for everything else: an abstract roofline
+ * seeded by the analysis id, never a fake photograph.
+ *
+ * Never the listing's own photo. A listing cannot carry one — the type
+ * has no field for it — because a photo is copyrighted separately from
+ * the facts around it and this product holds no licence to show one.
+ * The card links to the listing's page and lets the source do the
+ * showing.
  *
  * A point is required, not optional-with-a-default. The market's centre
  * is several miles from most properties, and a picture of city hall
@@ -16,9 +23,13 @@
 
 import * as React from "react";
 import {
+  firstStage,
   imagerySources,
+  nextStage,
   propertyImageSrc,
+  STAGE_LABEL,
   type ImagerySources,
+  type ImageryStage,
 } from "@/lib/live/property-imagery";
 import { cn } from "@/lib/utils";
 
@@ -38,8 +49,9 @@ export function PropertyThumb({
 }: {
   seed: string;
   className?: string;
-  /** Corner tag. "Preview" for seeded data; live listings pass
-   *  "No photo" — the listing is real, only the image is pending. */
+  /** Corner tag. "Preview" for seeded data; a real listing with no
+   *  imagery for its coordinate says "No imagery" — what is missing is
+   *  the kerb shot, and a card never claims to know about photos. */
   label?: string;
 }) {
   const h = hash(seed);
@@ -105,6 +117,12 @@ export function CurbShot({
   point,
   alt,
   className,
+  /** Above the fold. Loads eagerly and asks the browser to hurry — the
+   *  analyzer's one picture is; a grid of cards passes false and lets
+   *  the browser pace them. */
+  priority = true,
+  /** What the sketch says when the chain runs out. */
+  sketchLabel = "No imagery",
 }: {
   /** Seeds the sketch when there is no imagery. */
   seed: string;
@@ -113,50 +131,81 @@ export function CurbShot({
   point: { lat: number; lon: number } | null;
   alt: string;
   className?: string;
+  priority?: boolean;
+  sketchLabel?: string;
 }) {
-  const [failed, setFailed] = React.useState(false);
+  const lat = point?.lat;
+  const lon = point?.lon;
   const [sources, setSources] = React.useState<ImagerySources | null>(null);
+  // Null until the deployment has said what it can draw; then the best
+  // stage it has, walking down on each 404 until the sketch.
+  const [stage, setStage] = React.useState<ImageryStage | null>(null);
   const [loaded, setLoaded] = React.useState(false);
 
+  // A new property in the same slot starts its own chain from the top.
+  const slot = `${seed}:${lat}:${lon}`;
+  const [lastSlot, setLastSlot] = React.useState(slot);
+  if (slot !== lastSlot) {
+    setLastSlot(slot);
+    setStage(sources ? firstStage(sources) : null);
+    setLoaded(false);
+  }
+
   React.useEffect(() => {
-    if (!point) return;
+    if (lat === undefined || lon === undefined) return;
     let cancelled = false;
     imagerySources().then((got) => {
-      if (!cancelled) setSources(got);
+      if (cancelled) return;
+      setSources(got);
+      setStage((current) => current ?? firstStage(got));
     });
     return () => {
       cancelled = true;
     };
-  }, [point]);
+  }, [lat, lon]);
 
-  const nothingToDraw = sources !== null && !sources.street && !sources.aerial;
-  if (!point || failed || nothingToDraw) {
-    return <PropertyThumb seed={seed} className={className} label="No photo" />;
+  if (!point || stage === "sketch") {
+    return <PropertyThumb seed={seed} className={className} label={sketchLabel} />;
   }
+
+  const src =
+    stage === null ? null : propertyImageSrc(point.lat, point.lon, stage);
 
   return (
     <div className={cn("relative overflow-hidden rounded-sm bg-secondary/60", className)}>
-      {/* eslint-disable-next-line @next/next/no-img-element -- served by
-          our own route so the key stays on the server; next/image would
-          add a second hop for no benefit. */}
-      <img
-        src={propertyImageSrc(point.lat, point.lon)}
-        alt={alt}
-        loading="eager"
-        decoding="async"
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
-        className={cn(
-          "size-full object-cover transition-opacity duration-300",
-          loaded ? "opacity-100" : "opacity-0"
-        )}
-      />
+      {/* Served by our own route so the key stays on the server;
+          next/image would add a second hop for no benefit. */}
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={src}
+          src={src}
+          alt={alt}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          // Off the main thread, so a batch of images arriving together
+          // can't stutter the scroll while they decode.
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={() =>
+            setStage((current) =>
+              current && current !== "sketch" && sources
+                ? nextStage(current, sources)
+                : "sketch"
+            )
+          }
+          className={cn(
+            "size-full object-cover transition-opacity duration-300",
+            loaded ? "opacity-100" : "opacity-0"
+          )}
+        />
+      ) : null}
       {/* Said out loud: this is the kerb or the roof, not the listing's
-          own photos — and WHICH, because a roof labelled "Street View"
-          makes somebody think the kerb shot is broken. */}
-      {sources ? (
+          own photos — and WHICH. Written from the stage whose image
+          loaded, so a roof is never labelled "Street View". */}
+      {loaded && stage ? (
         <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]">
-          {sources.street ? "Street View" : "Aerial"}
+          {STAGE_LABEL[stage]}
         </span>
       ) : null}
     </div>

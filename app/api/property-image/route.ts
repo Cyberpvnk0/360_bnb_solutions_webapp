@@ -16,6 +16,13 @@
  *      coverage gaps, so it is what stands in while Google is down.
  *   3. 404 — the card draws its sketch.
  *
+ * With `source=street` or `source=aerial` the route serves THAT source
+ * or 404s, never the next one down. The card asks that way, one stage
+ * at a time, so the tag under the picture names the picture: written
+ * from "does this deployment have a Google key", it said "Street View"
+ * over every roof Google had no kerb shot for. Without `source` the
+ * route walks the chain itself, for a human with a URL.
+ *
  * Never a listing's own photo. No feed welds one onto a row any more —
  * a listing cannot even carry one — so this route is the only picture a
  * card has, and the source page is a link away for the rest.
@@ -96,9 +103,13 @@ export async function GET(request: Request) {
     return new Response("Bad coordinates", { status: 400 });
   }
 
+  const wanted = searchParams.get("source");
+  const only =
+    wanted === "street" || wanted === "aerial" ? wanted : null;
+
   // Street View first, and only when its free probe says imagery is
   // actually there — never pay for a picture that doesn't exist.
-  if (hasGoogleKey()) {
+  if (only !== "aerial" && hasGoogleKey()) {
     const probe = await streetViewProbe(lat, lon);
     if (probe.ok) {
       const image = await fetchStreetView(lat, lon);
@@ -107,8 +118,8 @@ export async function GET(request: Request) {
           headers: {
             "Content-Type": "image/jpeg",
             "Cache-Control": CACHE,
-            // For a human reading the network tab. The card labels
-            // itself from the session probe, not from this.
+            // For a human reading the network tab; the card knows from
+            // which stage it asked for.
             "X-Image-Source": "street",
           },
         });
@@ -117,6 +128,12 @@ export async function GET(request: Request) {
     // A refused key is OUR problem and falls through to the aerial
     // rather than 404ing: the point of the chain is that a card still
     // shows the building when Google is having a bad day.
+  }
+
+  // Asked for the kerb specifically and there is none here: say so,
+  // so the card can move to the aerial and label it as one.
+  if (only === "street") {
+    return new Response("No Street View here", { status: 404 });
   }
 
   const aerial = await fetchAerial(lat, lon);

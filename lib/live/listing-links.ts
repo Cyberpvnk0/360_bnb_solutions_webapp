@@ -92,6 +92,16 @@ function usableSource(url: string | undefined): string | null {
 }
 
 /**
+ * Whether the row carries its own page at the source — the one place
+ * the lister's details are certain to be. The address search that
+ * stands in otherwise lands near the property, not on it, so copy
+ * that promises the lister must check this first.
+ */
+export function hasOwnListingPage(place: Addressed): boolean {
+  return usableSource(place.sourceUrl) !== null;
+}
+
+/**
  * Where to see this property's photos, or null when we have too little
  * of an address to send anyone anywhere.
  *

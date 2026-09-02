@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { photosHref } from "./listing-links";
+import { hasOwnListingPage, photosHref } from "./listing-links";
 
 const TAMPA = { address: "1234 Palm Ave", city: "Tampa", stateCode: "FL" };
 
@@ -73,5 +73,20 @@ describe("the address search, when there is no page URL", () => {
 
   it("survives an address made entirely of punctuation", () => {
     expect(photosHref({ address: "///", city: "Tampa", stateCode: "FL" })).toBeNull();
+  });
+});
+
+describe("hasOwnListingPage", () => {
+  it("is true only for a usable page on the listing site", () => {
+    // The same rule photosHref uses to prefer the row's own URL, so the
+    // copy that promises "the lister's details are behind View photos"
+    // is true exactly when the link goes to the listing.
+    expect(
+      hasOwnListingPage({ ...TAMPA, sourceUrl: "https://www.redfin.com/FL/Tampa/x/home/1" })
+    ).toBe(true);
+    expect(hasOwnListingPage(TAMPA)).toBe(false);
+    expect(hasOwnListingPage({ ...TAMPA, sourceUrl: "http://www.redfin.com/x" })).toBe(false);
+    expect(hasOwnListingPage({ ...TAMPA, sourceUrl: "https://zillow.com/x" })).toBe(false);
+    expect(hasOwnListingPage({ ...TAMPA, sourceUrl: "not a url" })).toBe(false);
   });
 });

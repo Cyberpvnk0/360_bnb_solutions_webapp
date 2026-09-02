@@ -908,7 +908,7 @@ export function DealsExplorer({
                     ? "The feed carries no furnished units here today. Turn Furnished off to see everything else listed."
                     : zipFailed
                     ? zipResult?.reason === "auth"
-                      ? "The rental feed rejected the API key. Check RENTCAST_API_KEY, then search again — ZIP search reads live inventory only."
+                      ? "The rental feed rejected this app's access key, so live inventory can't load. Whoever runs the deployment needs to check the live-feed key in its settings; market searches still browse the preview set."
                       : zipResult?.reason === "daily-cap"
                         ? "This app pulls a limited number of new areas live each day so the data bill stays predictable. It resets at midnight UTC, and areas already searched today still load instantly."
                         : zipResult?.reason === "quota"
