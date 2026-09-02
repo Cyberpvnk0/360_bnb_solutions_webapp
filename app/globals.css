@@ -63,6 +63,10 @@
   --elev: 0 1px 2px rgb(18 20 28 / 0.05), 0 8px 24px rgb(18 20 28 / 0.07);
   /* Deeper lift for hovered interactive cards. */
   --elev-raised: 0 2px 4px rgb(18 20 28 / 0.06), 0 14px 36px rgb(18 20 28 / 0.11);
+  /* Tighter lift for panels nested INSIDE an overlay. The ambient one
+     is tuned for cards on a full page; at 24px of blur, panels sitting
+     12px apart pool their shadows into fog. */
+  --elev-panel: 0 1px 2px rgb(18 20 28 / 0.04), 0 4px 12px -4px rgb(18 20 28 / 0.1);
 }
 
 .dark {
@@ -110,6 +114,7 @@
   /* Dark stays flat — hairlines carry the structure. */
   --elev: 0 0 #0000;
   --elev-raised: 0 0 #0000;
+  --elev-panel: 0 0 #0000;
 }
 
 /* ------------------------------------------------------------------ */
@@ -274,6 +279,17 @@
 /* Deeper shadow for hovered interactive cards (no-op in dark). */
 @utility elev-raised {
   box-shadow: var(--elev-raised);
+}
+
+/*
+ * Panels nested inside an overlay (no-op in dark).
+ *
+ * Wins over the base `bg-card` shadow because utilities sit in a later
+ * cascade layer than base — which is the whole point: a panel keeps the
+ * white surface and swaps the page-scale shadow for an overlay-scale one.
+ */
+@utility elev-panel {
+  box-shadow: var(--elev-panel);
 }
 
 /*

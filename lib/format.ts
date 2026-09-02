@@ -78,6 +78,41 @@ export function fmtDeltaPct(fraction: number, digits = 1): string {
   return `${sign}${Math.abs(pct).toFixed(digits)}%`;
 }
 
+/**
+ * The line under a listing's address: the neighbourhood, and the city
+ * only when the address line has not already said it.
+ *
+ * Feed addresses usually arrive fully postal — "506 Lexington Pkwy N
+ * Unit 1, St Paul, MN 55104" — so a second line reading "St. Paul, MN"
+ * under it is the same fact twice and reads as padding. Null means
+ * print nothing at all.
+ */
+export function localityLine(
+  address: string,
+  city: string,
+  stateCode: string,
+  submarketName?: string
+): string | null {
+  // Word by word, not character by character. "St. Paul" in one feed
+  // against "St Paul" in another is the same city, so the punctuation
+  // has to go — but a plain substring test on the stripped letters then
+  // finds "Ada" inside "1 Nevada Ave" and silently drops a line that
+  // should have printed. Whole words, in order, is both.
+  const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const cityWords = words(city);
+  const addressWords = words(address);
+  const alreadySaid =
+    cityWords.length > 0 &&
+    addressWords.some((_, i) =>
+      cityWords.every((w, j) => addressWords[i + j] === w)
+    );
+  const cityState = `${city}, ${stateCode}`;
+  if (submarketName) {
+    return alreadySaid ? submarketName : `${submarketName} · ${cityState}`;
+  }
+  return alreadySaid ? null : cityState;
+}
+
 /** Mar 14, 2026 */
 export function fmtDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
