@@ -747,6 +747,26 @@ export interface StoreStatus {
  * Diagnostic only. Everything on the hot path stays silent by design;
  * this is the one place that says why.
  */
+/**
+ * Whether two timestamps name the same moment.
+ *
+ * The sentinel is written as JavaScript's ISO string, which ends in
+ * "Z"; Postgres stores it in a timestamptz and hands it back as
+ * "+00:00", with trailing zeros trimmed from the fraction. The strings
+ * never match, so comparing them as strings reported a healthy store
+ * as one that "wrote without error but read nothing back" — on every
+ * call, for two days, while the row counts in the same response showed
+ * the writes landing. Compare instants, never spellings.
+ */
+function sameInstant(
+  got: string | null | undefined,
+  wrote: string
+): boolean {
+  if (!got) return false;
+  const a = Date.parse(got);
+  return Number.isFinite(a) && a === Date.parse(wrote);
+}
+
 export async function storeStatus(): Promise<StoreStatus> {
   const cfg = config();
   if (!cfg) {
@@ -816,8 +836,16 @@ export async function storeStatus(): Promise<StoreStatus> {
   }
 
   const back = await readMarketStore(HEALTH_SLUG);
-  if (back?.listingsAt !== stamp) {
+  if (!sameInstant(back?.listingsAt, stamp)) {
     const kind = describeKeyKind(cfg.key);
+    // What actually came back, so the next reader of this message can
+    // tell "no row" from "a row with somebody else's stamp" without
+    // guessing — the two mean different things and this check spent
+    // two days saying the wrong one.
+    const got =
+      back === null
+        ? "no row"
+        : `a row stamped ${back.listingsAt ?? "null"} (wrote ${stamp})`;
     // Say WHICH problem, from the key's own shape, rather than
     // asserting the likeliest one. A publishable key and a privileged
     // key that cannot SELECT produce the same symptom and need
@@ -826,7 +854,7 @@ export async function storeStatus(): Promise<StoreStatus> {
     return {
       ok: false,
       detail: keyIsPrivileged(cfg.key)
-        ? `Wrote without error but read nothing back, and SUPABASE_SECRET_KEY is a ${kind} — so the key is the right kind and the problem is the table. Either the row was never really written, or this role can INSERT but not SELECT. Re-run supabase/schema.sql: it is idempotent and grants both.`
+        ? `Wrote without error but read back ${got}, and SUPABASE_SECRET_KEY is a ${kind} — so the key is the right kind and the problem is the table. Either the row was never really written, or this role can INSERT but not SELECT. Re-run supabase/schema.sql: it is idempotent and grants both.`
         : `SUPABASE_SECRET_KEY holds a ${kind}, not a secret key. The cache tables have row level security on and NO policies on purpose, so a publishable key can write nothing and read nothing back. Copy the SECRET key from Supabase → Project Settings → API keys, replace the value in Vercel, and redeploy.`,
     };
   }
