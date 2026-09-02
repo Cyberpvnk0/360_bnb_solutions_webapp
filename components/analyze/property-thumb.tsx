@@ -3,9 +3,11 @@
 /**
  * The analyzer's property image, and the sketch it falls back to.
  *
- * CurbShot draws Google Street View of the property's own coordinates.
- * PropertyThumb is the honest placeholder for everything else — an
- * abstract roofline seeded by the analysis id, never a fake photograph.
+ * CurbShot draws whatever imagery the server can get for the property's
+ * own coordinates — a Street View kerb shot where Google is working, an
+ * aerial otherwise — and says which. PropertyThumb is the honest
+ * placeholder for everything else: an abstract roofline seeded by the
+ * analysis id, never a fake photograph.
  *
  * A point is required, not optional-with-a-default. The market's centre
  * is several miles from most properties, and a picture of city hall
@@ -14,9 +16,10 @@
 
 import * as React from "react";
 import {
-  streetViewConfigured,
-  streetViewSrc,
-} from "@/lib/live/street-view-probe";
+  imagerySources,
+  propertyImageSrc,
+  type ImagerySources,
+} from "@/lib/live/property-imagery";
 import { cn } from "@/lib/utils";
 
 function hash(str: string): number {
@@ -112,21 +115,22 @@ export function CurbShot({
   className?: string;
 }) {
   const [failed, setFailed] = React.useState(false);
-  const [configured, setConfigured] = React.useState<boolean | null>(null);
+  const [sources, setSources] = React.useState<ImagerySources | null>(null);
   const [loaded, setLoaded] = React.useState(false);
 
   React.useEffect(() => {
     if (!point) return;
     let cancelled = false;
-    streetViewConfigured().then((ok) => {
-      if (!cancelled) setConfigured(ok);
+    imagerySources().then((got) => {
+      if (!cancelled) setSources(got);
     });
     return () => {
       cancelled = true;
     };
   }, [point]);
 
-  if (!point || failed || configured === false) {
+  const nothingToDraw = sources !== null && !sources.street && !sources.aerial;
+  if (!point || failed || nothingToDraw) {
     return <PropertyThumb seed={seed} className={className} label="No photo" />;
   }
 
@@ -136,7 +140,7 @@ export function CurbShot({
           our own route so the key stays on the server; next/image would
           add a second hop for no benefit. */}
       <img
-        src={streetViewSrc(point.lat, point.lon)}
+        src={propertyImageSrc(point.lat, point.lon)}
         alt={alt}
         loading="eager"
         decoding="async"
@@ -147,10 +151,14 @@ export function CurbShot({
           loaded ? "opacity-100" : "opacity-0"
         )}
       />
-      {/* Said out loud: this is the kerb, not the listing's photos. */}
-      <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]">
-        Street View
-      </span>
+      {/* Said out loud: this is the kerb or the roof, not the listing's
+          own photos — and WHICH, because a roof labelled "Street View"
+          makes somebody think the kerb shot is broken. */}
+      {sources ? (
+        <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]">
+          {sources.street ? "Street View" : "Aerial"}
+        </span>
+      ) : null}
     </div>
   );
 }

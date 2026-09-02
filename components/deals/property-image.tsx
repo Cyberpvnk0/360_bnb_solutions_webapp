@@ -1,23 +1,32 @@
 "use client";
 
 /**
- * A listing's picture, degrading honestly: the feed's own photo if it
- * carries one, otherwise Google Street View of the address, otherwise
- * the seeded sketch tagged for what it is. Every fallback happens in
- * the browser via onError, so a missing photo never blocks a render and
- * a blocked network just shows the sketch.
+ * A listing's picture, degrading honestly:
+ *
+ *   1. the listing's own photo, when the feed shipped one — furnished
+ *      rentals, in practice, since that is the search that carries them
+ *   2. whatever imagery the server can draw for the coordinate: a kerb
+ *      shot where Street View works, an aerial otherwise
+ *   3. the seeded sketch, tagged for what it is
+ *
+ * Which of the two middle sources answered is a fact about the
+ * DEPLOYMENT, not about this listing, so it is asked once per session
+ * and used only to label the corner. Every fallback happens in the
+ * browser via onError, so a missing photo never blocks a render and a
+ * blocked network just shows the sketch.
  */
 
 import * as React from "react";
 import type { RentalListing } from "@/lib/mock/types";
 import { PropertyThumb } from "@/components/analyze/property-thumb";
 import {
-  streetViewConfigured,
-  streetViewSrc,
-} from "@/lib/live/street-view-probe";
+  imagerySources,
+  propertyImageSrc,
+  type ImagerySources,
+} from "@/lib/live/property-imagery";
 import { cn } from "@/lib/utils";
 
-type Stage = "photo" | "street" | "sketch";
+type Stage = "photo" | "imagery" | "sketch";
 
 export function PropertyImage({
   listing,
@@ -37,10 +46,11 @@ export function PropertyImage({
   const first: Stage = listing.photoUrl
     ? "photo"
     : isLive
-      ? "street"
+      ? "imagery"
       : "sketch";
   const [stage, setStage] = React.useState<Stage>(first);
   const [loaded, setLoaded] = React.useState(false);
+  const [sources, setSources] = React.useState<ImagerySources | null>(null);
 
   // A new listing in the same slot starts its own fallback chain — and
   // so does a photo ARRIVING for the listing already in it. Photos are
@@ -56,12 +66,15 @@ export function PropertyImage({
     setLoaded(false);
   }
 
-  // Skip straight to the sketch when there is no Street View to ask for.
+  // Skip straight to the sketch when there is no imagery to ask for,
+  // and learn which source will answer so the corner tag is honest.
   React.useEffect(() => {
-    if (stage !== "street") return;
+    if (stage !== "imagery") return;
     let cancelled = false;
-    streetViewConfigured().then((ok) => {
-      if (!cancelled && !ok) setStage("sketch");
+    imagerySources().then((got) => {
+      if (cancelled) return;
+      setSources(got);
+      if (!got.street && !got.aerial) setStage("sketch");
     });
     return () => {
       cancelled = true;
@@ -81,7 +94,7 @@ export function PropertyImage({
   const src =
     stage === "photo"
       ? listing.photoUrl!
-      : streetViewSrc(listing.lat, listing.lon);
+      : propertyImageSrc(listing.lat, listing.lon);
 
   return (
     <div className={cn("relative overflow-hidden bg-secondary/60", className)}>
@@ -97,7 +110,7 @@ export function PropertyImage({
         // can't stutter the scroll while they decode.
         decoding="async"
         onLoad={() => setLoaded(true)}
-        onError={() => setStage(stage === "photo" ? "street" : "sketch")}
+        onError={() => setStage(stage === "photo" ? "imagery" : "sketch")}
         className={cn(
           "size-full object-cover transition-opacity duration-300",
           // Photos land after the rows they belong to, so they fade up
@@ -105,9 +118,11 @@ export function PropertyImage({
           loaded ? "opacity-100" : "opacity-0"
         )}
       />
-      {stage === "street" ? (
+      {/* Say which it is. A roof labelled "Street View" is a small lie
+          that makes somebody think the kerb shot is broken. */}
+      {stage === "imagery" && sources ? (
         <span className="pointer-events-none absolute bottom-1.5 right-2 text-[9px] uppercase tracking-[0.14em] text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]">
-          Street View
+          {sources.street ? "Street View" : "Aerial"}
         </span>
       ) : null}
     </div>
