@@ -24,7 +24,6 @@ import {
   SearchX,
 } from "lucide-react";
 import {
-  getMarketExtraListings,
   getLiveRentals,
   getLiveRentalsByZip,
   type LiveFailureReason,
@@ -358,45 +357,6 @@ export function DealsExplorer({
     liveTarget && liveChecked !== liveTarget.slug
   );
 
-  /* ---------------------------------------------------------------- */
-  /* The listings the feed misses, fetched after its own are on screen  */
-  /*                                                                    */
-  /* A second source that takes about as long as the first. Asking for
-     both before rendering anything meant the wait was the sum of two
-     vendors; asking afterwards means rows appear at the speed of one
-     and the remainder lands a moment later. Nothing here is
-     load-bearing: no answer just means fewer rows.
-
-     It used to lend photos too. Those are copyrighted separately from
-     the listing facts around them, so the rows stay and the pictures
-     go — every card draws a Street View of the kerb, with a link out
-     to the page licensed to show the interiors.                       */
-  /* ---------------------------------------------------------------- */
-
-  const [extras, setExtras] = React.useState<{
-    slug: string;
-    listings: RentalListing[];
-  } | null>(null);
-
-  /** Only worth asking for real inventory: the preview set's addresses
-   *  are generated, so nothing out there could match them. */
-  const extrasTarget = liveActive ? live!.slug : null;
-
-  React.useEffect(() => {
-    if (!extrasTarget) return;
-    let cancelled = false;
-    getMarketExtraListings(extrasTarget).then((listings) => {
-      if (cancelled) return;
-      setExtras({ slug: extrasTarget, listings });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [extrasTarget]);
-
-  const extraRows =
-    extras && extras.slug === extrasTarget ? extras.listings : null;
-
   // Join listings with their market once — cushion comes through
   // lib/mock/rentals (lib/calc underneath), never an inline formula.
   const rows = React.useMemo<Row[]>(() => {
@@ -414,10 +374,7 @@ export function DealsExplorer({
           ? zipResult!.listings
           : []
         : marketRows
-          ? // The feed's rows, plus the second source's listings for
-            // buildings the feed doesn't carry — the same rows the
-            // Furnished view shows.
-            [...marketRows, ...(extraRows ?? [])]
+          ? marketRows
           : listFilter
             ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
             : [];
@@ -454,7 +411,6 @@ export function DealsExplorer({
     lists,
     redfinActive,
     redfin,
-    extraRows,
   ]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {

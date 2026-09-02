@@ -5,7 +5,6 @@ import { MARKET_BY_SLUG, MARKETS } from "@/lib/mock/markets";
 import { REDFIN_CITY_ID } from "./redfin-city";
 import {
   REDFIN_SEARCH_ENDPOINT,
-  harvestPhotos,
   nextPageUrls,
   extractListings,
   mapRedfinListing,
@@ -190,10 +189,13 @@ describe("mapRedfinListing", () => {
     expect(mapped()!.daysOnMarket).toBeUndefined();
   });
 
-  it("carries the real thumbnail when Redfin ships one", () => {
+  it("never carries a photo, even when the row ships a thumbnail", () => {
+    // A listing has no photo field to carry one in. The row's own page
+    // URL is kept so the card can link there; the picture stays where
+    // its licence is.
     const l = mapped({ thumbnail_img_url: "https://ssl.cdn-redfin.com/x.jpg" })!;
-    expect(l.photoUrl).toBe("https://ssl.cdn-redfin.com/x.jpg");
-    expect(mapped({ thumbnail_img_url: undefined })!.photoUrl).toBeUndefined();
+    expect("photoUrl" in l).toBe(false);
+    expect("photos" in l).toBe(false);
   });
 
   it("gives every row a stable, market-scoped id", () => {
@@ -244,31 +246,6 @@ describe("nextPageUrls", () => {
 });
 
 
-describe("harvestPhotos", () => {
-  it("finds image URLs wherever the payload keeps them", () => {
-    // Schema-independent on purpose: photo arrays get renamed, a JPEG
-    // link stays recognisable.
-    const body = {
-      media: { gallery: [{ src: "https://ssl.cdn-redfin.com/a.jpg" }] },
-      hero: "https://ssl.cdn-redfin.com/b.png",
-    };
-    expect(harvestPhotos(body)).toEqual([
-      "https://ssl.cdn-redfin.com/a.jpg",
-      "https://ssl.cdn-redfin.com/b.png",
-    ]);
-  });
-
-  it("ignores links that aren't images", () => {
-    expect(
-      harvestPhotos({ url: "https://www.redfin.com/FL/Jacksonville/home/1" })
-    ).toEqual([]);
-  });
-
-  it("returns each photo once", () => {
-    const dup = "https://ssl.cdn-redfin.com/a.jpg";
-    expect(harvestPhotos({ a: dup, b: dup })).toEqual([dup]);
-  });
-});
 
 describe("redfinRentalsUrlFor property type", () => {
   const market = {

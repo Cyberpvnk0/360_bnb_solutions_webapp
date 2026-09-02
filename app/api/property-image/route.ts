@@ -16,8 +16,9 @@
  *      coverage gaps, so it is what stands in while Google is down.
  *   3. 404 — the card draws its sketch.
  *
- * A listing's OWN photo never comes through here: it is welded to the
- * row by the feed that supplied it, and the card prefers it outright.
+ * Never a listing's own photo. No feed welds one onto a row any more —
+ * a listing cannot even carry one — so this route is the only picture a
+ * card has, and the source page is a link away for the rest.
  *
  * Keys stay server-side, and both upstreams are cached a month, so a
  * page of listings cannot turn into a page of billed requests and the

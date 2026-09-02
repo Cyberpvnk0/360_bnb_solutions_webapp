@@ -1,32 +1,41 @@
 /**
- * Links out to where the photos are.
+ * A link out to where the photos are.
  *
  * Listing photos are copyrighted separately from the listing itself —
  * the photographer's, then the brokerage's, governed by display rules
- * we hold no licence under. That is why no data vendor at any sane
- * price ships them, and why this product hosts none at all. Every card
- * draws a Street View of the kerb; anyone who wants the interiors goes
- * to a site that is licensed to show them.
+ * we hold no licence under. This product hosts none, welds none onto
+ * rows, and fetches none. Every card draws a Street View or an aerial
+ * of the kerb; anyone who wants the interiors goes to a site that is
+ * licensed to show them.
  *
  * A link is not a copy. It is what a search engine does, it never goes
  * stale, and it puts the traffic back where the photos came from.
  *
- * ONE DESTINATION, ON PURPOSE. Zillow carries the most rental
- * inventory of the major portals and is strongest on the single-family
- * and condo stock an arbitrage operator actually leases — and it is the
- * only one of the three that can be addressed BY ADDRESS. Redfin keys a
- * city by an opaque internal id and Realtor keys a property by an
- * internal property id; we hold neither, so a link to either would
- * either 404 on a guessed URL or land on a city page, which is "view
- * this city" wearing the label somebody asked for.
+ * TWO DESTINATIONS, IN ORDER:
  *
- * A menu of one good link and two bad ones is worse than the one link.
+ *   1. The listing's OWN page, when the row came from a source that
+ *      told us its URL. That is the exact property, on the site that
+ *      published it, one click away. Nothing beats it.
+ *
+ *   2. An address search on the portal with the most rental inventory,
+ *      when we hold no page URL. A search rather than a guessed property
+ *      URL because we do not know their id for a building and a guess
+ *      404s — a dead button is worse than no button. A search lands on
+ *      the listing when it exists and on the block when it doesn't.
+ *
+ * Only one search portal, on purpose. Zillow can be addressed BY
+ * ADDRESS; Redfin keys a city by an opaque internal id and Realtor keys
+ * a property by an internal property id, so neither can be built from
+ * an address alone. A menu of one good link and two bad ones is worse
+ * than the one link.
  */
 
 export interface Addressed {
   address: string;
   city: string;
   stateCode: string;
+  /** The listing's own page at its source, when the source told us. */
+  sourceUrl?: string;
 }
 
 /**
@@ -63,6 +72,26 @@ function parts(
 }
 
 /**
+ * A source URL we will actually send somebody to.
+ *
+ * Only ever https, and only ever to the listing site itself: this
+ * string was read off a vendor payload, and a payload is not a place to
+ * take a navigation target from on trust. Anything else falls through
+ * to the address search.
+ */
+function usableSource(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return null;
+    if (!/(^|\.)redfin\.com$/i.test(u.hostname)) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Where to see this property's photos, or null when we have too little
  * of an address to send anyone anywhere.
  *
@@ -71,6 +100,9 @@ function parts(
  * people's houses, which looks like a bug and wastes a click.
  */
 export function photosHref(place: Addressed): string | null {
+  const own = usableSource(place.sourceUrl);
+  if (own) return own;
+
   const p = parts(place);
   if (!p) return null;
 

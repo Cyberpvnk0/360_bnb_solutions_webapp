@@ -4,8 +4,10 @@
  * "View photos" — out to the page where the pictures already live.
  *
  * We host no listing imagery at all. The card's picture is a Street
- * View of the kerb; the interiors live on the listing site, and this
- * sends people there rather than copying anything here.
+ * View or an aerial of the kerb; the interiors live on the listing
+ * site, and this sends people there rather than copying anything here.
+ * When the row came from a source that told us its page URL, that is
+ * where it goes — the exact listing. Otherwise an address search.
  *
  * One component for all three surfaces, because the rule about WHEN to
  * show it is the interesting part and it should exist once:

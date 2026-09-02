@@ -20,16 +20,15 @@ import {
   storeCounts,
   storeStatus,
 } from "@/lib/db/market-store";
-import { photoPages } from "@/lib/live/redfin";
+import { DEFAULT_MAX_PAGES } from "@/lib/live/redfin";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const usage = await scraperUsage();
-  const pages = photoPages();
-  // One search = the default pass plus one pass per extra property
-  // type, each paginated. The structured endpoint bills one per page.
-  const passes = 1 + (process.env.REDFIN_PHOTO_TYPES?.split(",").filter(Boolean).length ?? 1);
+  // One furnished search is one paginated pass. The structured endpoint
+  // bills one credit per page, and the page cap is the only knob.
+  const pages = Number(process.env.REDFIN_MAX_PAGES) || DEFAULT_MAX_PAGES;
 
   const airroi = airRoiBudget();
   // One database, so this answers across instances where the in-memory
@@ -69,11 +68,11 @@ export async function GET() {
         "A cached analysis costs nothing and never reaches this counter, which is why callsToday staying flat while analyses are viewed is the cache working, not the meter breaking.",
     },
     costModel: {
-      pagesPerPass: pages,
-      passesPerSearch: passes,
-      creditsPerMarketSearch: pages * passes,
-      creditsPerListingDetail: 10,
-      note: "A market search is billed once per page per pass at one credit each. A listing detail is ten, and is the only call students trigger by hand.",
+      pagesPerSearch: pages,
+      creditsPerFurnishedSearch: pages,
+      note:
+        "The scraping vendor is used for exactly one thing: a furnished-filtered rental search, billed one credit per page. " +
+        "No listing pages are opened and no photos are fetched — a card's picture is Street View or an aerial, and the listing's own photos are a link away on its source page.",
     },
     durability: {
       storeConfigured: storeConfigured(),
@@ -82,12 +81,12 @@ export async function GET() {
       writeDetail: health.ok ? null : health.detail,
       /**
        * The real test of whether anything is being kept. `keyed` counts
-       * cached property analyses and listing details; run one analysis
+       * cached property analyses and resolved city ids; run one analysis
        * and it should go up by one, reload it and it should not move.
        */
       rows: stored,
       detail:
-        "Nothing pre-fetches: a market costs credits when someone searches it and not before. With the store configured, that search's result AND any listing details opened from it survive deploys, so the next student rides for free. Without it both fall back to the framework cache, which every deployment discards — that is what made a day of pushes cost a day of credits.",
+        "Nothing pre-fetches: a market costs credits when someone searches it and not before. With the store configured, that search's result survives deploys, so the next student rides for free. Without it, it falls back to the framework cache, which every deployment discards — that is what made a day of pushes cost a day of credits.",
     },
   });
 }

@@ -1,15 +1,16 @@
 /**
  * An overhead photo of a property, when there is no curb photo.
  *
- * Third in a chain, and it exists because the first two can each be
- * absent for reasons that have nothing to do with the property:
+ * Second in a chain, and it exists because the first can be absent for
+ * a reason that has nothing to do with the property:
  *
- *   1. the listing's own photo — furnished rentals only, where the
- *      source ships one
- *   2. Street View — the best picture of a building, and unavailable
+ *   1. Street View — the best picture of a building, and unavailable
  *      whenever the Google key isn't working
- *   3. this — an aerial of the exact coordinate, nationwide, no
+ *   2. this — an aerial of the exact coordinate, nationwide, no
  *      coverage gaps, free to fifty thousand a month
+ *
+ * Never a listing's own photo. Those are copyrighted separately from
+ * the facts around them and this product displays none.
  *
  * An aerial is a weaker picture than a kerb shot: a roof and a
  * driveway, not a front elevation. It is a real photograph of the real

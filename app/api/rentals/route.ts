@@ -7,9 +7,10 @@
  * first search of a market or ZIP each day spends a slot, repeats ride
  * the 24-hour cache for free, and failures spend nothing.
  *
- * Photos are NOT fetched here — they come from a second vendor and
- * would double the wait for rows that display fine without them. See
- * /api/rentals/photos, which the client calls once the rows are up.
+ * No photos are fetched here, or anywhere. A listing photo is
+ * copyrighted separately from the facts around it and this product
+ * displays none: the card draws Street View or an aerial of the kerb
+ * and links to the listing's own page for the rest.
  *
  * The RentCast key never leaves the server; the browser only ever sees
  * mapped listings. Every response is honest about its provenance:

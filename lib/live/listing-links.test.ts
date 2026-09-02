@@ -3,11 +3,40 @@ import { photosHref } from "./listing-links";
 
 const TAMPA = { address: "1234 Palm Ave", city: "Tampa", stateCode: "FL" };
 
-describe("the link out to the photos", () => {
+describe("the listing's own page comes first", () => {
+  it("links straight to the source listing when the row carries its URL", () => {
+    // The exact property, on the site that published it. Nothing beats
+    // it, so nothing gets to beat it.
+    const own = "https://www.redfin.com/FL/Tampa/1234-Palm-Ave-33602/home/123";
+    expect(photosHref({ ...TAMPA, sourceUrl: own })).toBe(own);
+  });
+
+  it("refuses a source URL that is not https on the listing site", () => {
+    // Read off a vendor payload, so not a navigation target to take on
+    // trust. Anything odd falls through to the address search.
+    expect(photosHref({ ...TAMPA, sourceUrl: "http://www.redfin.com/x" })).toContain("zillow.com");
+    expect(photosHref({ ...TAMPA, sourceUrl: "https://evil.example/redfin.com" })).toContain("zillow.com");
+    expect(photosHref({ ...TAMPA, sourceUrl: "javascript:alert(1)" })).toContain("zillow.com");
+    expect(photosHref({ ...TAMPA, sourceUrl: "not a url" })).toContain("zillow.com");
+  });
+
+  it("accepts the bare and www hosts, and nothing that merely ends in them", () => {
+    expect(photosHref({ ...TAMPA, sourceUrl: "https://redfin.com/a" })).toBe("https://redfin.com/a");
+    expect(photosHref({ ...TAMPA, sourceUrl: "https://notredfin.com/a" })).toContain("zillow.com");
+  });
+});
+
+describe("the address search, when there is no page URL", () => {
   it("builds a rental search for the full address", () => {
     expect(photosHref(TAMPA)).toBe(
       "https://www.zillow.com/homes/for_rent/1234-Palm-Ave,-Tampa,-FL_rb/"
     );
+  });
+
+  it("searches the rental side, not the for-sale side", () => {
+    // Landing on a buy page for a lease is a wrong answer that looks
+    // like a right one.
+    expect(photosHref(TAMPA)).toContain("/for_rent/");
   });
 
   it("drops a unit marker rather than letting it start a fragment", () => {
@@ -44,22 +73,5 @@ describe("the link out to the photos", () => {
 
   it("survives an address made entirely of punctuation", () => {
     expect(photosHref({ address: "///", city: "Tampa", stateCode: "FL" })).toBeNull();
-  });
-});
-
-describe("only one portal, and why", () => {
-  it("searches the rental side, not the for-sale side", () => {
-    // Landing on a buy page for a lease is a wrong answer that looks
-    // like a right one.
-    expect(photosHref(TAMPA)).toContain("/for_rent/");
-  });
-
-  it("is the only portal that can be addressed by address", () => {
-    // Redfin keys a city by an internal id and Realtor keys a property
-    // by an internal property id. Neither can be built from an address,
-    // so neither is offered — a menu of one good link and two bad ones
-    // is worse than the one link. This test exists so that reasoning
-    // survives the next person who wants to "add Redfin back".
-    expect(photosHref(TAMPA)).toContain("zillow.com");
   });
 });

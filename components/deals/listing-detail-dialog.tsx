@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
 import { PhotosLink } from "./photos-link";
-import { ListingGallery } from "./listing-gallery";
+import { PropertyImage } from "./property-image";
 import { analyzeHref } from "@/lib/live/analyze-href";
 import { cn } from "@/lib/utils";
 
@@ -82,14 +82,6 @@ export function ListingDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  /** What the listing's own page adds, once the gallery has fetched it:
-   *  Redfin's amenity labels and the published deposit. */
-  const [sourceDetail, setSourceDetail] = React.useState<{
-    amenities: string[];
-    depositMin?: number;
-    depositMax?: number;
-  } | null>(null);
-
   const projection = React.useMemo(() => {
     if (!listing || !market) return null;
     return projectDeal(benchmark2brInputs(listing.rentMonthly), {
@@ -109,10 +101,12 @@ export function ListingDetailDialog({
       <DialogContent className="max-h-[88vh] gap-0 overflow-y-auto p-0 sm:max-w-2xl">
         {listing && market && projection ? (
           <>
-            <ListingGallery
+            {/* The kerb or the roof, never the listing's own photos —
+                those live on the source's page, one click away below. */}
+            <PropertyImage
               listing={listing}
+              priority
               className="h-56 w-full shrink-0 rounded-t-sm border-b border-border"
-              onDetail={setSourceDetail}
             />
 
             <div className="border-b border-border px-5 py-4 pr-12">
@@ -251,34 +245,6 @@ export function ListingDetailDialog({
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {listing.description}
                 </p>
-              </div>
-            ) : null}
-
-            {sourceDetail && sourceDetail.amenities.length > 0 ? (
-              <div className="border-b border-border px-5 py-4">
-                <MetricLabel>Amenities on the listing</MetricLabel>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {sourceDetail.amenities.map((a) => (
-                    <span
-                      key={a}
-                      className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
-                    >
-                      {a}
-                    </span>
-                  ))}
-                </div>
-                {sourceDetail.depositMin !== undefined ? (
-                  <p className="mt-2.5 text-xs text-muted-foreground">
-                    Deposit{" "}
-                    <span className="tabular font-medium text-foreground">
-                      {sourceDetail.depositMax &&
-                      sourceDetail.depositMax !== sourceDetail.depositMin
-                        ? `${fmtMoney(sourceDetail.depositMin)}–${fmtMoney(sourceDetail.depositMax)}`
-                        : fmtMoney(sourceDetail.depositMin)}
-                    </span>{" "}
-                    — the analyzer assumes $0 unless you set it.
-                  </p>
-                ) : null}
               </div>
             ) : null}
 

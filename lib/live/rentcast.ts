@@ -40,8 +40,6 @@ export interface RentCastListing {
   status?: string;
   daysOnMarket?: number;
   listedDate?: string;
-  /** Some plans/feeds carry imagery; take it when it's there. */
-  photos?: string[];
   listingAgent?: { name?: string; phone?: string; email?: string };
   listingOffice?: { name?: string; phone?: string; email?: string };
   /** Amenity/description fields, when a plan or endpoint carries them. */
@@ -111,7 +109,6 @@ export function mapRentCastListing(
     featuresKnown: mined !== null,
     description:
       raw.description ?? raw.remarks ?? raw.publicRemarks ?? undefined,
-    photoUrl: raw.photos?.[0],
     contact: contactFromFeed(raw),
   };
 }

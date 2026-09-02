@@ -94,46 +94,6 @@ export async function getLiveRentals(
   }
 }
 
-/**
- * The listings the feed misses, a beat after its own rows.
- *
- * A second call on purpose: the feed's rows render as soon as it
- * answers, and this fills in behind them from a slower source. Returns
- * nothing for anything it can't cover; the caller appends what it gets
- * and leaves the rest alone.
- *
- * NO PHOTOS. It used to also lend pictures to rows the feed carried,
- * and those pictures are copyrighted separately from the listing facts
- * around them. The rows are facts and stay; every card draws a Street
- * View of the kerb, and a link sends anyone who wants the interiors to
- * the page licensed to show them.
- */
-export async function getMarketExtraListings(
-  marketSlug: string
-): Promise<RentalListing[]> {
-  const attempt = async (): Promise<RentalListing[] | null> => {
-    const res = await fetch(
-      `/api/rentals/photos?market=${encodeURIComponent(marketSlug)}`
-    ).catch(() => null);
-    if (!res?.ok) return null;
-    const data = (await res.json().catch(() => null)) as {
-      listings?: RentalListing[];
-    } | null;
-    if (!data) return null;
-    const listings = Array.isArray(data.listings) ? data.listings : [];
-    // Registered like any live rows, so "Run the numbers" resolves them
-    // after a navigation exactly as it does for the feed's own.
-    registerLiveListings(listings);
-    return listings;
-  };
-
-  // One retry, because the failure worth planning for is a cold big
-  // market outrunning the server's clock. That first attempt is not
-  // wasted — every page fetched and address placed before the timeout
-  // is cached — so the second ask finishes on the warmed remainder.
-  return (await attempt()) ?? (await attempt()) ?? []
-}
-
 export interface ZipRentalsResult extends LiveRentalsResult {
   /** The covered market anchoring cushion math for this ZIP, if any. */
   market?: string | null;

@@ -5,10 +5,10 @@
 -- twice. Re-running is the fix for most "the store cannot be written
 -- to" reports, so it must never be scary to run.
 --
--- One row per market: the day's feed listings, the day's photo merge,
--- and the market's measured KPIs, each with its own timestamp so the
--- writers never fight. Plus a keyed table for anything that belongs to
--- a property rather than a market.
+-- One row per market: the day's feed listings and the market's measured
+-- KPIs, each with its own timestamp so the writers never fight. Plus a
+-- keyed table for anything that belongs to a property rather than a
+-- market: estimates, resolved city ids.
 --
 -- SECURITY MODEL. Row level security is on with NO policies, on
 -- purpose: the only key that can reach these tables is the SECRET key,
@@ -29,10 +29,15 @@
 create table if not exists public.market_cache (
   market_slug     text primary key,
   listings        jsonb,
-  listings_at     timestamptz,
-  photo_merge     jsonb,
-  photo_merge_at  timestamptz
+  listings_at     timestamptz
 );
+
+-- photo_merge / photo_merge_at once lived here: thumbnails borrowed from
+-- a listing site and matched onto rows by address. Nothing writes or
+-- reads them now — a listing photo is copyrighted separately from the
+-- facts around it and this product displays none. Left in place on
+-- databases that have them; dropping a column is a choice to make by
+-- hand, not one a re-runnable setup script should make for you.
 
 -- Added after the first release. A deployment created before this
 -- migration has the table without them, and a select naming a missing
@@ -44,7 +49,7 @@ alter table public.market_cache add column if not exists stats_at timestamptz;
 alter table public.market_cache enable row level security;
 
 /* ------------------------------------------------------------------ */
-/* Keyed blobs: listing details, property estimates, city ids          */
+/* Keyed blobs: property estimates, resolved city ids                 */
 /* ------------------------------------------------------------------ */
 
 -- Keyed by an opaque string rather than by market, because these

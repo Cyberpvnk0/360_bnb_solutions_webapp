@@ -9,6 +9,14 @@
  * boilerplate to mistake for a description, no false tag off a footer —
  * and one request per market instead of one per property.
  *
+ * THAT IS ALL IT DOES. One fact — furnished or not — plus the listing
+ * details the same search row carries (address, rent, beds, the page
+ * URL). No photos. Not welded onto rows, not fetched from listing
+ * pages, not stored. A listing photo is copyrighted separately from the
+ * facts around it and this product holds no licence to display one;
+ * the card links to the listing's own page instead, where the photos
+ * already live under someone else's licence.
+ *
  * Reached through ScraperAPI's Redfin structured endpoint, which returns
  * parsed JSON rather than HTML, so there is no extraction ladder here.
  *
@@ -19,7 +27,7 @@
  * delete the aliases that never fire.
  */
 
-import { addressKey, buildingKey, streetPartOf } from "@/lib/live/address";
+import { streetPartOf } from "@/lib/live/address";
 import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
@@ -59,23 +67,6 @@ function maxPages(override?: number): number {
     : DEFAULT_MAX_PAGES;
 }
 
-/**
- * Pages to read when the point is photos rather than listings.
- *
- * Separate from the search depth because it buys a different thing.
- * Coverage here is bounded by how many rows the photo source returns
- * against a feed that returns far more, so every extra page is more
- * rows that can match — and pages after the first go in parallel, so
- * it costs credits rather than time.
- *
- * Left at the search default until someone chooses otherwise: this is
- * a per-market-per-day cost on somebody's plan, not a free dial.
- * REDFIN_PHOTO_PAGES turns it up; the diagnostic reports what it buys.
- */
-export function photoPages(): number {
-  const raw = Number(process.env.REDFIN_PHOTO_PAGES);
-  return Number.isFinite(raw) && raw > 0 ? maxPages(raw) : maxPages();
-}
 
 /** The next-page links a search response hands back, absolute. */
 export function nextPageUrls(body: unknown): string[] {
@@ -248,7 +239,6 @@ const LON_KEYS = ["longitude", "lng", "lon", "latLong.longitude"] as const;
 const URL_KEYS = ["url", "listingUrl", "detailUrl"] as const;
 const TYPE_KEYS = ["propertyType", "homeType"] as const;
 /** Redfin ships a thumbnail on most rows — a real photo of the unit. */
-const PHOTO_KEYS = ["thumbnail_img_url", "thumbnailUrl", "photoUrl"] as const;
 /** Short display chips beside a listing — a second amenity signal. */
 const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
 
@@ -415,7 +405,6 @@ export function mapRedfinListing(
       // Redfin's search rows carry no listing date. Left absent rather
       // than zeroed, which would badge all eighty "New, listed today".
       daysOnMarket: pickNumber(raw, ["daysOnMarket", "dom"]),
-      photoUrl: pickString(raw, PHOTO_KEYS),
       // The listing's own page: what the panel links to, and where its
       // full gallery is fetched from on demand.
       sourceUrl: detail
@@ -436,455 +425,6 @@ export function mapRedfinListing(
 /* Photo index: Redfin's pictures on another feed's rows               */
 /* ------------------------------------------------------------------ */
 
-
-/**
- * Redfin's thumbnails for a market, keyed by address.
- *
- * RentCast ships no imagery at all, so its rows show a sketch. Redfin
- * photographs the same city, and one already-cached market search hands
- * back a picture for most of its rows — so where both list the same
- * building, the row can borrow the photo.
- *
- * Bounded by the same page cap as any other search: this covers the
- * listings Redfin returns, not every address in the metro, and the
- * caller reports how many rows actually matched rather than implying
- * full coverage.
- */
-/**
- * Which URL form actually filters the rentals search to houses.
- *
- * This has to be measured rather than reasoned about. A filter segment
- * the vendor doesn't recognise is not rejected — it is ignored, and the
- * search answers with its default result set. That is indistinguishable
- * from success by row count, which is exactly how a "house pass" came
- * to return 166 apartment rows and report them as a win.
- *
- * So: one page of each candidate, side by side with one page of the
- * unfiltered search, and the answer is whichever form returns something
- * DIFFERENT. Deliberately behind a query flag — it costs a handful of
- * requests and nobody should pay for it on a page load.
- */
-export async function probeHouseFilters(market: Market): Promise<unknown> {
-  const cityId = REDFIN_CITY_ID[market.slug];
-  if (cityId === undefined) {
-    return { market: market.slug, error: "no city id for this market" };
-  }
-
-  // The site files a few cities under another name — Berkeley Springs
-  // as Bath, Augusta as Augusta-Richmond — so the path is an override
-  // where one exists and the market's own name everywhere else.
-  const city =
-    REDFIN_CITY_PATH[market.slug] ?? market.name.trim().replace(/\s+/g, "-");
-  const base = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}`;
-  const candidates: { label: string; url: string }[] = [
-    { label: "unfiltered (control)", url: `${base}/rentals` },
-    { label: "filter/property-type=house", url: `${base}/rentals/filter/property-type=house` },
-    { label: "filter/property-type=house,townhouse", url: `${base}/rentals/filter/property-type=house,townhouse` },
-    { label: "filter/propertyType=house", url: `${base}/rentals/filter/propertyType=house` },
-    { label: "filter/property-type=single-family", url: `${base}/rentals/filter/property-type=single-family` },
-    { label: "houses-for-rent", url: `${base}/houses-for-rent` },
-    { label: "apartments-for-rent", url: `${base}/apartments-for-rent` },
-  ];
-
-  const results = await Promise.all(
-    candidates.map(async ({ label, url }) => {
-      try {
-        const page = await fetchPage(url);
-        const addresses = page.rows
-          .map((row) => pickString(row, ADDRESS_KEYS))
-          .filter((a): a is string => Boolean(a));
-        return {
-          label,
-          url,
-          rows: page.rows.length,
-          parsed: page.parsed,
-          // The tell: a community name before a pipe is a managed
-          // apartment block, and a house never has one.
-          piped: addresses.filter((a) => a.includes("|")).length,
-          sample: addresses.slice(0, 5),
-        };
-      } catch (error) {
-        return {
-          label,
-          url,
-          rows: 0,
-          error: error instanceof RedfinError ? error.reason : "failed",
-        };
-      }
-    })
-  );
-
-  const control = results[0];
-  return {
-    market: market.slug,
-    results,
-    verdict:
-      "Compare each candidate's `sample` and `piped` against the control. " +
-      "A form that filters shows FEWER piped addresses and different " +
-      "streets; a form the vendor ignores looks identical to the control " +
-      `(rows ${control.rows}, piped ${"piped" in control ? control.piped : "?"}).`,
-  };
-}
-
-export interface RedfinPhotoIndex {
-  /** Every photo-bearing row, raw and deduped, ready to become shown
-   *  listings via mapRedfinRows. Raw on purpose: mapping means
-   *  geocoding, seconds per cold address, and the CALLER knows which
-   *  rows will survive its dedup — placing the rest is how the biggest
-   *  market's photo pass outran its time budget and answered with
-   *  nothing at all. */
-  rows: Row[];
-  /** Address → photo, exact. Consulted first. */
-  index: Map<string, string>;
-  /** Building → photo, for a flat in a block photographed once. Kept
-   *  apart from the exact map rather than merged into it: one shared
-   *  map with first-writer-wins meant a building entry could shadow the
-   *  unit's own photo, which is the opposite of the stated rule. */
-  buildings: Map<string, string>;
-  /** Where the rows went, so a thin index can be explained rather than
-   *  guessed at. The first cut of this returned five keys for a city
-   *  and there was no way to see which step lost them. */
-  stats: {
-    pages: number;
-    rows: number;
-    withAddress: number;
-    withPhoto: number;
-    /** Rows the house pass contributed. Zero here with a healthy
-     *  default pass means the property-type filter is not biting and
-     *  the URL form needs changing — not that the city has no houses. */
-    housePassRows: number;
-    /** Distinct keys the house pass ADDED. A filter Redfin ignores does
-     *  not come back empty — it comes back with the default result set,
-     *  which reads as success from a row count alone. This is the number
-     *  that tells the two apart. */
-    housePassNewKeys: number;
-    /** Why a house pass died, when one did. The throttle was silently
-     *  eaten by a catch and reported as "no houses" until this. */
-    housePassError: string | null;
-    /** Pages lost to throttling or network across all passes. */
-    failedPages: number;
-    /**
-     * What this market actually cost, from the vendor's own headers.
-     *
-     * Reported because estimating it went wrong by a factor of ten: the
-     * structured endpoints bill 1 credit a request, not the 10 a
-     * premium proxy request costs, and a budget built on the wrong one
-     * misjudges the whole plan in whichever direction it errs. Null
-     * when the vendor sent no cost header.
-     */
-    credits: number | null;
-    /** True when the page cap stopped us rather than the vendor running
-     *  out of results. */
-    morePages: boolean;
-    /** The URL the house pass asked for, so a filter that Redfin
-     *  ignores can be read rather than inferred from a zero. */
-    housePassUrl: string | null;
-    /** Raw, as the vendor wrote them — the pipe-separated community
-     *  names only became visible once these were printed. */
-    sampleAddresses: string[];
-    /** The house pass's OWN rows. Kept separate because the last probe
-     *  read the merged list and could not see that the house pass was
-     *  serving apartment communities. */
-    houseSampleAddresses: string[];
-  };
-}
-
-/**
- * Two passes, because the default search is nearly all apartments.
- *
- * A city's rentals search comes back dominated by managed communities —
- * Cedar Creek Villas, Riverbank Apartments — while the feed we are
- * matching against is mostly single-family houses. Four pages of the
- * default view produced 164 rows and matched twelve, and every row it
- * failed to match was a house. Paging deeper would have bought more
- * apartments.
- *
- * So the second pass asks for houses specifically. It is additive and
- * failure is harmless: a filter that doesn't bite returns nothing, the
- * default pass still stands, and housePassRows says which happened.
- */
-/**
- * Extra passes, one property type each.
- *
- * Houses by default because that is what the feed is made of and what
- * the default search never surfaces. REDFIN_PHOTO_TYPES adds more —
- * "house,townhouse" runs TWO passes, not one two-valued filter.
- */
-function photoTypes(): string[] {
-  const raw = process.env.REDFIN_PHOTO_TYPES;
-  if (!raw) return ["house"];
-  return raw
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean);
-}
-
-export async function fetchRedfinPhotoIndex(
-  market: Market
-): Promise<RedfinPhotoIndex> {
-  const index = new Map<string, string>();
-  const buildings = new Map<string, string>();
-  const stats = {
-    pages: 0,
-    rows: 0,
-    withAddress: 0,
-    withPhoto: 0,
-    housePassRows: 0,
-    housePassNewKeys: 0,
-    housePassError: null as string | null,
-    failedPages: 0,
-    credits: null as number | null,
-    morePages: false,
-    housePassUrl: null as string | null,
-    sampleAddresses: [] as string[],
-    houseSampleAddresses: [] as string[],
-  };
-  // Seeded ids only. Photos are decoration, and resolving an unknown id
-  // costs two proxy round trips before it can even fail — latency spent
-  // on the one part of the row a student can do without.
-  if (!redfinCoversMarket(market))
-    return { rows: [], index, buildings, stats };
-
-  const pages = photoPages();
-  const [everything, ...typed] = await Promise.all([
-    fetchRedfinRentals(market, { furnished: false, map: false, pages }),
-    // A narrower pass must not sink the search it supplements — but its
-    // failure gets NAMED, not eaten. A bare catch here reported a
-    // vendor throttle as "this city has no houses".
-    ...photoTypes().map((propertyType) =>
-      fetchRedfinRentals(market, {
-        furnished: false,
-        map: false,
-        pages,
-        propertyType,
-      }).catch((error: unknown) => {
-        const reason =
-          error instanceof RedfinError ? error.reason : "failed";
-        stats.housePassError = stats.housePassError
-          ? `${stats.housePassError}, ${propertyType}: ${reason}`
-          : `${propertyType}: ${reason}`;
-        return null;
-      })
-    ),
-  ]);
-  const houses = typed.filter((r) => r !== null);
-
-  const houseRows = houses.flatMap((h) => h.raw);
-  stats.pages = everything.pages + houses.reduce((n, h) => n + h.pages, 0);
-  stats.housePassRows = houseRows.length;
-  stats.housePassUrl = houses.map((h) => h.searchUrl).join(" | ") || null;
-  stats.morePages =
-    everything.morePages || houses.some((h) => h.morePages);
-  stats.failedPages =
-    everything.failedPages + houses.reduce((n, h) => n + h.failedPages, 0);
-  const billed = [everything, ...houses]
-    .map((r) => r.credits)
-    .filter((c): c is number => c !== null);
-  stats.credits =
-    billed.length > 0 ? billed.reduce((a, b) => a + b, 0) : null;
-
-  const absorb = (rows: readonly Row[], samples: string[]) => {
-    for (const row of rows) {
-      stats.rows += 1;
-      const address = pickString(row, ADDRESS_KEYS);
-      // Some rows carry the thumbnail somewhere the key list doesn't
-      // name; harvesting finds an image URL wherever it sits.
-      const photo = pickString(row, PHOTO_KEYS) ?? harvestPhotos(row)[0];
-      if (address) {
-        stats.withAddress += 1;
-        if (samples.length < 8) samples.push(address);
-      }
-      if (photo) stats.withPhoto += 1;
-      if (!address || !photo) continue;
-      const key = addressKey(address);
-      if (key && !index.has(key)) index.set(key, photo);
-      const building = buildingKey(address);
-      if (building && !buildings.has(building)) buildings.set(building, photo);
-    }
-  };
-
-  // The default pass first, so the house pass's contribution can be
-  // counted rather than assumed.
-  absorb(everything.raw, stats.sampleAddresses);
-  const beforeHouses = index.size;
-  absorb(houseRows, stats.houseSampleAddresses);
-  stats.housePassNewKeys = index.size - beforeHouses;
-
-  // The passes overlap — a house on page one of both is one row. Keyed
-  // by listing URL where there is one, address otherwise.
-  const byKey = new Map<string, Row>();
-  for (const row of [...everything.raw, ...houseRows]) {
-    const address = pickString(row, ADDRESS_KEYS);
-    const photo = pickString(row, PHOTO_KEYS) ?? harvestPhotos(row)[0];
-    if (!address || !photo) continue;
-    const key = pickString(row, URL_KEYS) ?? address;
-    if (!byKey.has(key)) byKey.set(key, row);
-  }
-
-  return { rows: [...byKey.values()], index, buildings, stats };
-}
-
-/* ------------------------------------------------------------------ */
-/* One listing's full gallery                                          */
-/* ------------------------------------------------------------------ */
-
-/** Pinned against a live listing: 10 credits, and far more than photos —
- *  a description, structured amenities, and deposit ranges. */
-export const REDFIN_LISTING_ENDPOINT =
-  "https://api.scraperapi.com/structured/redfin/forrent/v1";
-
-/** A month: a listing's photos don't change once it's posted. */
-export const LISTING_REVALIDATE_SECONDS = 2_592_000;
-
-/** Anything that looks like an image URL, wherever it sits.
- *  Schema-independent on purpose: photo arrays get renamed, but a JPEG
- *  link is recognisable whatever key holds it. */
-const IMAGE_URL = /^https?:\/\/[^\s"']+\.(?:jpe?g|png|webp|avif)(?:\?[^\s"']*)?$/i;
-const REDFIN_CDN = /(?:ssl\.cdn-redfin\.com|redfin\.com)\/[^\s"']+\.(?:jpe?g|png|webp)/i;
-
-export function harvestPhotos(
-  value: unknown,
-  depth = 0,
-  out: string[] = []
-): string[] {
-  if (depth > 8 || out.length >= 40) return out;
-  if (typeof value === "string") {
-    if (IMAGE_URL.test(value) || REDFIN_CDN.test(value)) {
-      if (!out.includes(value)) out.push(value);
-    }
-    return out;
-  }
-  if (Array.isArray(value)) {
-    for (const v of value) harvestPhotos(v, depth + 1, out);
-    return out;
-  }
-  if (value && typeof value === "object") {
-    for (const v of Object.values(value as Row)) harvestPhotos(v, depth + 1, out);
-  }
-  return out;
-}
-
-/** Where a listing page keeps its amenity labels. */
-const AMENITY_PATHS = [
-  ["amenities", "unit_amenities"],
-  ["amenities", "community_amenities"],
-  ["amenities", "standardized_amenities"],
-  ["amenities", "other_amenities"],
-] as const;
-
-/** Short factual labels — "In-unit washer & dryer", "Air conditioning" —
- *  not prose. Deduped, order preserved. */
-export function harvestAmenities(body: unknown): string[] {
-  const out: string[] = [];
-  const add = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const v of value) {
-      const label = typeof v === "string" ? v.trim() : "";
-      if (label && !out.includes(label)) out.push(label);
-    }
-  };
-  const root = (body ?? {}) as Row;
-  for (const [group, key] of AMENITY_PATHS) {
-    const bucket = root[group];
-    if (bucket && typeof bucket === "object") add((bucket as Row)[key]);
-  }
-  // Floor plans carry their own unit-specific list.
-  const plans = root.floor_plans;
-  if (Array.isArray(plans)) {
-    for (const plan of plans) {
-      const unit = (plan as Row)?.unit_type as Row | undefined;
-      add(unit?.specific_amenities);
-    }
-  }
-  return out;
-}
-
-export interface RedfinListingDetail {
-  photos: string[];
-  /** Redfin's own amenity labels for this unit and its building. */
-  amenities: string[];
-  /** Our canonical tags, mined from those labels and the listing's
-   *  description through the one shared miner — so "Furnished" means
-   *  the same thing here as everywhere else, negations included. */
-  features: string[];
-  /** Security deposit, when the page publishes one — a real calculator
-   *  input the analyzer currently defaults to zero. */
-  depositMin?: number;
-  depositMax?: number;
-  credits: number | null;
-  /** Raw payload, for the shape probe only. */
-  body: unknown;
-}
-
-/**
- * One listing's page: its photos, its amenities, its deposit.
- *
- * Called only when a student opens a listing, never while browsing a
- * list — a page of twenty-four cards must not become twenty-four billed
- * requests. Cached a month per listing and shared by everyone.
- *
- * The payload also carries the listing's own description. It is mined
- * for tags and goes no further: the product shows facts about a
- * property, not somebody else's paragraph about it.
- */
-export async function fetchRedfinListing(
-  listingUrl: string
-): Promise<RedfinListingDetail> {
-  const key = process.env.SCRAPERAPI_KEY;
-  if (!key) throw new RedfinError("no-key");
-  if (!/^https:\/\/(?:www\.)?redfin\.com\//i.test(listingUrl)) {
-    // Only ever fetch Redfin's own pages: this URL arrives from the
-    // client, and an open fetcher would proxy anything asked of it.
-    throw new RedfinError("http", 400, "not a redfin.com listing URL");
-  }
-
-  const params = new URLSearchParams({ api_key: key, url: listingUrl });
-  let res: Response;
-  try {
-    res = await withScraperSlot(() =>
-      fetch(`${REDFIN_LISTING_ENDPOINT}?${params}`, {
-        next: { revalidate: LISTING_REVALIDATE_SECONDS },
-      })
-    );
-  } catch {
-    throw new RedfinError("network");
-  }
-
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => ""))
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 200);
-    if (res.status === 401) throw new RedfinError("auth", 401, detail);
-    if (res.status === 403) {
-      throw new RedfinError(
-        looksSpent(detail) ? "no-credits" : "forbidden",
-        403,
-        detail
-      );
-    }
-    if (res.status === 429) throw new RedfinError("quota", 429, detail);
-    throw new RedfinError("http", res.status, detail);
-  }
-
-  const body: unknown = await res.json().catch(() => null);
-  const root = (body ?? {}) as Row;
-  const amenities = harvestAmenities(body);
-  const fees = root.fees_and_policies as Row | undefined;
-  const num = (v: unknown) => (typeof v === "number" && v >= 0 ? v : undefined);
-
-  return {
-    photos: harvestPhotos(body),
-    amenities,
-    features:
-      mineFeatures([...amenities, pickString(root, ["description"])]) ?? [],
-    depositMin: num(fees?.deposit_fee_min),
-    depositMax: num(fees?.deposit_fee_max),
-    credits: creditsFrom(res),
-    body,
-  };
-}
 
 /* ------------------------------------------------------------------ */
 /* Fetch                                                               */
@@ -1010,10 +550,6 @@ async function fetchPage(pageUrl: string): Promise<{
  * about 41 rows, so stopping there shows a third of a market and reads
  * as a narrower search than the one that ran.
  */
-/** The address a raw search row carries, wherever the vendor put it. */
-export function redfinAddressOf(row: Row): string | null {
-  return pickString(row, ADDRESS_KEYS) ?? null;
-}
 
 /**
  * Raw search rows to shown listings: place, map, sort.

@@ -1,6 +1,7 @@
 /**
- * The durable copy of a market's day: its feed listings and its photo
- * merge, one row per market in Supabase.
+ * The durable copy of a market's day: its feed listings and its measured
+ * figures, one row per market in Supabase, plus a keyed table for what
+ * belongs to a property rather than a market.
  *
  * Before this, every cache lived inside the framework's fetch cache —
  * real, but bound to a deployment and invisible to the next one, so a
@@ -70,29 +71,6 @@ export const STATS_TTL_MS = (() => {
 const READ_TIMEOUT_MS = 4_000;
 const WRITE_TIMEOUT_MS = 8_000;
 
-export interface StoredPhotoMerge {
-  photos: Record<string, string>;
-  extras: RentalListing[];
-  matched: number;
-  rows: number;
-}
-
-/**
- * One listing's mined detail, durably.
- *
- * Photos and flags only — never the vendor's paragraph. The prose is
- * mined for facts inside the fetch and dropped there, and a store that
- * quietly kept a copy would undo that rule in the one place nobody
- * looks.
- */
-export interface StoredListingDetail {
-  photos: string[];
-  amenities: string[];
-  features: string[];
-  depositMin?: number;
-  depositMax?: number;
-}
-
 /**
  * One property's comp pull, kept.
  *
@@ -148,8 +126,6 @@ export interface StoredMarketStats {
 export interface StoredMarket {
   listings: RentalListing[] | null;
   listingsAt: string | null;
-  photoMerge: StoredPhotoMerge | null;
-  photoMergeAt: string | null;
   stats: StoredMarketStats | null;
   statsAt: string | null;
 }
@@ -189,7 +165,7 @@ function headers(key: string): Record<string, string> {
 }
 
 /** The columns every deployment has had since the table was created. */
-const CORE_COLUMNS = "listings,listings_at,photo_merge,photo_merge_at";
+const CORE_COLUMNS = "listings,listings_at";
 /** Added later; a database that predates the migration lacks them. */
 const STATS_COLUMNS = "stats,stats_at";
 
@@ -229,8 +205,6 @@ export async function readMarketStore(
     const rows = (await res.json()) as {
       listings?: RentalListing[] | null;
       listings_at?: string | null;
-      photo_merge?: StoredPhotoMerge | null;
-      photo_merge_at?: string | null;
       stats?: StoredMarketStats | null;
       stats_at?: string | null;
     }[];
@@ -239,8 +213,6 @@ export async function readMarketStore(
     return {
       listings: Array.isArray(row.listings) ? row.listings : null,
       listingsAt: row.listings_at ?? null,
-      photoMerge: row.photo_merge ?? null,
-      photoMergeAt: row.photo_merge_at ?? null,
       stats: row.stats ?? null,
       statsAt: row.stats_at ?? null,
     };
@@ -258,7 +230,7 @@ export interface WriteResult {
 /**
  * Upsert one slice of a market's row. PostgREST only touches the
  * columns present in the body, which is what lets the listings writer
- * and the photo writer share a row without clobbering each other.
+ * and the stats writer share a row without clobbering each other.
  *
  * REPORTS FAILURE. The first version of this fired the request and
  * returned void without looking at the response, on the reasoning that
@@ -308,16 +280,6 @@ export async function writeMarketListings(
   });
 }
 
-export async function writeMarketPhotoMerge(
-  slug: string,
-  merge: StoredPhotoMerge
-): Promise<WriteResult> {
-  return upsert({
-    market_slug: slug,
-    photo_merge: merge,
-    photo_merge_at: new Date().toISOString(),
-  });
-}
 
 /**
  * How much is actually in the store.
@@ -568,7 +530,7 @@ export async function writeEstimate(
   key: string,
   estimate: StoredEstimate
 ): Promise<WriteResult> {
-  return writeListingDetail(key, estimate as unknown as StoredListingDetail);
+  return writeKeyed(key, estimate);
 }
 
 /* ------------------------------------------------------------------ */
@@ -643,42 +605,22 @@ export async function writeCityId(
   slug: string,
   id: number | null
 ): Promise<WriteResult> {
-  return writeListingDetail(
-    cityIdKey(slug),
-    { id } as unknown as StoredListingDetail
-  );
+  return writeKeyed(cityIdKey(slug), { id });
 }
 
-export async function readListingDetail(
-  listingUrl: string
-): Promise<{ detail: StoredListingDetail; at: string | null } | null> {
-  const cfg = config();
-  if (!cfg) return null;
-  try {
-    const res = await fetch(
-      `${cfg.url}/rest/v1/listing_cache?listing_url=eq.${encodeURIComponent(listingUrl)}&select=detail,detail_at`,
-      {
-        headers: headers(cfg.key),
-        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
-        cache: "no-store",
-      }
-    );
-    if (!res.ok) return null;
-    const rows = (await res.json()) as {
-      detail?: StoredListingDetail | null;
-      detail_at?: string | null;
-    }[];
-    const row = rows?.[0];
-    if (!row?.detail || !Array.isArray(row.detail.photos)) return null;
-    return { detail: row.detail, at: row.detail_at ?? null };
-  } catch {
-    return null;
-  }
-}
 
-export async function writeListingDetail(
-  listingUrl: string,
-  detail: StoredListingDetail
+/**
+ * Write any keyed blob to the shared cache table.
+ *
+ * Property estimates and resolved city ids both live here. Listing
+ * detail used to as well — photos and amenities scraped from a listing's
+ * own page — and this was named for that. It is not scraped any more,
+ * and a function named for a thing it no longer stores is a small lie
+ * every reader has to see through.
+ */
+export async function writeKeyed(
+  key: string,
+  value: unknown
 ): Promise<WriteResult> {
   const cfg = config();
   if (!cfg) return { ok: false, detail: "no store configured" };
@@ -691,8 +633,8 @@ export async function writeListingDetail(
       },
       body: JSON.stringify([
         {
-          listing_url: listingUrl,
-          detail,
+          listing_url: key,
+          detail: value,
           detail_at: new Date().toISOString(),
         },
       ]),
