@@ -123,6 +123,27 @@ export interface StoredMarketStats {
   monthly?: LiveMarketMonth[];
 }
 
+/**
+ * Fields a stored listing may still carry from before the rule that a
+ * listing has no picture. The type cannot hold them, but a JSON row
+ * written by an older mapper can, and a reader that hands the row
+ * back verbatim would put a photo URL on the wire that nothing in the
+ * product is supposed to have. Stripped on every read; schema.sql
+ * scrubs the rows themselves so this soon has nothing to do.
+ */
+const PHOTO_FIELDS = ["photoUrl", "photos"] as const;
+
+export function scrubStoredListings(rows: unknown): RentalListing[] | null {
+  if (!Array.isArray(rows)) return null;
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return row as RentalListing;
+    if (!PHOTO_FIELDS.some((f) => f in row)) return row as RentalListing;
+    const clean = { ...(row as Record<string, unknown>) };
+    for (const f of PHOTO_FIELDS) delete clean[f];
+    return clean as unknown as RentalListing;
+  });
+}
+
 export interface StoredMarket {
   listings: RentalListing[] | null;
   listingsAt: string | null;
@@ -203,7 +224,7 @@ export async function readMarketStore(
     if (!res.ok) res = await read(CORE_COLUMNS);
     if (!res.ok) return null;
     const rows = (await res.json()) as {
-      listings?: RentalListing[] | null;
+      listings?: unknown;
       listings_at?: string | null;
       stats?: StoredMarketStats | null;
       stats_at?: string | null;
@@ -211,7 +232,7 @@ export async function readMarketStore(
     const row = rows?.[0];
     if (!row) return null;
     return {
-      listings: Array.isArray(row.listings) ? row.listings : null,
+      listings: scrubStoredListings(row.listings),
       listingsAt: row.listings_at ?? null,
       stats: row.stats ?? null,
       statsAt: row.stats_at ?? null,

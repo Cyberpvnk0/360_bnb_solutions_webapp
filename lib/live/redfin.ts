@@ -60,7 +60,7 @@ export const DEFAULT_MAX_PAGES = 4;
  *  the binding constraint — pages go in parallel waves now. */
 const PAGE_CEILING = 25;
 
-function maxPages(override?: number): number {
+export function maxPages(override?: number): number {
   const raw = override ?? Number(process.env.REDFIN_MAX_PAGES);
   return Number.isFinite(raw) && raw > 0
     ? Math.min(PAGE_CEILING, Math.floor(raw))

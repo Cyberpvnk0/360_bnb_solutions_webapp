@@ -42,6 +42,22 @@ create table if not exists public.market_cache (
 alter table public.market_cache drop column if exists photo_merge;
 alter table public.market_cache drop column if exists photo_merge_at;
 
+-- The cached listings themselves were written by mappers that, before
+-- the rule, put a photoUrl on each row. Strip the field from every
+-- element rather than throwing the rows away: the listings are paid
+-- for, the pictures are the only part that has to go. Touches only
+-- rows that still carry one, so a second run updates nothing.
+update public.market_cache
+   set listings = (
+     select jsonb_agg(elem - 'photoUrl' - 'photos')
+       from jsonb_array_elements(listings) as elem
+   )
+ where jsonb_typeof(listings) = 'array'
+   and exists (
+     select 1 from jsonb_array_elements(listings) as elem
+      where elem ? 'photoUrl' or elem ? 'photos'
+   );
+
 -- Added after the first release. A deployment created before this
 -- migration has the table without them, and a select naming a missing
 -- column fails the WHOLE query — which is why the reader falls back to

@@ -20,15 +20,18 @@ import {
   storeCounts,
   storeStatus,
 } from "@/lib/db/market-store";
-import { DEFAULT_MAX_PAGES } from "@/lib/live/redfin";
+import { maxPages } from "@/lib/live/redfin";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const usage = await scraperUsage();
   // One furnished search is one paginated pass. The structured endpoint
-  // bills one credit per page, and the page cap is the only knob.
-  const pages = Number(process.env.REDFIN_MAX_PAGES) || DEFAULT_MAX_PAGES;
+  // bills one credit per page, and the page cap is the only knob. Read
+  // through the same function the search uses, ceiling included — an
+  // env value of 400 must not be quoted here as 400 pages when the
+  // search would run 25.
+  const pages = maxPages();
 
   const airroi = airRoiBudget();
   // One database, so this answers across instances where the in-memory
