@@ -14,7 +14,7 @@
  * Results cache for 30 days — a building doesn't move.
  */
 
-import { googleMapsKey } from "@/lib/live/photos";
+import { googleMapsKey } from "@/lib/live/street-view";
 
 const CENSUS =
   "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress";

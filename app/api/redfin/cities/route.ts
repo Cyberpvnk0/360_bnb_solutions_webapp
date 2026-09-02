@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   const raw = Number(searchParams.get("batch"));
   const batch = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
 
-  //试 any Redfin page and count the city links on it — for finding a
+  // Try any Redfin page and count the city links on it — for finding a
   // fuller index than the state pages provide.
   const probeUrl = searchParams.get("probeUrl");
   if (probeUrl) {

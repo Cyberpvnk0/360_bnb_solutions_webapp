@@ -174,8 +174,8 @@ const STATS_COLUMNS = "stats,stats_at";
  *
  * Two attempts, and the reason is worth stating: asking for a column
  * the table does not have makes PostgREST reject the WHOLE select, so
- * adding `stats` to this list would have taken the listings and photo
- * caches down with it on any deployment whose migration had not run
+ * adding `stats` to this list would have taken the listings cache
+ * down with it on any deployment whose migration had not run
  * yet. A new column must never be able to break the old ones. So the
  * wide read is tried once and a narrow read answers if the schema is
  * behind — degraded, not broken, and self-healing the moment the

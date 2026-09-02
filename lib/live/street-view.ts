@@ -1,10 +1,10 @@
 /**
- * Property imagery, in order of honesty:
- *
- *   1. A real listing photo, when the feed carries one.
- *   2. Google Street View of the address — what the building actually
- *      looks like from the curb.
- *   3. The seeded sketch, clearly tagged, when neither exists.
+ * Google Street View of a listing's address — what the building looks
+ * like from the kerb. Never the listing's own photos: this product
+ * fetches, stores and shows none, and the type that carries a listing
+ * cannot hold one. The chain a card walks is Street View, then an
+ * aerial (lib/live/aerial), then the seeded sketch, each tagged for
+ * what it is.
  *
  * Street View runs through our own route so the Google key stays on the
  * server and each address is fetched at most once a month. Google bills
@@ -47,7 +47,7 @@ export function googleKeyNamesSeen(): string[] {
 }
 
 /** Street View imagery rarely changes — cache hard. */
-export const PHOTO_REVALIDATE_SECONDS = 2_592_000; // 30 days
+export const STREET_VIEW_REVALIDATE_SECONDS = 2_592_000; // 30 days
 
 export function hasGoogleKey(): boolean {
   return googleMapsKey() !== null;
@@ -101,7 +101,7 @@ export async function streetViewProbe(
   });
   try {
     const res = await fetch(`${STREET_VIEW}/metadata?${params}`, {
-      next: { revalidate: PHOTO_REVALIDATE_SECONDS },
+      next: { revalidate: STREET_VIEW_REVALIDATE_SECONDS },
     });
     if (!res.ok) {
       return {
@@ -153,7 +153,7 @@ export async function fetchStreetView(
   });
   try {
     const res = await fetch(`${STREET_VIEW}?${params}`, {
-      next: { revalidate: PHOTO_REVALIDATE_SECONDS },
+      next: { revalidate: STREET_VIEW_REVALIDATE_SECONDS },
     });
     if (!res.ok) return null;
     return await res.arrayBuffer();

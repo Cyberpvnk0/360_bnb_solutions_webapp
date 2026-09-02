@@ -71,8 +71,8 @@ export async function GET() {
       pagesPerSearch: pages,
       creditsPerFurnishedSearch: pages,
       note:
-        "The scraping vendor is used for exactly one thing: a furnished-filtered rental search, billed one credit per page. " +
-        "No listing pages are opened and no photos are fetched — a card's picture is Street View or an aerial, and the listing's own photos are a link away on its source page.",
+        "The scraping vendor's one job in the product is a furnished-filtered rental search, billed one credit per page. " +
+        "That search opens no listing pages and fetches no photos — a card's picture is Street View or an aerial, and the listing's own photos are a link away on its source page.",
     },
     durability: {
       storeConfigured: storeConfigured(),

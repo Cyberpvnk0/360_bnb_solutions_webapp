@@ -35,9 +35,12 @@ create table if not exists public.market_cache (
 -- photo_merge / photo_merge_at once lived here: thumbnails borrowed from
 -- a listing site and matched onto rows by address. Nothing writes or
 -- reads them now — a listing photo is copyrighted separately from the
--- facts around it and this product displays none. Left in place on
--- databases that have them; dropping a column is a choice to make by
--- hand, not one a re-runnable setup script should make for you.
+-- facts around it and this product holds none, which has to include
+-- the ones a database collected before the rule. Dropping the columns
+-- is idempotent, so re-running this file on a fresh database is a
+-- no-op and re-running it on an old one is the purge.
+alter table public.market_cache drop column if exists photo_merge;
+alter table public.market_cache drop column if exists photo_merge_at;
 
 -- Added after the first release. A deployment created before this
 -- migration has the table without them, and a select naming a missing
@@ -61,6 +64,14 @@ create table if not exists public.listing_cache (
   detail       jsonb,
   detail_at    timestamptz
 );
+
+-- The column is still called listing_url because the table's first job
+-- was caching a listing page — its photos and amenities — under the
+-- page's URL. That reader is gone and so must those rows be. Every key
+-- the product writes today is namespaced ("estimate:…", "redfin-city:…"),
+-- so anything that still starts with a scheme is a leftover from the
+-- old job and nothing else. Idempotent: a second run deletes nothing.
+delete from public.listing_cache where listing_url like 'http%';
 
 alter table public.listing_cache enable row level security;
 

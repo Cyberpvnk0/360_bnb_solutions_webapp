@@ -31,7 +31,7 @@ import {
   googleKeyNamesSeen,
   hasGoogleKey,
   streetViewProbe,
-} from "@/lib/live/photos";
+} from "@/lib/live/street-view";
 
 /** A month, matching both upstreams' own revalidate windows. */
 const CACHE = "public, max-age=2592000, immutable";

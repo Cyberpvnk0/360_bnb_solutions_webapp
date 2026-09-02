@@ -331,7 +331,7 @@ describe("cities the listing site files under another name", () => {
   });
 
   it("covers every market the course teaches that we carry", () => {
-    // Four of these had no photo source until their real ids were found.
+    // Four of these had no furnished search until their real ids were found.
     for (const slug of ["augusta-ga", "ellijay", "spring-hill", "berkeley-springs", "eagle-mountain-lake"]) {
       expect(REDFIN_CITY_ID[slug], slug).toBeTypeOf("number");
     }

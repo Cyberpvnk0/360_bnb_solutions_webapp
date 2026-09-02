@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { googleMapsKey, hasGoogleKey } from "./photos";
+import { googleMapsKey, hasGoogleKey } from "./street-view";
 
 const NAMES = [
   "GOOGLE_MAPS_API_KEY",

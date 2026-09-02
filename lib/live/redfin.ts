@@ -238,7 +238,6 @@ const LAT_KEYS = ["latitude", "lat", "latLong.latitude"] as const;
 const LON_KEYS = ["longitude", "lng", "lon", "latLong.longitude"] as const;
 const URL_KEYS = ["url", "listingUrl", "detailUrl"] as const;
 const TYPE_KEYS = ["propertyType", "homeType"] as const;
-/** Redfin ships a thumbnail on most rows — a real photo of the unit. */
 /** Short display chips beside a listing — a second amenity signal. */
 const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
 
@@ -405,8 +404,8 @@ export function mapRedfinListing(
       // Redfin's search rows carry no listing date. Left absent rather
       // than zeroed, which would badge all eighty "New, listed today".
       daysOnMarket: pickNumber(raw, ["daysOnMarket", "dom"]),
-      // The listing's own page: what the panel links to, and where its
-      // full gallery is fetched from on demand.
+      // The listing's own page: what "View photos" links to. Nothing
+      // here opens it — the photos stay on the site that published them.
       sourceUrl: detail
         ? detail.startsWith("http")
           ? detail
@@ -420,11 +419,6 @@ export function mapRedfinListing(
     },
   };
 }
-
-/* ------------------------------------------------------------------ */
-/* Photo index: Redfin's pictures on another feed's rows               */
-/* ------------------------------------------------------------------ */
-
 
 /* ------------------------------------------------------------------ */
 /* Fetch                                                               */
@@ -558,7 +552,7 @@ async function fetchPage(pageUrl: string): Promise<{
  * Geocoding is the expensive step — Redfin's rows carry no coordinates,
  * so every address goes to the Census geocoder, seconds each on a cold
  * cache — and placing three hundred rows to then discard half as
- * duplicates is how the biggest market's photo pass outran its whole
+ * duplicates is how the biggest market's furnished search outran its whole
  * time budget and answered with nothing.
  *
  * Cached 30 days per address, so a market pays this once and every

@@ -149,16 +149,29 @@ returns the vendor's own key names (types only, no listing data) — use
 it to lock `pick*()` in `lib/live/airroi.ts` to reality, then delete the
 unused aliases and their tests.
 
-### Listing photos (optional)
+### Property imagery and "View photos"
 
-Listing cards and the property panel show, in order: the feed's own
-photo if it carries one, then Google Street View of the address, then
-the seeded sketch tagged for what it is. Street View needs
-`GOOGLE_MAPS_API_KEY`; it stays server-side behind `/api/street-view`,
-which probes Google's free metadata endpoint before making any billed
-image request and caches each address for 30 days. Preview inventory
-never shows curb imagery — those addresses are invented, so dressing
-them in a photo of a real building would be a lie.
+Listing cards and the property panel show the address, never the
+listing's own photos. In order: Google Street View of the kerb when
+`GOOGLE_MAPS_API_KEY` is set and Google has imagery there; an aerial
+from Mapbox (`MAPBOX_TOKEN`) when it does not; the seeded sketch,
+tagged for what it is, when neither is available. The card's corner
+tag says which one is on screen. Both images proxy through
+`/api/property-image` so no key reaches the browser; Street View is
+probed against Google's free metadata endpoint before any billed image
+request, and each address is cached for 30 days. Preview inventory
+shows no imagery at all — those addresses are invented, and dressing
+them in a picture of a real building would be a lie.
+
+The listing's photos stay where they were published. Every real row
+carries a "View photos" link — to the listing's own page when the
+furnished search hands us its URL, otherwise to a Zillow address search
+— and nothing in this codebase fetches, stores, matches or renders
+those images. A listing photo is copyrighted separately from the facts
+around it (VHT v. Zillow put a price on each one), so the guarantee is
+structural: `RentalListing` has no field that could hold a picture.
+The only thing the furnished search takes from its source is whether
+the unit is furnished, plus the facts the same search row carries.
 
 ## Map of the codebase
 
