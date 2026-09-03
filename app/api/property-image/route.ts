@@ -100,7 +100,9 @@ export async function GET(request: Request) {
           ? `Google refused BOTH APIs on this key: ${street.detail ?? "no reason given"} — so this is the project, not one API. Check that the key belongs to the project you linked billing to (a key in another project is refused exactly like this), and that it carries no HTTP-referrer restriction, since these calls come from the server. A billing link can take a few minutes to reach the APIs.`
           : street.denied
             ? `Geocoding works on this key but Street View does not: ${street.detail ?? "no reason given"}. Billing is fine — the Street View Static API is not enabled on this key's project, or the key's API restrictions leave it out.`
-            : `Street View unavailable: status ${street.status ?? "none"}${street.detail ? ` (${street.detail})` : ""}.`;
+            : street.rejected
+              ? `A panorama exists at this spot but was turned down: ${street.rejected}. That is the guard against putting a shopfront or the neighbour's house under somebody's address — cards fall to an aerial instead.`
+              : `Street View unavailable: status ${street.status ?? "none"}${street.detail ? ` (${street.detail})` : ""}.`;
 
       return Response.json(
         {
@@ -141,7 +143,7 @@ export async function GET(request: Request) {
   if (only !== "aerial" && hasGoogleKey()) {
     const probe = await streetViewProbe(lat, lon);
     if (probe.ok) {
-      const image = await fetchStreetView(lat, lon);
+      const image = await fetchStreetView(lat, lon, probe.panoId);
       if (image) {
         return new Response(image, {
           headers: {

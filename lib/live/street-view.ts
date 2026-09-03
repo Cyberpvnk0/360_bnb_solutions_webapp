@@ -84,6 +84,57 @@ export interface StreetViewProbe {
    *  cause — API not enabled, referer restriction, billing — and it is
    *  the single most useful sentence in this whole integration. */
   detail: string | null;
+  /** The panorama the metadata endpoint picked. The image is fetched by
+   *  this id, not by coordinate, so the picture shown is the one that
+   *  passed the checks below rather than whatever a second search
+   *  happens to find. */
+  panoId?: string | null;
+  /** Who shot it. "© 2023 Google" is the car; anything else is a
+   *  contribution. */
+  copyright?: string | null;
+  /** Metres between the address and the panorama. */
+  metres?: number | null;
+  /** Why a real panorama was turned down, when one was. */
+  rejected?: string | null;
+}
+
+/**
+ * How far from the address a panorama may stand and still be a picture
+ * OF it. Google searches 50m by default; a shot from further than half
+ * a block is the neighbour's house with this address underneath it.
+ */
+const MAX_PANO_METRES = 45;
+
+/**
+ * Whose camera took it.
+ *
+ * Google's own car imagery is stamped "© <year> Google". Everything
+ * else — a shop's interior tour, somebody's photo sphere — carries the
+ * contributor's name, and that is exactly the imagery that put a deli
+ * counter and a clothing rail on two Minneapolis rentals. `source=
+ * outdoor` is supposed to exclude indoor collections and demonstrably
+ * does not catch all of them, so this is the check that actually
+ * holds: we want the street, and the street is what the car drove.
+ */
+function shotByGoogle(copyright: string | null): boolean {
+  return copyright !== null && /\bgoogle\b/i.test(copyright);
+}
+
+/** Metres between two points. Haversine; the earth is round enough. */
+function metresBetween(
+  aLat: number,
+  aLon: number,
+  bLat: number,
+  bLon: number
+): number {
+  const R = 6_371_000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat);
+  const dLon = rad(bLon - aLon);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
 }
 
 /**
@@ -130,6 +181,9 @@ export async function streetViewProbe(
     location: `${lat},${lon}`,
     key,
     source: "outdoor",
+    // Stated rather than left to the default, because it is half of
+    // what makes a panorama a picture of THIS address.
+    radius: String(MAX_PANO_METRES),
   });
   try {
     const res = await fetch(`${STREET_VIEW}/metadata?${params}`, {
@@ -147,13 +201,46 @@ export async function streetViewProbe(
     const body = (await res.json()) as {
       status?: string;
       error_message?: string;
+      copyright?: string;
+      pano_id?: string;
+      location?: { lat?: number; lng?: number };
     };
     const status = body.status ?? null;
+    const copyright = body.copyright ?? null;
+    const panoId = body.pano_id ?? null;
+    const at = body.location;
+    const metres =
+      typeof at?.lat === "number" && typeof at?.lng === "number"
+        ? metresBetween(lat, lon, at.lat, at.lng)
+        : null;
+
+    /**
+     * A panorama exists — but is it a picture of this building?
+     *
+     * Turning one down costs a card its kerb shot and it falls to an
+     * aerial or a sketch, which says "no photo" honestly. Showing the
+     * wrong one puts a stranger's shopfront under somebody's address
+     * and reads as fact. The second failure is far worse, so both
+     * checks fail closed.
+     */
+    let rejected: string | null = null;
+    if (status === "OK") {
+      if (!shotByGoogle(copyright)) {
+        rejected = `contributed imagery (${copyright ?? "no copyright"}), not the Street View car`;
+      } else if (metres !== null && metres > MAX_PANO_METRES) {
+        rejected = `nearest panorama is ${metres}m away`;
+      }
+    }
+
     const probe: StreetViewProbe = {
-      ok: status === "OK",
+      ok: status === "OK" && rejected === null,
       status,
       denied: status === "REQUEST_DENIED" || status === "OVER_QUERY_LIMIT",
       detail: body.error_message ?? null,
+      panoId,
+      copyright,
+      metres,
+      rejected,
     };
     // Only a fact about the coordinate is worth keeping.
     if (!probe.denied) probeMemo.set(memoKey, { at: Date.now(), probe });
@@ -223,19 +310,28 @@ export async function streetViewExists(
   return (await streetViewProbe(lat, lon)).ok;
 }
 
-/** The billed image request — only ever made after the probe says OK. */
+/**
+ * The billed image request — only ever made after the probe says OK.
+ *
+ * By panorama id when the probe found one, because the probe is where
+ * the judging happens: asking again by coordinate is a second search
+ * that can land on a different panorama, and then we have vetted one
+ * picture and rendered another.
+ */
 export async function fetchStreetView(
   lat: number,
-  lon: number
+  lon: number,
+  panoId?: string | null
 ): Promise<ArrayBuffer | null> {
   const key = googleMapsKey();
   if (!key) return null;
   const params = new URLSearchParams({
-    location: `${lat},${lon}`,
+    ...(panoId
+      ? { pano: panoId }
+      : { location: `${lat},${lon}`, source: "outdoor", radius: String(MAX_PANO_METRES) }),
     size: "640x360",
     fov: "80",
     return_error_code: "true",
-    source: "outdoor",
     key,
   });
   try {

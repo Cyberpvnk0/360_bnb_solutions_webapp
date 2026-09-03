@@ -15,10 +15,26 @@ const LAT = 30.3322;
 const LON = -81.6557;
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]).buffer;
 
-type Seen = { metadata: number; streetImage: number; aerial: number };
+type Seen = {
+  metadata: number;
+  streetImage: number;
+  aerial: number;
+  imageUrl?: string;
+};
 
 /** Stub the two upstreams by host and count what was asked of them. */
-function stubUpstreams(metadataStatus: string) {
+function stubUpstreams(metadata: string | Record<string, unknown>) {
+  // A bare status means the ordinary case: Google's own car, parked at
+  // the address. Pass an object to describe a panorama that is not.
+  const body =
+    typeof metadata === "string"
+      ? {
+          status: metadata,
+          copyright: "© 2023 Google",
+          pano_id: "PANO-GOOGLE",
+          location: { lat: LAT, lng: LON },
+        }
+      : metadata;
   const seen: Seen = { metadata: 0, streetImage: 0, aerial: 0 };
   vi.stubGlobal(
     "fetch",
@@ -26,10 +42,11 @@ function stubUpstreams(metadataStatus: string) {
       const url = String(input);
       if (url.includes("maps.googleapis.com") && url.includes("/metadata?")) {
         seen.metadata++;
-        return Response.json({ status: metadataStatus });
+        return Response.json(body);
       }
       if (url.includes("maps.googleapis.com/maps/api/streetview?")) {
         seen.streetImage++;
+        seen.imageUrl = url;
         return new Response(JPEG, { headers: { "content-type": "image/jpeg" } });
       }
       if (url.includes("api.mapbox.com")) {
@@ -63,7 +80,9 @@ describe("source=street serves the kerb or nothing", () => {
     const res = await ask(`lat=${LAT}&lon=${LON}&source=street`);
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Image-Source")).toBe("street");
-    expect(seen).toEqual({ metadata: 1, streetImage: 1, aerial: 0 });
+    expect(seen.metadata).toBe(1);
+    expect(seen.streetImage).toBe(1);
+    expect(seen.aerial).toBe(0);
   });
 
   it("404s — never an aerial in disguise — when Google has no kerb shot here", async () => {
@@ -121,6 +140,47 @@ describe("without a source, the route walks the chain itself", () => {
   });
 });
 
+describe("only a picture OF this building counts", () => {
+  it("turns down a shop's own interior tour", async () => {
+    // Two Minneapolis rentals came back showing a deli counter and a
+    // clothing rail. Both were real panoramas at the right coordinate,
+    // contributed by the businesses — `source=outdoor` is supposed to
+    // exclude indoor collections and demonstrably does not catch
+    // these. Who held the camera is the check that holds.
+    const seen = stubUpstreams({
+      status: "OK",
+      copyright: "© 2019 Lyndale Vintage",
+      pano_id: "PANO-SHOP",
+      location: { lat: LAT, lng: LON },
+    });
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(404);
+    // And nothing was bought to find that out.
+    expect(seen.streetImage).toBe(0);
+  });
+
+  it("turns down the neighbour's kerb half a block away", async () => {
+    const seen = stubUpstreams({
+      status: "OK",
+      copyright: "© 2023 Google",
+      pano_id: "PANO-FAR",
+      // A fifth of a degree-thousandth over 200 metres north.
+      location: { lat: LAT + 0.002, lng: LON },
+    });
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(404);
+    expect(seen.streetImage).toBe(0);
+  });
+
+  it("buys the exact panorama it vetted, by id", async () => {
+    // Asking again by coordinate is a second search that can land
+    // somewhere else — vetting one picture and rendering another.
+    const seen = stubUpstreams("OK");
+    const res = await ask(`lat=${LAT}&lon=${LON}&source=street`);
+    expect(res.status).toBe(200);
+    expect(seen.imageUrl).toContain("pano=PANO-GOOGLE");
+    expect(seen.imageUrl).not.toContain("location=");
+  });
+});
+
 describe("a refusal is never remembered", () => {
   it("re-asks after a REQUEST_DENIED, so fixing billing takes effect", async () => {
     // Google answers "you must enable billing" as a normal 200, which a
@@ -141,7 +201,12 @@ describe("a refusal is never remembered", () => {
                   status: "REQUEST_DENIED",
                   error_message: "You must enable Billing on the Google Cloud Project",
                 }
-              : { status: "OK" }
+              : {
+                  status: "OK",
+                  copyright: "© 2023 Google",
+                  pano_id: "PANO-GOOGLE",
+                  location: { lat: LAT, lng: LON },
+                }
           );
         }
         return new Response(JPEG, { headers: { "content-type": "image/jpeg" } });
