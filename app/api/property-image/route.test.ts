@@ -170,6 +170,48 @@ describe("only a picture OF this building counts", () => {
     expect(seen.streetImage).toBe(0);
   });
 
+  it("looks past a photo sphere to find the car that drove the street", async () => {
+    // Google returns the CLOSEST panorama and offers no way to ask for
+    // its own. A photo sphere shot on the pavement therefore outranks
+    // the car — at Times Square, of all places. Rejecting on that alone
+    // would throw away real coverage, so a short hop in each direction
+    // goes looking for the road.
+    let calls = 0;
+    const seen: { imageUrl?: string } = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/metadata?")) {
+          calls++;
+          return Response.json(
+            calls === 1
+              ? {
+                  status: "OK",
+                  copyright: "© Charles Li",
+                  pano_id: "PANO-SPHERE",
+                  location: { lat: LAT, lng: LON },
+                }
+              : {
+                  status: "OK",
+                  copyright: "© 2023 Google",
+                  pano_id: "PANO-CAR",
+                  location: { lat: LAT + 0.0002, lng: LON },
+                }
+          );
+        }
+        seen.imageUrl = url;
+        return new Response(JPEG, { headers: { "content-type": "image/jpeg" } });
+      })
+    );
+
+    const res = await ask(`lat=${LAT}&lon=${LON}&source=street`);
+    expect(res.status).toBe(200);
+    expect(seen.imageUrl).toContain("pano=PANO-CAR");
+    // The centre, then the ring — all on the free metadata endpoint.
+    expect(calls).toBeGreaterThan(1);
+  });
+
   it("buys the exact panorama it vetted, by id", async () => {
     // Asking again by coordinate is a second search that can land
     // somewhere else — vetting one picture and rendering another.

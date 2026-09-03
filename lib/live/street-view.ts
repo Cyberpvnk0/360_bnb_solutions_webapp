@@ -163,6 +163,89 @@ export function resetStreetViewProbeMemo(): void {
   probeMemo.clear();
 }
 
+/**
+ * One look at one point. Transport problems come back as null; a real
+ * answer from Google, however unwelcome, comes back described.
+ */
+interface PanoLook {
+  status: string | null;
+  errorMessage: string | null;
+  copyright: string | null;
+  panoId: string | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+async function lookAt(
+  lat: number,
+  lon: number,
+  key: string
+): Promise<PanoLook | null> {
+  const params = new URLSearchParams({
+    location: `${lat},${lon}`,
+    key,
+    source: "outdoor",
+    radius: String(MAX_PANO_METRES),
+  });
+  try {
+    const res = await fetch(`${STREET_VIEW}/metadata?${params}`, {
+      // Never `revalidate`: see the note above the memo.
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      status?: string;
+      error_message?: string;
+      copyright?: string;
+      pano_id?: string;
+      location?: { lat?: number; lng?: number };
+    };
+    return {
+      status: body.status ?? null,
+      errorMessage: body.error_message ?? null,
+      copyright: body.copyright ?? null,
+      panoId: body.pano_id ?? null,
+      lat: typeof body.location?.lat === "number" ? body.location.lat : null,
+      lon: typeof body.location?.lng === "number" ? body.location.lng : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where else to look when the nearest panorama is not the car's.
+ *
+ * Google returns the CLOSEST panorama and offers no way to ask for its
+ * own imagery — "there is no way to use only one source of Street View
+ * imagery over the other", in their words. So a photo sphere somebody
+ * shot on the pavement outranks the car that drove the same street,
+ * and rejecting on that alone would throw away real coverage: the
+ * setup check found exactly this at Times Square, of all places.
+ *
+ * The car drives roads, so a short hop in each direction lands on one.
+ * Eight points at twenty-odd metres is a net wide enough to catch the
+ * frontage whichever way the property faces, and every one of these is
+ * the free metadata endpoint — the ring costs latency, not money.
+ */
+const RING_METRES = 22;
+const RING: readonly (readonly [number, number])[] = Array.from(
+  { length: 8 },
+  (_, i) => {
+    const a = (i * Math.PI) / 4;
+    return [Math.cos(a), Math.sin(a)] as const;
+  }
+);
+
+function ringAround(lat: number, lon: number): { lat: number; lon: number }[] {
+  const dLat = RING_METRES / 111_320;
+  const dLon = RING_METRES / (111_320 * Math.cos((lat * Math.PI) / 180) || 1);
+  return RING.map(([ny, ex]) => ({
+    lat: lat + ny * dLat,
+    lon: lon + ex * dLon,
+  }));
+}
+
 export async function streetViewProbe(
   lat: number,
   lon: number
@@ -177,77 +260,80 @@ export async function streetViewProbe(
   const hit = probeMemo.get(memoKey);
   if (hit && Date.now() - hit.at < PROBE_MEMO_MS) return hit.probe;
 
-  const params = new URLSearchParams({
-    location: `${lat},${lon}`,
-    key,
-    source: "outdoor",
-    // Stated rather than left to the default, because it is half of
-    // what makes a panorama a picture of THIS address.
-    radius: String(MAX_PANO_METRES),
-  });
-  try {
-    const res = await fetch(`${STREET_VIEW}/metadata?${params}`, {
-      // Never `revalidate`: see the note above the memo.
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      return {
-        ok: false,
-        status: null,
-        denied: false,
-        detail: `metadata HTTP ${res.status}`,
-      };
-    }
-    const body = (await res.json()) as {
-      status?: string;
-      error_message?: string;
-      copyright?: string;
-      pano_id?: string;
-      location?: { lat?: number; lng?: number };
-    };
-    const status = body.status ?? null;
-    const copyright = body.copyright ?? null;
-    const panoId = body.pano_id ?? null;
-    const at = body.location;
-    const metres =
-      typeof at?.lat === "number" && typeof at?.lng === "number"
-        ? metresBetween(lat, lon, at.lat, at.lng)
-        : null;
-
-    /**
-     * A panorama exists — but is it a picture of this building?
-     *
-     * Turning one down costs a card its kerb shot and it falls to an
-     * aerial or a sketch, which says "no photo" honestly. Showing the
-     * wrong one puts a stranger's shopfront under somebody's address
-     * and reads as fact. The second failure is far worse, so both
-     * checks fail closed.
-     */
-    let rejected: string | null = null;
-    if (status === "OK") {
-      if (!shotByGoogle(copyright)) {
-        rejected = `contributed imagery (${copyright ?? "no copyright"}), not the Street View car`;
-      } else if (metres !== null && metres > MAX_PANO_METRES) {
-        rejected = `nearest panorama is ${metres}m away`;
-      }
-    }
-
-    const probe: StreetViewProbe = {
-      ok: status === "OK" && rejected === null,
-      status,
-      denied: status === "REQUEST_DENIED" || status === "OVER_QUERY_LIMIT",
-      detail: body.error_message ?? null,
-      panoId,
-      copyright,
-      metres,
-      rejected,
-    };
-    // Only a fact about the coordinate is worth keeping.
-    if (!probe.denied) probeMemo.set(memoKey, { at: Date.now(), probe });
-    return probe;
-  } catch {
+  const centre = await lookAt(lat, lon, key);
+  if (!centre) {
     return { ok: false, status: null, denied: false, detail: "network or timeout" };
   }
+
+  const denied =
+    centre.status === "REQUEST_DENIED" || centre.status === "OVER_QUERY_LIMIT";
+  const base = {
+    status: centre.status,
+    denied,
+    detail: centre.errorMessage,
+  };
+
+  if (centre.status !== "OK") {
+    const probe: StreetViewProbe = { ok: false, ...base };
+    if (!denied) probeMemo.set(memoKey, { at: Date.now(), probe });
+    return probe;
+  }
+
+  /**
+   * A panorama exists — but is it the car's, and is it of THIS
+   * building? Turning one down costs a card its kerb shot and it falls
+   * to an aerial, which says "no photo" honestly. Showing the wrong one
+   * puts a stranger's shopfront under somebody's address and reads as
+   * fact. So both checks fail closed, and the ring is what keeps that
+   * from costing more coverage than it has to.
+   */
+  const distance = (l: PanoLook | null) =>
+    l && l.lat !== null && l.lon !== null
+      ? metresBetween(lat, lon, l.lat, l.lon)
+      : null;
+
+  const usable = (l: PanoLook | null) =>
+    l !== null &&
+    l.status === "OK" &&
+    shotByGoogle(l.copyright) &&
+    (distance(l) ?? Infinity) <= MAX_PANO_METRES;
+
+  let best: PanoLook | null = usable(centre) ? centre : null;
+  if (!best) {
+    const ring = await Promise.all(
+      ringAround(lat, lon).map((p) => lookAt(p.lat, p.lon, key))
+    );
+    for (const found of ring) {
+      if (!usable(found)) continue;
+      if (best === null || (distance(found) ?? 0) < (distance(best) ?? 0)) {
+        best = found;
+      }
+    }
+  }
+
+  const probe: StreetViewProbe = best
+    ? {
+        ok: true,
+        ...base,
+        panoId: best.panoId,
+        copyright: best.copyright,
+        metres: distance(best),
+        rejected: null,
+      }
+    : {
+        ok: false,
+        ...base,
+        panoId: centre.panoId,
+        copyright: centre.copyright,
+        metres: distance(centre),
+        rejected: shotByGoogle(centre.copyright)
+          ? `nearest Street View panorama is ${distance(centre)}m away`
+          : `only contributed imagery here (${centre.copyright ?? "no copyright"}), and no Street View car panorama within ${MAX_PANO_METRES}m`,
+      };
+
+  // Only a fact about the coordinate is worth keeping.
+  if (!denied) probeMemo.set(memoKey, { at: Date.now(), probe });
+  return probe;
 }
 
 /**
