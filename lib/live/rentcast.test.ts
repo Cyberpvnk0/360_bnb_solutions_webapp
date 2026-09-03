@@ -147,3 +147,43 @@ describe("rentcast mapper", () => {
     expect(mapRentCastListing({ ...JAX, bedrooms: 7 }, market)?.bedrooms).toBe(5);
   });
 });
+
+describe("one card per flat, and only one", () => {
+  const market = MARKET_BY_SLUG.get("austin")!;
+  const unit = (id: string, line2?: string, price = 1140) => ({
+    id,
+    addressLine1: "3500 Greystone Dr",
+    addressLine2: line2,
+    city: "Austin",
+    state: "TX",
+    latitude: 30.35,
+    longitude: -97.74,
+    propertyType: "Apartment",
+    bedrooms: 2,
+    bathrooms: 1,
+    squareFootage: 936,
+    price,
+  });
+
+  it("keeps the unit number, so a block is not eight of the same card", () => {
+    // Line two is on seventy per cent of rows. Dropping it renders
+    // every flat in a complex as the same street address with the same
+    // floor plan — which is what a complex is.
+    expect(mapRentCastListing(unit("a", "Apt 1024"), market)!.address).toBe(
+      "3500 Greystone Dr Apt 1024"
+    );
+    expect(mapRentCastListing(unit("b"), market)!.address).toBe(
+      "3500 Greystone Dr"
+    );
+  });
+
+  it("never renders a unit number as though it were an address", () => {
+    const orphan = { ...unit("c", "Apt 5"), addressLine1: undefined };
+    expect(
+      mapRentCastListing(
+        { ...orphan, formattedAddress: "3500 Greystone Dr, Austin, TX" },
+        market
+      )!.address
+    ).toBe("3500 Greystone Dr, Austin, TX");
+  });
+});

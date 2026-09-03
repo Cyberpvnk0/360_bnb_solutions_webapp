@@ -28,6 +28,9 @@ export interface RentCastListing {
   id: string;
   formattedAddress?: string;
   addressLine1?: string;
+  /** The unit, on the seventy per cent of rows that have one. Dropping
+   *  it renders every flat in a block as the same street address. */
+  addressLine2?: string;
   city?: string;
   state?: string;
   latitude?: number;
@@ -90,7 +93,7 @@ export function mapRentCastListing(
     // "Run the numbers" work on a live row after a page navigation.
     id: `live--${market.slug}--${raw.id}`,
     analysisId: `r--live--${market.slug}--${raw.id}`,
-    address: raw.addressLine1 ?? raw.formattedAddress ?? "Address on file",
+    address: addressOf(raw),
     city: raw.city ?? market.name,
     stateCode: raw.state ?? market.stateCode,
     marketSlug: market.slug,
@@ -111,6 +114,27 @@ export function mapRentCastListing(
       raw.description ?? raw.remarks ?? raw.publicRemarks ?? undefined,
     contact: contactFromFeed(raw),
   };
+}
+
+/**
+ * The address as a person would write it, unit included.
+ *
+ * A complex sends one row per available flat and puts the street on
+ * line one and the unit on line two. Reading only line one renders
+ * eight distinct units as eight cards that all say "3500 Greystone Dr"
+ * with the same beds, baths and floor area — the same floor plan
+ * repeated, which is exactly what a block of flats is — and there is
+ * nothing on the card to tell them apart or to tell a genuine repeat
+ * from a real neighbour.
+ *
+ * Line two alone is never an address: "Apt 1024" without a street is
+ * worse than the formatted fallback.
+ */
+export function addressOf(raw: RentCastListing): string {
+  const line1 = raw.addressLine1?.trim();
+  const line2 = raw.addressLine2?.trim();
+  if (!line1) return raw.formattedAddress?.trim() || "Address on file";
+  return line2 ? `${line1} ${line2}` : line1;
 }
 
 /**
@@ -196,13 +220,39 @@ async function rcListings(
   return Array.isArray(body) ? (body as RentCastListing[]) : [];
 }
 
+/**
+ * What makes two rows the same property to somebody hunting.
+ *
+ * Not the vendor's record id: a relisted unit and the same unit
+ * carried by two agents arrive as different ids and identical
+ * properties. With the unit number now on the address, two rows
+ * agreeing on all of this are the same flat at the same price, and a
+ * second card for it is noise on a page somebody is scanning.
+ */
+function identity(l: RentalListing): string {
+  return [
+    l.address.toLowerCase(),
+    l.bedrooms,
+    l.bathrooms,
+    l.sqft,
+    l.rentMonthly,
+  ].join("|");
+}
+
 function toSortedListings(
   rows: RentCastListing[],
   market: Market
 ): RentalListing[] {
+  const seen = new Set<string>();
   return rows
     .map((raw) => mapRentCastListing(raw, market))
     .filter((l): l is RentalListing => l !== null)
+    .filter((l) => {
+      const key = identity(l);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort((a, b) => a.rentMonthly - b.rentMonthly);
 }
 
