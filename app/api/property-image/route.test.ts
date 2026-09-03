@@ -215,6 +215,60 @@ describe("only a picture OF this building counts", () => {
     expect(calls).toBeGreaterThan(1);
   });
 
+  it("aims the camera at the address, not down the street", async () => {
+    // Requesting by pano id leaves Google nothing to aim at, so it
+    // falls back to the car's direction of travel. The panorama here
+    // sits due south of the address, so the camera must look north.
+    const seen: { imageUrl?: string } = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/metadata?")) {
+          return Response.json({
+            status: "OK",
+            copyright: "© 2023 Google",
+            pano_id: "PANO-SOUTH",
+            location: { lat: LAT - 0.0002, lng: LON },
+          });
+        }
+        seen.imageUrl = url;
+        return new Response(JPEG, { headers: { "content-type": "image/jpeg" } });
+      })
+    );
+
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(200);
+    const heading = Number(
+      new URL(seen.imageUrl!).searchParams.get("heading")
+    );
+    expect(heading).toBeGreaterThanOrEqual(0);
+    expect(heading).toBeLessThan(1);
+  });
+
+  it("leaves the aim to Google when the panorama is on the doorstep", async () => {
+    // A bearing between two points a metre apart is noise, not a
+    // direction.
+    const seen: { imageUrl?: string } = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/metadata?")) {
+          return Response.json({
+            status: "OK",
+            copyright: "© 2023 Google",
+            pano_id: "PANO-HERE",
+            location: { lat: LAT, lng: LON },
+          });
+        }
+        seen.imageUrl = url;
+        return new Response(JPEG, { headers: { "content-type": "image/jpeg" } });
+      })
+    );
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(200);
+    expect(seen.imageUrl).not.toContain("heading=");
+  });
+
   it("buys the exact panorama it vetted, by id", async () => {
     // Asking again by coordinate is a second search that can land
     // somewhere else — vetting one picture and rendering another.

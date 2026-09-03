@@ -157,7 +157,12 @@ export async function GET(request: Request) {
   if (only !== "aerial" && hasGoogleKey() && budget.allowed) {
     const probe = await streetViewProbe(lat, lon);
     if (probe.ok) {
-      const image = await fetchStreetView(lat, lon, probe.panoId);
+      const image = await fetchStreetView(
+        lat,
+        lon,
+        probe.panoId,
+        probe.heading
+      );
       if (image) {
         return new Response(image, {
           headers: {

@@ -96,6 +96,9 @@ export interface StreetViewProbe {
   metres?: number | null;
   /** Why a real panorama was turned down, when one was. */
   rejected?: string | null;
+  /** Degrees clockwise from north, panorama → address. Null when the
+   *  two are close enough that any bearing is noise. */
+  heading?: number | null;
 }
 
 /**
@@ -119,6 +122,39 @@ const MAX_PANO_METRES = 45;
 function shotByGoogle(copyright: string | null): boolean {
   return copyright !== null && /\bgoogle\b/i.test(copyright);
 }
+
+/**
+ * Which way to point the camera: the bearing from the panorama to the
+ * address, in degrees clockwise from north.
+ *
+ * Requesting by `location`, Google aims the camera at the location for
+ * you. Requesting by `pano` there is no location to aim at, so it falls
+ * back to the panorama's own orientation — the direction the car was
+ * driving, which is down the street rather than at the house. Buying
+ * the right panorama and then photographing the road is not an
+ * improvement, so the aim is computed here, where both points are known.
+ */
+function bearingTo(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number
+): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLon = rad(toLon - fromLon);
+  const y = Math.sin(dLon) * Math.cos(rad(toLat));
+  const x =
+    Math.cos(rad(fromLat)) * Math.sin(rad(toLat)) -
+    Math.sin(rad(fromLat)) * Math.cos(rad(toLat)) * Math.cos(dLon);
+  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+}
+
+/**
+ * Below this, the panorama is effectively ON the address and a bearing
+ * between the two points is noise rather than a direction. Let Google
+ * choose in that case.
+ */
+const MIN_HEADING_METRES = 4;
 
 /** Metres between two points. Haversine; the earth is round enough. */
 function metresBetween(
@@ -311,14 +347,21 @@ export async function streetViewProbe(
     }
   }
 
+  const away = distance(best);
   const probe: StreetViewProbe = best
     ? {
         ok: true,
         ...base,
         panoId: best.panoId,
         copyright: best.copyright,
-        metres: distance(best),
+        metres: away,
         rejected: null,
+        heading:
+          best.lat !== null &&
+          best.lon !== null &&
+          (away ?? 0) >= MIN_HEADING_METRES
+            ? Math.round(bearingTo(best.lat, best.lon, lat, lon))
+            : null,
       }
     : {
         ok: false,
@@ -407,14 +450,22 @@ export async function streetViewExists(
 export async function fetchStreetView(
   lat: number,
   lon: number,
-  panoId?: string | null
+  panoId?: string | null,
+  heading?: number | null
 ): Promise<ArrayBuffer | null> {
   const key = googleMapsKey();
   if (!key) return null;
   const params = new URLSearchParams({
     ...(panoId
       ? { pano: panoId }
-      : { location: `${lat},${lon}`, source: "outdoor", radius: String(MAX_PANO_METRES) }),
+      : {
+          location: `${lat},${lon}`,
+          source: "outdoor",
+          radius: String(MAX_PANO_METRES),
+        }),
+    // See bearingTo: by pano id there is no location for Google to aim
+    // at, so an unaimed request photographs the road.
+    ...(typeof heading === "number" ? { heading: String(heading) } : {}),
     size: "640x360",
     fov: "80",
     return_error_code: "true",
