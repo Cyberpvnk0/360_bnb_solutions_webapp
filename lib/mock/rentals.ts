@@ -17,7 +17,7 @@
  *   module — the graph stays acyclic).
  */
 
-import { breakevenOccupancy } from "@/lib/calc/arbitrage";
+import { breakevenOccupancy, projectDeal } from "@/lib/calc/arbitrage";
 import { benchmark2brInputs, MARKETS } from "./markets";
 import { hashStr, Rng, roundTo } from "./seed";
 import { submarketsFor } from "./submarkets";
@@ -276,6 +276,45 @@ export function estimateCushionPts(
   };
   const be = breakevenOccupancy(inputs, assumptions);
   return Math.round((market.occupancy - be) * 100);
+}
+
+/**
+ * The whole short-let read for one listing, in one pass.
+ *
+ * Cards used to take only the cushion, so anything else they wanted to
+ * show had to be derived a second time somewhere else — and two
+ * derivations of the same figure are two chances to disagree with the
+ * panel that opens when you click the card. This runs the same engine
+ * on the same inputs and hands back everything a card prints.
+ */
+export interface DealRead {
+  /** Whole points: the market's occupancy minus this rent's breakeven. */
+  cushionPts: number;
+  /** Dollars a month after costs, at the market's actual occupancy. */
+  netCashFlow: number;
+  /** What a night goes for here, at this unit's bedroom count. */
+  nightlyRate: number;
+  /** The share of nights that only pays the bills, as a fraction. */
+  breakeven: number;
+}
+
+export function estimateDeal(
+  listing: RentalListing,
+  market: Market
+): DealRead {
+  const nightlyRate = Math.round(
+    market.adr * BEDROOM_ADR_FACTOR[listing.bedrooms]
+  );
+  const projection = projectDeal(benchmark2brInputs(listing.rentMonthly), {
+    adr: nightlyRate,
+    marketOccupancy: market.occupancy,
+  });
+  return {
+    cushionPts: Math.round(projection.marginOfSafety * 100),
+    netCashFlow: Math.round(projection.netCashFlow),
+    nightlyRate,
+    breakeven: projection.breakevenOccupancy,
+  };
 }
 
 /* ------------------------------------------------------------------ */

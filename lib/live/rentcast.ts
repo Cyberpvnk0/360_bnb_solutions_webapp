@@ -11,6 +11,7 @@
  */
 
 import { mineFeatures } from "@/lib/live/features";
+import { priceTrend } from "@/lib/live/price-history";
 import { MARKETS } from "@/lib/mock/markets";
 import type {
   ListingContact,
@@ -45,6 +46,9 @@ export interface RentCastListing {
   listedDate?: string;
   listingAgent?: { name?: string; phone?: string; email?: string };
   listingOffice?: { name?: string; phone?: string; email?: string };
+  /** Past asking prices, keyed by date. See lib/live/price-history —
+   *  shape varies, so it is read defensively rather than typed here. */
+  history?: unknown;
   /** Amenity/description fields, when a plan or endpoint carries them. */
   description?: string;
   remarks?: string;
@@ -113,6 +117,7 @@ export function mapRentCastListing(
     description:
       raw.description ?? raw.remarks ?? raw.publicRemarks ?? undefined,
     contact: contactFromFeed(raw),
+    priceTrend: priceTrend(raw.history, Math.round(raw.price)) ?? undefined,
   };
 }
 

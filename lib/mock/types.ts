@@ -268,6 +268,23 @@ export interface RentalListing {
   /** The listing's own words. Keyword search reads this the way Zillow
    *  searches descriptions; feature tags are derived from it. */
   description?: string;
+  /** What this unit asked before today, when the source keeps a
+   *  history. The one signal on a card that describes the LANDLORD
+   *  rather than the property: a unit relisted and cut is a lease
+   *  somebody wants signed. */
+  priceTrend?: PriceTrend;
+}
+
+/** See lib/live/price-history for how this is read off a feed. */
+export interface PriceTrend {
+  /** The highest rent this unit has previously asked. */
+  askedBefore: number;
+  /** Dollars the current asking rent sits below that; 0 when never cut. */
+  cutBy: number;
+  /** Rental listings in the history, current one included. */
+  timesListed: number;
+  /** ISO date it FIRST went up, across relistings. */
+  firstListedAt: string | null;
 }
 
 /* ------------------------------------------------------------------ */
