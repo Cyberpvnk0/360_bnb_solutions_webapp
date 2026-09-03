@@ -138,3 +138,78 @@ export function resetEnrichLedger(): void {
   enriched = { day: "", count: 0 };
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Street View images: a ceiling on ADDRESSES pictured                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Google's own daily quota is the hard stop; this is the soft one, and
+ * they do different jobs.
+ *
+ * Theirs refuses the request, which arrives here as a failure. Ours
+ * declines to ask, so the card falls straight to an aerial and a
+ * student sees a roof instead of waiting on a round trip to be told
+ * no. It also lives in an environment variable rather than the Cloud
+ * console, so it can be moved without a second login, and it still
+ * holds if somebody raises the quota over there and forgets.
+ *
+ * Counted per DISTINCT COORDINATE per day, because that is what bills.
+ * Google's answer for one address caches thirty days and is shared by
+ * everyone on the deployment, so the second student to open a listing
+ * costs nothing and must not consume budget either. A market browsed
+ * all afternoon spends its addresses once.
+ *
+ * Same scope caveat as the ledgers above: server memory, per instance,
+ * so this is a guard rather than a lock. Google's quota is the lock.
+ */
+export const DEFAULT_DAILY_IMAGERY_CAP = 1_000;
+
+export function imageryCap(): number {
+  const raw = Number(process.env.IMAGERY_DAILY_CAP);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_DAILY_IMAGERY_CAP;
+}
+
+let pictured: Ledger = { day: "", keys: new Set() };
+
+function currentPictured(now: Date): Ledger {
+  const day = dayKey(now);
+  if (pictured.day !== day) pictured = { day, keys: new Set() };
+  return pictured;
+}
+
+/**
+ * Claim today's budget for one address, or learn there is none left.
+ *
+ * Reserves rather than checks: the caller is about to spend money, and
+ * a check followed by a spend is a race that overshoots the cap on a
+ * busy page. An address already pictured today is free and always
+ * allowed.
+ */
+export function reserveImage(key: string, now = new Date()): QuotaCheck {
+  const cap = imageryCap();
+  const { keys } = currentPictured(now);
+  const cached = keys.has(key);
+  const allowed = cached || keys.size < cap;
+  if (allowed && !cached) keys.add(key);
+  return { allowed, cached, remaining: Math.max(0, cap - keys.size), cap };
+}
+
+/** What today has left, without claiming any of it. */
+export function imageryBudget(now = new Date()): QuotaCheck {
+  const cap = imageryCap();
+  const { keys } = currentPictured(now);
+  return {
+    allowed: keys.size < cap,
+    cached: false,
+    remaining: Math.max(0, cap - keys.size),
+    cap,
+  };
+}
+
+/** Tests only. */
+export function resetImageryLedger(): void {
+  pictured = { day: "", keys: new Set() };
+}

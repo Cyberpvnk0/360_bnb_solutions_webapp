@@ -40,6 +40,7 @@ import {
   hasGoogleKey,
   streetViewProbe,
 } from "@/lib/live/street-view";
+import { imageryBudget, reserveImage } from "@/lib/live/quota";
 
 /** A month, matching both upstreams' own revalidate windows. */
 const CACHE = "public, max-age=2592000, immutable";
@@ -112,6 +113,10 @@ export async function GET(request: Request) {
             configured: hasAerialKey(),
             namesSeen: aerialKeyNamesSeen(),
           },
+          /** This app's own ceiling, beside Google's. Counted per
+           *  distinct address, so it tracks what bills rather than what
+           *  loads. */
+          budget: imageryBudget(),
           verdict:
             verdict +
             (street.ok || hasAerialKey()
@@ -138,9 +143,18 @@ export async function GET(request: Request) {
   const only =
     wanted === "street" || wanted === "aerial" ? wanted : null;
 
-  // Street View first, and only when its free probe says imagery is
-  // actually there — never pay for a picture that doesn't exist.
-  if (only !== "aerial" && hasGoogleKey()) {
+  /**
+   * Street View first, and only when three things hold: the day's
+   * budget has room, we have a key, and the free probe says imagery is
+   * actually there. The budget is claimed BEFORE the probe rather than
+   * after, because once it is spent there is nothing to learn — asking
+   * anyway would buy a round trip and a metadata call to be told no,
+   * on every card, for the rest of the day.
+   */
+  const budget =
+    only === "aerial" ? { allowed: false } : reserveImage(`${lat},${lon}`);
+
+  if (only !== "aerial" && hasGoogleKey() && budget.allowed) {
     const probe = await streetViewProbe(lat, lon);
     if (probe.ok) {
       const image = await fetchStreetView(lat, lon, probe.panoId);
@@ -161,8 +175,9 @@ export async function GET(request: Request) {
     // shows the building when Google is having a bad day.
   }
 
-  // Asked for the kerb specifically and there is none here: say so,
-  // so the card can move to the aerial and label it as one.
+  // Asked for the kerb specifically and there is none to be had —
+  // no imagery, no key, or no budget left today. Either way the card
+  // moves to the aerial and labels it as one.
   if (only === "street") {
     return new Response("No Street View here", { status: 404 });
   }

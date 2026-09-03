@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET } from "./route";
 import { resetStreetViewProbeMemo } from "@/lib/live/street-view";
+import { resetImageryLedger } from "@/lib/live/quota";
 
 /**
  * The card labels its picture from the stage it asked for, which is
@@ -66,6 +67,8 @@ beforeEach(() => {
   // Coverage answers are memoised for six hours in module memory, and
   // every case here probes the same coordinate.
   resetStreetViewProbeMemo();
+  // Billed addresses are counted per day in module memory too.
+  resetImageryLedger();
   vi.stubEnv("GOOGLE_MAPS_API_KEY", "test-google");
   vi.stubEnv("MAPBOX_TOKEN", "test-mapbox");
 });
@@ -283,6 +286,48 @@ describe("a refusal is never remembered", () => {
     expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(404);
     expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(404);
     expect(metadataCalls).toBe(1);
+  });
+});
+
+describe("the day's own ceiling", () => {
+  it("stops asking once the budget is spent, without a round trip", async () => {
+    // Google's quota refuses the request; ours declines to make it. By
+    // the time the budget is gone there is nothing left to learn, and
+    // asking anyway buys a metadata call per card for the rest of the
+    // day to be told no.
+    vi.stubEnv("IMAGERY_DAILY_CAP", "1");
+    const seen = stubUpstreams("OK");
+
+    // First address spends the day's only slot.
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(200);
+
+    // A different address — close enough that only the budget can
+    // refuse it — gets the aerial instead, and Google is not troubled
+    // about it.
+    const before = seen.metadata;
+    const next = await ask(`lat=${LAT + 0.0002}&lon=${LON}&source=street`);
+    expect(next.status).toBe(404);
+    expect(seen.metadata).toBe(before);
+  });
+
+  it("charges an address once a day, however often it is viewed", async () => {
+    vi.stubEnv("IMAGERY_DAILY_CAP", "1");
+    const seen = stubUpstreams("OK");
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(200);
+    // The same coordinate again: already paid for, so it must not eat
+    // a second slot or be refused.
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=street`)).status).toBe(200);
+    expect(seen.streetImage).toBe(2);
+  });
+
+  it("never spends a slot on the aerial, which is not Google's", async () => {
+    vi.stubEnv("IMAGERY_DAILY_CAP", "1");
+    stubUpstreams("OK");
+    expect((await ask(`lat=${LAT}&lon=${LON}&source=aerial`)).status).toBe(200);
+    // The kerb shot for a different address is still affordable.
+    expect((await ask(`lat=${LAT + 0.0002}&lon=${LON}&source=street`)).status).toBe(
+      200
+    );
   });
 });
 
