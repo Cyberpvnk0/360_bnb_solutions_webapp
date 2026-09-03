@@ -35,6 +35,7 @@
 import { fetchAerial, aerialKeyNamesSeen, hasAerialKey } from "@/lib/live/aerial";
 import {
   fetchStreetView,
+  geocodingProbe,
   googleKeyNamesSeen,
   hasGoogleKey,
   streetViewProbe,
@@ -59,40 +60,68 @@ export async function GET(request: Request) {
   if (searchParams.get("probe")) {
     return Response.json(
       {
-        street: hasGoogleKey(),
-        aerial: hasAerialKey(),
-        namesSeen: [...googleKeyNamesSeen(), ...aerialKeyNamesSeen()],
-      },
-      { headers: { "cache-control": "public, max-age=3600" } }
-    );
-  }
+          street: hasGoogleKey(),
+          aerial: hasAerialKey(),
+          namesSeen: [...googleKeyNamesSeen(), ...aerialKeyNamesSeen()],
+        },
+        { headers: { "cache-control": "public, max-age=3600" } }
+      );
+    }
 
-  /**
-   * End-to-end setup check, free and safe to hammer:
-   *   /api/property-image?check=1
-   *
-   * Asks the unbilled Street View metadata endpoint about a coordinate
-   * that certainly has imagery, so anything other than OK is our
-   * configuration rather than the address. Exists because the honest
-   * failure — a key whose API is not enabled — otherwise renders as a
-   * page of aerials and reads as thin coverage.
-   */
-  if (searchParams.get("check")) {
-    // Times Square. If Street View does not cover this, the problem is
-    // not the coordinate.
-    const probe = await streetViewProbe(40.758896, -73.98513);
-    return Response.json({
-      street: { configured: hasGoogleKey(), ...probe },
-      aerial: { configured: hasAerialKey(), namesSeen: aerialKeyNamesSeen() },
-      verdict: probe.ok
+    /**
+     * End-to-end setup check, free and safe to hammer:
+     *   /api/property-image?check=1
+     *
+     * Asks the unbilled Street View metadata endpoint about a coordinate
+     * that certainly has imagery, so anything other than OK is our
+     * configuration rather than the address. Exists because the honest
+     * failure — a key whose API is not enabled — otherwise renders as a
+     * page of aerials and reads as thin coverage.
+     */
+    if (searchParams.get("check")) {
+      // Times Square, and Google's own headquarters. Both certainly
+      // exist, so anything other than OK is our configuration.
+      const [street, geocoding] = await Promise.all([
+        streetViewProbe(40.758896, -73.98513),
+        geocodingProbe(),
+      ]);
+
+      /**
+       * Which fix to make, from the pair rather than from either alone.
+       *
+       * Both refused means the whole project is refused — its billing
+       * link or the key. One refused means billing is fine and that one
+       * API is not switched on. They read identically from a single
+       * endpoint and need completely different afternoons.
+       */
+      const verdict = street.ok
         ? "Street View is working — cards will show kerb photos."
-        : probe.denied
-          ? `Google refused this key: ${probe.detail ?? "no reason given"}. Enable the Street View Static API on the SAME project the key belongs to, link billing, and make sure the key is not restricted to HTTP referrers — these calls come from the server.${
-              hasAerialKey() ? " Aerials are covering for it meanwhile." : " And there is no Mapbox token either, so cards are drawing sketches."
-            }`
-          : `Street View unavailable: status ${probe.status ?? "none"}${probe.detail ? ` (${probe.detail})` : ""}.`,
-    });
-  }
+        : street.denied && geocoding.denied
+          ? `Google refused BOTH APIs on this key: ${street.detail ?? "no reason given"} — so this is the project, not one API. Check that the key belongs to the project you linked billing to (a key in another project is refused exactly like this), and that it carries no HTTP-referrer restriction, since these calls come from the server. A billing link can take a few minutes to reach the APIs.`
+          : street.denied
+            ? `Geocoding works on this key but Street View does not: ${street.detail ?? "no reason given"}. Billing is fine — the Street View Static API is not enabled on this key's project, or the key's API restrictions leave it out.`
+            : `Street View unavailable: status ${street.status ?? "none"}${street.detail ? ` (${street.detail})` : ""}.`;
+
+      return Response.json(
+        {
+          street: { configured: hasGoogleKey(), ...street },
+          geocoding,
+          aerial: {
+            configured: hasAerialKey(),
+            namesSeen: aerialKeyNamesSeen(),
+          },
+          verdict:
+            verdict +
+            (street.ok || hasAerialKey()
+              ? ""
+              : " There is no Mapbox token either, so cards are drawing sketches."),
+        },
+        // A diagnostic that can be read from cache is not a diagnostic:
+        // somebody fixes the thing, re-runs this, and reads back the
+        // complaint they already fixed.
+        { headers: { "cache-control": "no-store" } }
+      );
+    }
 
   if (
     !Number.isFinite(lat) ||
