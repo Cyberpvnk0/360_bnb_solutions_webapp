@@ -74,10 +74,14 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
         )}
       >
         <div className="relative">
+          {/* A real photo of the building, not a strip of one. At 112px
+              a kerb shot was a letterbox slice you could not read a
+              door from; the facts below moved into two columns to pay
+              for the height. */}
           <PropertyImage
             listing={l}
             priority={priority}
-            className="h-28 w-full border-b border-border"
+            className="aspect-[16/9] w-full border-b border-border"
           />
           {l.daysOnMarket !== undefined && l.daysOnMarket < 5 ? (
             <span className="absolute left-3 top-3 rounded-full border border-gold/50 bg-gold-fill/10 px-2 py-0.5 text-[10px] font-medium text-gold">
@@ -95,25 +99,36 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           />
         </div>
 
-        <div className="px-5 pb-4 pt-3.5">
-          <p className="text-lg font-semibold leading-tight text-foreground tabular">
-            {fmtMoney(l.rentMonthly)}
-            <span className="text-xs font-normal text-muted-foreground">
-              /mo
-            </span>
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground tabular">
-            {l.bedrooms} bd · {l.bathrooms} ba ·{" "}
-            {l.sqft > 0 ? `${fmtNum(l.sqft)} sqft · ` : ""}
-            {TYPE_LABEL[l.propertyType]}
-          </p>
-          <p className="mt-2 truncate text-sm font-medium text-foreground">
-            {l.address}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            in {l.submarketName ? `${l.submarketName} · ` : ""}
-            {l.city}, {l.stateCode}
-          </p>
+        <div className="px-4 pb-4 pt-3">
+          {/* Money on the left, place on the right — two rows of two
+              rather than four stacked lines. Same facts, half the
+              height, and the price and the address land on one line
+              where the eye is already looking. */}
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="shrink-0 text-lg font-semibold leading-tight text-foreground tabular">
+              {fmtMoney(l.rentMonthly)}
+              <span className="text-xs font-normal text-muted-foreground">
+                /mo
+              </span>
+            </p>
+            <p
+              title={l.address}
+              className="min-w-0 truncate text-right text-sm font-medium text-foreground"
+            >
+              {l.address}
+            </p>
+          </div>
+          <div className="mt-0.5 flex items-baseline justify-between gap-3">
+            <p className="min-w-0 truncate text-xs text-muted-foreground tabular">
+              {l.bedrooms} bd · {l.bathrooms} ba ·{" "}
+              {l.sqft > 0 ? `${fmtNum(l.sqft)} sqft · ` : ""}
+              {TYPE_LABEL[l.propertyType]}
+            </p>
+            <p className="min-w-0 truncate text-right text-xs text-muted-foreground">
+              {l.submarketName ? `${l.submarketName} · ` : ""}
+              {l.city}, {l.stateCode}
+            </p>
+          </div>
 
           {/* Feature tags — Furnished reads gold: it can zero the
               furnishing budget, so it's the tag operators hunt. */}
