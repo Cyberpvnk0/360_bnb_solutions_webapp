@@ -8,10 +8,20 @@
  * listing we can't place is a listing we don't show, and this exists to
  * keep that set small.
  *
- * Primary source is the US Census geocoder: free, keyless, public, and
- * scoped to exactly the country this product covers. Google Geocoding
- * is used only as a fallback and only when a key is already configured.
- * Results cache for 30 days — a building doesn't move.
+ * TWO GEOCODERS, AND THE ORDER IS A TRADE. The US Census geocoder is
+ * free, keyless, public, and scoped to exactly the country this product
+ * covers — but it INTERPOLATES along a street segment rather than
+ * locating the parcel, which lands ten to fifty metres out. That is the
+ * error band that decides whether a kerb shot frames this house or the
+ * one next door, so Google goes first by default and Census catches
+ * what it misses. Set GEOCODER_PRIMARY=census to put the free one back
+ * in front without a deploy.
+ *
+ * Whichever answers is recorded on the result, so a poor hit rate or a
+ * surprising bill can be attributed to the right service.
+ *
+ * Results cache for 30 days — a building doesn't move — and the
+ * typeahead below stays Census-only whatever this is set to.
  */
 
 import { googleMapsKey } from "@/lib/live/street-view";
@@ -91,25 +101,47 @@ async function viaGoogle(address: string): Promise<Point | null> {
  * caller, and one unreachable geocoder must not take a whole market's
  * results down with it.
  */
+/**
+ * Which geocoder is asked first. Google unless told otherwise — see the
+ * note at the top of this file for why the order is worth a variable.
+ */
+export function primaryGeocoder(): GeocodeSource {
+  return process.env.GEOCODER_PRIMARY?.trim().toLowerCase() === "census"
+    ? "census"
+    : "google";
+}
+
 export async function geocode(address: string): Promise<GeocodeResult> {
   const query = address.trim();
   if (!query) return { point: null, source: null, failure: "empty-address" };
 
-  try {
-    const census = await viaCensus(query);
-    if (census) return { point: census, source: "census", failure: null };
-  } catch {
-    // Fall through to the paid fallback rather than fail the row.
+  const lookup: Record<GeocodeSource, (a: string) => Promise<Point | null>> = {
+    census: viaCensus,
+    google: viaGoogle,
+  };
+  const first = primaryGeocoder();
+  const order: GeocodeSource[] =
+    first === "google" ? ["google", "census"] : ["census", "google"];
+
+  let reached = false;
+  for (const source of order) {
+    try {
+      const point = await lookup[source](query);
+      // viaGoogle answers null with no key at all, which is not the
+      // same as a network failure and must not be reported as one.
+      reached = true;
+      if (point) return { point, source, failure: null };
+    } catch {
+      // One geocoder being unreachable is not a reason to drop the row:
+      // that is what the other one is for.
+    }
   }
 
-  try {
-    const google = await viaGoogle(query);
-    if (google) return { point: google, source: "google", failure: null };
-  } catch {
-    return { point: null, source: null, failure: "network" };
-  }
-
-  return { point: null, source: null, failure: "no-match" };
+  return {
+    point: null,
+    source: null,
+    failure: reached ? "no-match" : "network",
+  };
 }
 
 export interface AddressCandidate {
