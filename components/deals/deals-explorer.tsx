@@ -29,7 +29,7 @@ import {
   type LiveFailureReason,
 } from "@/lib/data";
 import { fmtNum } from "@/lib/format";
-import { estimateCushionPts } from "@/lib/mock/rentals";
+import { estimateDeal, type DealRead } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 import { Button } from "@/components/ui/button";
@@ -97,8 +97,10 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 /** A listing joined with its market context, computed once. */
 interface Row {
   listing: RentalListing;
-  /** Whole points, from lib/mock/rentals (which uses lib/calc). */
-  cushionPts: number;
+  /** Cushion, cash flow and nightly rate, from lib/mock/rentals (which
+   *  runs lib/calc). Computed once here so the card, the sort and the
+   *  detail panel are all reading the same arithmetic. */
+  deal: DealRead;
   /** Lowercased market-name/state haystack for the Location search. */
   haystack: string;
   /** Punctuation-blind haystack for the Keywords filter: the listing's
@@ -108,7 +110,7 @@ interface Row {
 }
 
 const SORTERS: Record<SortKey, (a: Row, b: Row) => number> = {
-  spread: (a, b) => b.cushionPts - a.cushionPts,
+  spread: (a, b) => b.deal.cushionPts - a.deal.cushionPts,
   // A listing whose age we don't know sorts last, never as the freshest.
   newest: (a, b) =>
     (a.listing.daysOnMarket ?? Number.POSITIVE_INFINITY) -
@@ -385,7 +387,7 @@ export function DealsExplorer({
       return [
         {
           listing,
-          cushionPts: estimateCushionPts(listing, market),
+          deal: estimateDeal(listing, market),
           haystack: marketSearchText(market),
           keywordHaystack: normalizeKeyword(
             [
@@ -938,7 +940,7 @@ export function DealsExplorer({
                     ref={setRef(r.listing.id)}
                     listing={r.listing}
                     priority={i < EAGER_IMAGES}
-                    cushionPts={r.cushionPts}
+                    deal={r.deal}
                     selected={r.listing.id === selectedId}
                     hovered={r.listing.id === hoveredId}
                     onHoverChange={setHoveredId}

@@ -9,7 +9,7 @@
  */
 
 import * as React from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,6 +146,7 @@ function FilterChip({
   active,
   open,
   onOpenChange,
+  icon: Icon,
   children,
 }: {
   label: string;
@@ -153,6 +154,8 @@ function FilterChip({
   active: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Leading glyph, for the catch-all chip that has no one meaning. */
+  icon?: typeof SlidersHorizontal;
   children: React.ReactNode;
 }) {
   return (
@@ -169,6 +172,8 @@ function FilterChip({
         >
           {active ? (
             <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+          ) : Icon ? (
+            <Icon aria-hidden className="size-3.5" />
           ) : null}
           {label}
           {active && summary ? (
@@ -314,63 +319,101 @@ function PricePanel({
   );
 }
 
-function CountTilesPanel({
-  applied,
+/** The tile row itself, so beds and baths can share one panel without
+ *  sharing one selection. */
+function CountTiles({
   unit,
+  selected,
+  onToggle,
+}: {
+  unit: string;
+  selected: number[];
+  onToggle: (value: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        {selected.length === 0 ? `Any ${unit}` : `Exact ${unit}`}
+      </p>
+      <div
+        className="grid gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${COUNT_OPTIONS.length}, 1fr)` }}
+      >
+        {COUNT_OPTIONS.map(([v, label]) => {
+          const on = selected.includes(v);
+          return (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={on}
+              aria-label={`${label} ${unit}`}
+              onClick={() => onToggle(v)}
+              className={cn(
+                "h-9 rounded-sm border text-sm transition-colors duration-150 tabular",
+                on
+                  ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                  : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function toggleIn(current: number[], v: number): number[] {
+  return current.includes(v)
+    ? current.filter((x) => x !== v)
+    : [...current, v].sort((a, b) => a - b);
+}
+
+/**
+ * Beds and baths in one panel.
+ *
+ * They were two chips, which is two clicks and two popovers for a
+ * single thought — "a two-bed with a proper bathroom". Every rental
+ * portal pairs them for that reason. One Apply commits both, so the
+ * list never reflows twice for one decision.
+ */
+function BedsBathsPanel({
+  applied,
   onApply,
   onClose,
 }: {
-  applied: number[];
-  unit: string;
-  onApply: (value: number[]) => void;
+  applied: DealFilters;
+  onApply: (patch: Partial<DealFilters>) => void;
   onClose: () => void;
 }) {
-  const [selected, setSelected] = React.useState<number[]>(applied);
-  const toggle = (v: number) =>
-    setSelected((current) =>
-      current.includes(v)
-        ? current.filter((x) => x !== v)
-        : [...current, v].sort((a, b) => a - b)
-    );
+  const [beds, setBeds] = React.useState<number[]>(applied.beds);
+  const [baths, setBaths] = React.useState<number[]>(applied.baths);
 
   return (
     <>
       <PanelBody>
-        <p className="text-xs text-muted-foreground">
-          {selected.length === 0 ? `Any ${unit}` : `Exact ${unit}`}
-        </p>
-        <div
-          className="grid gap-1.5"
-          style={{ gridTemplateColumns: `repeat(${COUNT_OPTIONS.length}, 1fr)` }}
-        >
-          {COUNT_OPTIONS.map(([v, label]) => {
-            const on = selected.includes(v);
-            return (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggle(v)}
-                className={cn(
-                  "h-9 rounded-sm border text-sm transition-colors duration-150 tabular",
-                  on
-                    ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
-                    : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        <CountTiles
+          unit="bedrooms"
+          selected={beds}
+          onToggle={(v) => setBeds((c) => toggleIn(c, v))}
+        />
+        <CountTiles
+          unit="bathrooms"
+          selected={baths}
+          onToggle={(v) => setBaths((c) => toggleIn(c, v))}
+        />
         <p className="text-[11px] text-muted-foreground">
           Pick as many as you like. Nothing selected means any.
         </p>
       </PanelBody>
       <PanelFooter
-        onReset={() => setSelected([])}
+        onReset={() => {
+          setBeds([]);
+          setBaths([]);
+        }}
         onApply={() => {
-          onApply(selected);
+          onApply({ beds, baths });
           onClose();
         }}
       />
@@ -563,6 +606,14 @@ const COUNT_OPTIONS: [number, string][] = [
 ];
 
 /** "2 bd", "1, 2 bd", "5+ bd" — the chip has room for a few. */
+/** "2 bd · 1+ ba", or just the half that is set. */
+export function bedsBathsSummary(f: DealFilters): string | undefined {
+  const parts = [countSummary(f.beds, "bd"), countSummary(f.baths, "ba")].filter(
+    Boolean
+  );
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
 export function countSummary(values: number[], unit: string): string | undefined {
   if (values.length === 0) return undefined;
   const label = (v: number) => (v >= 5 ? "5+" : String(v));
@@ -607,18 +658,12 @@ export function DealFilterChips({
 
   return (
     <>
-      <FilterChip
-        label="Price"
-        active={priceActive}
-        summary={priceSummary(filters)}
-        {...chip("price")}
-      >
-        <PricePanel applied={filters} onApply={onChange} onClose={close} />
-      </FilterChip>
-
-      {/* The deal-maker gets a one-click toggle, not a panel. When the
-          source ships no amenity data, it disables rather than filtering
-          everything away and implying nothing is furnished. */}
+      {/* Where a rental portal puts "For rent", this product puts the
+          question that actually changes the maths. A furnished unit can
+          start its furnishing budget at zero, so it is the one filter
+          worth a click rather than a panel — and when the source ships
+          no amenity data it disables rather than filtering everything
+          away and implying nothing is furnished. */}
       <button
         type="button"
         aria-pressed={filters.furnishedOnly}
@@ -645,31 +690,21 @@ export function DealFilterChips({
       </button>
 
       <FilterChip
-        label="Beds"
-        active={filters.beds.length > 0}
-        summary={countSummary(filters.beds, "bd")}
-        {...chip("beds")}
+        label="Price"
+        active={priceActive}
+        summary={priceSummary(filters)}
+        {...chip("price")}
       >
-        <CountTilesPanel
-          applied={filters.beds}
-          unit="bedrooms"
-          onApply={(beds) => onChange({ beds })}
-          onClose={close}
-        />
+        <PricePanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
 
       <FilterChip
-        label="Baths"
-        active={filters.baths.length > 0}
-        summary={countSummary(filters.baths, "ba")}
-        {...chip("baths")}
+        label="Beds & baths"
+        active={filters.beds.length > 0 || filters.baths.length > 0}
+        summary={bedsBathsSummary(filters)}
+        {...chip("bedsbaths")}
       >
-        <CountTilesPanel
-          applied={filters.baths}
-          unit="bathrooms"
-          onApply={(baths) => onChange({ baths })}
-          onClose={close}
-        />
+        <BedsBathsPanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
 
       <FilterChip
@@ -685,18 +720,23 @@ export function DealFilterChips({
         <HomeTypePanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
 
+      {/* The catch-all, last, like every portal's. Keywords is what
+          lives here today; anything narrower than a first-class chip
+          belongs here as it arrives. */}
       <FilterChip
-        label="Keywords"
+        label="Filters"
+        icon={SlidersHorizontal}
         active={filters.keywords.length > 0}
         summary={
           filters.keywords.length > 1
             ? `${filters.keywords[0]} +${filters.keywords.length - 1}`
             : filters.keywords[0]
         }
-        {...chip("keywords")}
+        {...chip("more")}
       >
         <KeywordsPanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
+
     </>
   );
 }

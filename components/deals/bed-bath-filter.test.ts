@@ -29,7 +29,12 @@ function row(bedrooms: number, bathrooms: number) {
     petFriendly: false,
     features: [],
   } as unknown as RentalListing;
-  return { listing, cushionPts: 0, haystack: "tampa florida fl", keywordHaystack: "" };
+  return {
+    listing,
+    deal: { cushionPts: 0, netCashFlow: 0, nightlyRate: 0, breakeven: 0 },
+    haystack: "tampa florida fl",
+    keywordHaystack: "",
+  };
 }
 
 const filters = (patch: Partial<typeof DEFAULT_DEAL_FILTERS>) => ({
