@@ -273,3 +273,55 @@ export function reserveContact(key: string, now = new Date()): QuotaCheck {
 export function resetContactLedger(): void {
   contacted = { day: "", keys: new Set() };
 }
+
+/* ------------------------------------------------------------------ */
+/* Listing-page joins: a ceiling on MARKETS backfilled                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The join that gives each row its listing page reads the portal's
+ * search several pages deep, and every page is a billed scrape. On the
+ * fresh-fetch path that spend is already bounded — the live-search cap
+ * above gates it. On the BACKFILL path it is not: a market whose stored
+ * rows predate the join is served out of the store, which is the whole
+ * point of the store, and never passes the gate on its way.
+ *
+ * That is fine at forty credits a market and much less fine at a
+ * hundred and twenty. So the backfill gets its own daily ceiling, in
+ * markets rather than credits, because markets are what it spends.
+ *
+ * A market refused today is not broken: its rows still show, and its
+ * cards still link out through the fallback search. It simply waits its
+ * turn tomorrow. Slow is the correct failure mode for a migration.
+ */
+export const DEFAULT_DAILY_JOIN_CAP = 25;
+
+export function joinCap(): number {
+  const raw = Number(process.env.JOIN_DAILY_CAP);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_DAILY_JOIN_CAP;
+}
+
+let joined: Ledger = { day: "", keys: new Set() };
+
+function currentJoined(now: Date): Ledger {
+  const day = dayKey(now);
+  if (joined.day !== day) joined = { day, keys: new Set() };
+  return joined;
+}
+
+/** Claim today's budget for one market's backfill, or learn there is
+ *  none left. Reserves rather than checks: the caller is about to
+ *  spend, and a check followed by a spend overshoots under load. */
+export function reserveJoin(slug: string, now = new Date()): QuotaCheck {
+  const cap = joinCap();
+  const { keys } = currentJoined(now);
+  const cached = keys.has(slug);
+  const allowed = cached || keys.size < cap;
+  if (allowed && !cached) keys.add(slug);
+  return { allowed, cached, remaining: Math.max(0, cap - keys.size), cap };
+}
+
+/** Tests only. */
+export function resetJoinLedger(): void {
+  joined = { day: "", keys: new Set() };
+}

@@ -5,8 +5,11 @@ import {
   checkLiveSearch,
   commitLiveSearch,
   dailyCap,
+  joinCap,
   reserveEnrichments,
+  reserveJoin,
   resetEnrichLedger,
+  resetJoinLedger,
   resetLiveSearchLedger,
 } from "./quota";
 
@@ -102,5 +105,36 @@ describe("reserveEnrichments", () => {
   it("falls back to the cautious default on a junk cap", () => {
     process.env.SCRAPERAPI_DAILY_ENRICH_CAP = "not-a-number";
     expect(reserveEnrichments(1).cap).toBe(DEFAULT_DAILY_ENRICH_CAP);
+  });
+});
+
+describe("the listing-page join cap", () => {
+  beforeEach(() => resetJoinLedger());
+
+  it("lets a market through once and remembers it for free", () => {
+    // The same market re-read in the same day is one spend, not two.
+    expect(reserveJoin("tampa").allowed).toBe(true);
+    const again = reserveJoin("tampa");
+    expect(again.allowed).toBe(true);
+    expect(again.cached).toBe(true);
+  });
+
+  it("stops at the cap and counts distinct markets", () => {
+    const cap = joinCap();
+    for (let i = 0; i < cap; i += 1) {
+      expect(reserveJoin(`m-${i}`).allowed).toBe(true);
+    }
+    expect(reserveJoin("one-too-many").allowed).toBe(false);
+    // A market already spent today still gets through — it costs
+    // nothing, and refusing it would strand rows for no saving.
+    expect(reserveJoin("m-0").allowed).toBe(true);
+  });
+
+  it("resets on the next UTC day", () => {
+    const today = new Date("2026-03-01T23:59:00Z");
+    const tomorrow = new Date("2026-03-02T00:01:00Z");
+    for (let i = 0; i < joinCap(); i += 1) reserveJoin(`m-${i}`, today);
+    expect(reserveJoin("fresh", today).allowed).toBe(false);
+    expect(reserveJoin("fresh", tomorrow).allowed).toBe(true);
   });
 });

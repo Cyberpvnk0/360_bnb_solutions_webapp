@@ -28,7 +28,11 @@ import {
   mapRentCastListing,
   RentCastError,
 } from "@/lib/live/rentcast";
-import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
+import {
+  checkLiveSearch,
+  commitLiveSearch,
+  reserveJoin,
+} from "@/lib/live/quota";
 import {
   isFresh,
   readMarketStore,
@@ -85,20 +89,30 @@ async function withListingPages(
  *
  * COVERAGE IS THE BINDING CONSTRAINT HERE, not latency. The rentals
  * feed returns up to five hundred rows for a market; the portal search
- * paginates at about forty, so the default four pages can only ever
- * offer a listing page to the first hundred and sixty addresses it
- * happens to carry. Every row past that falls back to a search link no
- * matter how well the matcher works — which is what a student sees as
- * "none of these open the property".
+ * paginates at about forty, so four pages could only ever offer a
+ * listing page to the first hundred and sixty addresses it happens to
+ * carry. Every row past that fell back to a search link no matter how
+ * well the matcher worked — which is what a student saw as "none of
+ * these open the property".
  *
- * Each page is its own billed scrape (about ten credits), so the depth
- * is a spend decision rather than ours to make: this reads the feed's
- * own page setting by default and REDFIN_JOIN_PAGES raises the join
- * alone, leaving the furnished search where it is.
+ * TWELVE IS A DELIBERATE PURCHASE, not a default that drifted. Each
+ * page is its own billed scrape at about ten credits, so this triples
+ * a market's join cost — from roughly forty credits to a hundred and
+ * twenty — to reach about four hundred and ninety rows, which is the
+ * whole of what the feed returns. It is bounded on both paths: the
+ * live-search cap gates a fresh fetch, and the join cap gates a
+ * backfill. REDFIN_JOIN_PAGES moves it either way without a deploy.
+ *
+ * Smaller markets cost less, not the same: a search that runs out of
+ * pages stops, so twelve is a ceiling rather than a price.
  */
-function joinPages(): number | undefined {
+export const DEFAULT_JOIN_PAGES = 12;
+
+function joinPages(): number {
   const raw = Number(process.env.REDFIN_JOIN_PAGES);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : undefined;
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_JOIN_PAGES;
 }
 
 /**
@@ -139,6 +153,12 @@ async function backfillListingPages(
 
   const attempt = `${market.slug}@${listingsAt ?? "unknown"}`;
   if (joinAttempted.has(attempt)) return null;
+
+  // The fresh-fetch path is gated by the live-search cap; this one is
+  // served out of the store and never passes it, so it carries its own.
+  // A market refused today still shows its rows and still links out
+  // through the fallback search — it just waits its turn.
+  if (!reserveJoin(market.slug).allowed) return null;
   joinAttempted.add(attempt);
 
   const joined = await withListingPages(market, rows);
