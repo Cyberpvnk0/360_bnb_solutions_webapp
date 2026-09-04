@@ -36,13 +36,29 @@ export interface ListingFacts {
 }
 
 /**
+ * The least a row has to be to go into the index.
+ *
+ * Deliberately not RentalListing. Everything below reads exactly three
+ * fields, and asking for a full mapped listing forced the caller to run
+ * a geocoder and a mapper first — which cost money, cost latency, and
+ * silently dropped rows whose page URL was perfectly good but whose bed
+ * count was missing. A RentalListing still satisfies this, so the
+ * callers that already had one are unaffected.
+ */
+export interface SiteRow {
+  address: string;
+  sourceUrl?: string;
+  contact?: ListingContact;
+}
+
+/**
  * The listing site's rows, keyed for lookup.
  *
  * Built once per market rather than per row: a market is hundreds of
  * listings on each side, and scanning one against the other is the
  * quadratic that made an earlier version of this time out.
  */
-export function indexBySite(rows: readonly RentalListing[]): Map<string, ListingFacts> {
+export function indexBySite(rows: readonly SiteRow[]): Map<string, ListingFacts> {
   const out = new Map<string, ListingFacts>();
   for (const row of rows) {
     const key = addressKey(row.address);

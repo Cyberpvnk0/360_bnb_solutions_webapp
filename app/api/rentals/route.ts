@@ -20,7 +20,7 @@
  * feed is unreachable — so the UI can say which, not just "no data".
  */
 
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   fetchLiveRentals,
   fetchLiveRentalsByZip,
@@ -45,7 +45,7 @@ import {
   proseFields,
 } from "@/lib/live/shape";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
-import { fetchRedfinRentals } from "@/lib/live/redfin";
+import { fetchRedfinRentals, siteRowsFrom } from "@/lib/live/redfin";
 import {
   indexBySite,
   joinListingFacts,
@@ -77,8 +77,16 @@ async function withListingPages(
   rows: RentalListing[]
 ): Promise<RentalListing[]> {
   try {
-    const { listings } = await fetchRedfinRentals(market, { pages: joinPages() });
-    return joinListingFacts(rows, indexBySite(listings));
+    // `map: false` skips the geocoder and the mapper. The join reads an
+    // address and a URL; running the full mapper to get them bought
+    // coordinates nobody here uses, at a couple of dollars of geocoding
+    // per market, and threw away every row the mapper could not place —
+    // page URL and all. See siteRowsFrom.
+    const { raw } = await fetchRedfinRentals(market, {
+      pages: joinPages(),
+      map: false,
+    });
+    return joinListingFacts(rows, indexBySite(siteRowsFrom(raw)));
   } catch {
     return rows;
   }
@@ -128,41 +136,53 @@ function joinPages(): number {
 const joinAttempted = new Set<string>();
 
 /**
- * Stored rows brought up to date with the join, or null when there is
- * nothing to do.
+ * Run the join AFTER the response has gone out, and store what it
+ * finds. Returns immediately; the caller does not wait.
  *
- * The store predates the join, so a market searched before it shipped
- * holds rows that carry no listing page at all — and the fresh-store
- * early return means they never pass through the join on their way out.
- * That is the whole reason twenty Jacksonville properties in a row fell
- * back to a search: not a matcher that missed, but a join that was
- * never offered the rows.
+ * NOTHING ABOUT THIS BELONGS IN A REQUEST. Reading a dozen pages of the
+ * portal's search is seconds of work, and it buys an ENHANCEMENT: a
+ * card whose row has no listing page yet still shows, still prices,
+ * still links out through the fallback search. Making every student in
+ * a market wait on it — including the ones who never click a photo
+ * link — was paying the whole market's latency for one row's polish.
  *
- * ZERO coverage is the signal, deliberately. Any row carrying a page
+ * So the response ships the inventory, and the join lands in the store
+ * behind it. The next reader of that market gets the pages for free,
+ * and with the store shared across every student the "next reader" is
+ * usually seconds later, not the same person.
+ *
+ * ONCE PER ROW SET. The attempt is recorded before any awaiting, so a
+ * burst of requests on a cold market schedules one join rather than
+ * twenty. Keyed by timestamp, so tomorrow's rows get their own attempt.
+ *
+ * ZERO coverage is the trigger, deliberately: any row carrying a page
  * proves the join has run over this set, and the portal never matches
- * all of a market — so testing for "some" rather than "enough" is what
- * makes this run exactly once per row set instead of on every request
- * forever.
+ * all of a market — so testing "some" rather than "enough" is what
+ * makes this run exactly once instead of on every request forever.
  */
-async function backfillListingPages(
+function joinAfterResponse(
   market: Market,
   rows: RentalListing[],
   listingsAt: string | null
-): Promise<RentalListing[] | null> {
-  if (!needsListingPages(rows)) return null;
+): void {
+  if (!needsListingPages(rows)) return;
 
   const attempt = `${market.slug}@${listingsAt ?? "unknown"}`;
-  if (joinAttempted.has(attempt)) return null;
+  if (joinAttempted.has(attempt)) return;
 
-  // The fresh-fetch path is gated by the live-search cap; this one is
-  // served out of the store and never passes it, so it carries its own.
-  // A market refused today still shows its rows and still links out
-  // through the fallback search — it just waits its turn.
-  if (!reserveJoin(market.slug).allowed) return null;
+  // Its own daily ceiling. A market refused today still shows its rows
+  // and still links out through the fallback search — it waits its turn.
+  if (!reserveJoin(market.slug).allowed) return;
   joinAttempted.add(attempt);
 
-  const joined = await withListingPages(market, rows);
-  return joined.some((r) => r.sourceUrl) ? joined : null;
+  after(async () => {
+    const joined = await withListingPages(market, rows);
+    if (!joined.some((r) => r.sourceUrl)) return;
+    // The rows' own timestamp, never now: only their listing pages are
+    // new, and restamping them would tell the next reader this
+    // inventory is fresh and hold off the real refresh for a day.
+    await writeMarketListings(market.slug, joined, listingsAt);
+  });
 }
 
 /** Same shape for every failure, so the client can explain itself. */
@@ -272,26 +292,15 @@ export async function GET(request: Request) {
   const gate = checkLiveSearch(`market:${market.slug}`);
   if (stored?.listings?.length && isFresh(stored.listingsAt)) {
     // Rows written before the join shipped carry no listing page, and
-    // the early return is what kept them from ever getting one. Fill
-    // them in on the way out and write the result back, so the next
-    // reader — and the next instance — gets it for free.
-    const joined = await backfillListingPages(
-      market,
-      stored.listings,
-      stored.listingsAt
-    );
-    // The rows' own timestamp, not now: only their listing pages are
-    // new, and restamping them would tell the next reader this
-    // inventory is fresh and hold off the real refresh for a day.
-    if (joined) {
-      await writeMarketListings(market.slug, joined, stored.listingsAt);
-    }
+    // this early return is what kept them from ever getting one. Fill
+    // them in behind the response rather than in front of it.
+    joinAfterResponse(market, stored.listings, stored.listingsAt);
     return NextResponse.json({
       live: true,
       asOf: stored.listingsAt,
       market: market.slug,
       center: { lat: market.lat, lon: market.lon },
-      listings: joined ?? stored.listings,
+      listings: stored.listings,
       remaining: gate.remaining,
       cap: gate.cap,
     });
@@ -305,15 +314,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    const listings = await withListingPages(market, await fetchLiveRentals(market));
+    const listings = await fetchLiveRentals(market);
     const spent = commitLiveSearch(`market:${market.slug}`);
+    // One timestamp for both writes, so the join's rewrite lands on the
+    // same row rather than aging it forward.
+    const asOf = new Date().toISOString();
     // Stored for the next instance, deploy, and student. Awaited so a
     // serverless runtime can't freeze the write mid-flight; it still
     // never throws.
-    await writeMarketListings(market.slug, listings);
+    await writeMarketListings(market.slug, listings, asOf);
+    joinAfterResponse(market, listings, asOf);
     return NextResponse.json({
       live: true,
-      asOf: new Date().toISOString(),
+      asOf,
       market: market.slug,
       center: { lat: market.lat, lon: market.lon },
       listings,

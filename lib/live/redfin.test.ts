@@ -12,7 +12,9 @@ import {
   redfinCoversMarket,
   looksSpent,
   redfinRentalsUrlFor,
+  siteRowsFrom,
 } from "./redfin";
+import { streetPartOf } from "./address";
 
 const jax = MARKET_BY_SLUG.get("jacksonville")!;
 
@@ -361,5 +363,51 @@ describe("a complex describes itself as a range", () => {
     const l = mapped({ sq_ft: "940 sq ft", number_beds: "2 beds" })!;
     expect(l.sqft).toBe(940);
     expect(l.bedrooms).toBe(2);
+  });
+});
+
+describe("siteRowsFrom — what the join reads, and only that", () => {
+  it("reads an address and a listing page with no geocoder in sight", () => {
+    const rows = siteRowsFrom([
+      { address: "1535 Van Buren St", url: "/FL/Jacksonville/x/home/1" },
+    ]);
+    expect(rows).toEqual([
+      {
+        address: "1535 Van Buren St",
+        sourceUrl: "https://www.redfin.com/FL/Jacksonville/x/home/1",
+      },
+    ]);
+  });
+
+  it("keeps rows the mapper would have thrown away", () => {
+    // No price, no beds, no coordinates — every reason mapRedfinListing
+    // drops a row. None of them is a reason the JOIN cannot use it: the
+    // address is fine and the page is real.
+    const raw = [{ address: "77 Hare Ave", url: "/x/home/9" }];
+    expect(siteRowsFrom(raw)).toHaveLength(1);
+    expect(
+      mapRedfinListing(raw[0], jax, { furnished: false, index: 0 }).ok
+    ).toBe(false);
+  });
+
+  it("strips a community name the same way the mapper does", () => {
+    // Both sides of the join have to key identically or nothing matches.
+    expect(
+      siteRowsFrom([{ address: "The Palms | 88 Bay St", url: "/x/home/2" }])[0]
+        .address
+    ).toBe(streetPartOf("The Palms | 88 Bay St"));
+  });
+
+  it("skips a row with no page to point at", () => {
+    // A row with no URL contributes nothing but a chance to mismatch.
+    expect(siteRowsFrom([{ address: "1 A St" }])).toEqual([]);
+    expect(siteRowsFrom([{ url: "/x/home/3" }])).toEqual([]);
+  });
+
+  it("leaves an absolute URL alone", () => {
+    expect(
+      siteRowsFrom([{ address: "1 A St", url: "https://www.redfin.com/z" }])[0]
+        .sourceUrl
+    ).toBe("https://www.redfin.com/z");
   });
 });

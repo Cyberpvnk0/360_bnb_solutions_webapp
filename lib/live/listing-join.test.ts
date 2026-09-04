@@ -5,6 +5,7 @@ import {
   joinListingFacts,
   needsListingPages,
 } from "@/lib/live/listing-join";
+import { addressKey } from "@/lib/live/address";
 import type { RentalListing } from "@/lib/mock/types";
 
 const row = (address: string, extra: Partial<RentalListing> = {}) =>
@@ -126,5 +127,32 @@ describe("needsListingPages", () => {
     // Nothing to join, and an empty market must not spend a search
     // finding that out again on every request.
     expect(needsListingPages([])).toBe(false);
+  });
+});
+
+describe("indexing straight off the portal's raw rows", () => {
+  it("takes an address and a URL without a mapped listing", () => {
+    // The whole point of widening the input: no geocoder, no mapper,
+    // no coordinates bought and thrown away.
+    const index = indexBySite([
+      { address: "1535 Van Buren St", sourceUrl: "https://www.redfin.com/a" },
+    ]);
+    expect(index.get(addressKey("1535 Van Buren St")!)).toEqual({
+      sourceUrl: "https://www.redfin.com/a",
+      contact: undefined,
+    });
+  });
+
+  it("joins a feed row to a page the mapper would have dropped", () => {
+    // A row with no bed count never survived the mapper, so its page
+    // URL never reached the index — despite the address being fine and
+    // the page being real. Twenty-two of one probe's 164 rows.
+    const feed = [row("1535 Van Buren St")];
+    const index = indexBySite([
+      { address: "1535 Van Buren Street", sourceUrl: "https://www.redfin.com/a" },
+    ]);
+    expect(joinListingFacts(feed, index)[0].sourceUrl).toBe(
+      "https://www.redfin.com/a"
+    );
   });
 });

@@ -244,6 +244,16 @@ function pickString(row: Row, keys: readonly string[]): string | undefined {
   return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : undefined;
 }
 
+/** The listing's own page, absolute. Shared by the mapper and the join
+ *  index so the two can never disagree about where a row points. */
+function detailUrlOf(row: Row): string | undefined {
+  const detail = pickString(row, URL_KEYS);
+  if (!detail) return undefined;
+  return detail.startsWith("http")
+    ? detail
+    : `https://www.redfin.com${detail.startsWith("/") ? "" : "/"}${detail}`;
+}
+
 /* Pinned to a live response. Redfin's search rows carry display
  * STRINGS ("2 beds", "1.5 baths", "940 sq ft"), a price wrapped in an
  * array of objects, and — notably — no coordinates at all. */
@@ -442,11 +452,7 @@ export function mapRedfinListing(
       daysOnMarket: pickNumber(raw, ["daysOnMarket", "dom"]),
       // The listing's own page: what "View photos" links to. Nothing
       // here opens it — the photos stay on the site that published them.
-      sourceUrl: detail
-        ? detail.startsWith("http")
-          ? detail
-          : `https://www.redfin.com${detail.startsWith("/") ? "" : "/"}${detail}`
-        : undefined,
+      sourceUrl: detailUrlOf(raw),
       petFriendly: features.includes("Pet friendly"),
       features,
       // A furnished-filtered search is a real amenity answer; the chips
@@ -454,6 +460,51 @@ export function mapRedfinListing(
       featuresKnown: opts.furnished,
     },
   };
+}
+
+/**
+ * Address and listing page, straight off the raw rows.
+ *
+ * WHAT THE JOIN ACTUALLY NEEDS, AND NOTHING ELSE. lib/live/listing-join
+ * matches a feed row to its published page by address; it never touches
+ * coordinates, beds, baths or rent. Running the full mapper to get here
+ * was paying three prices for facts it then discarded:
+ *
+ *   MONEY. The mapper geocodes every row, because a row that will be
+ *   PLOTTED needs a point. At roughly five hundred rows a market that
+ *   is a couple of dollars of geocoding per market per day, for
+ *   coordinates the join throws away.
+ *
+ *   TIME. Geocoding is the slow step by a wide margin, and it sat in
+ *   the request path.
+ *
+ *   COVERAGE, which is the one that actually hurt. The mapper DROPS a
+ *   row it cannot use — no bed count, no coordinates — and a dropped
+ *   row takes its listing URL with it. Twenty-two of one probe's
+ *   hundred and sixty-four rows went that way. Their addresses were
+ *   fine and their pages were real; they were discarded for missing a
+ *   number the join does not read.
+ *
+ * So this skips all of it. No geocoder, no mapper, no skip rules — an
+ * address and a URL, which is the whole of what gets joined.
+ */
+export interface SiteRow {
+  address: string;
+  sourceUrl?: string;
+}
+
+export function siteRowsFrom(raw: readonly Row[]): SiteRow[] {
+  const out: SiteRow[] = [];
+  for (const row of raw) {
+    const line = pickString(row, ADDRESS_KEYS);
+    if (!line) continue;
+    const sourceUrl = detailUrlOf(row);
+    if (!sourceUrl) continue;
+    // The street, not "Community Name | Street" — the same reduction the
+    // mapper applies, so both sides of the join key the same way.
+    out.push({ address: streetPartOf(line), sourceUrl });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
