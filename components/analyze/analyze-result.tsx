@@ -119,6 +119,17 @@ export function AnalyzeResult({
     milesAway: number;
     /** True when the size was assumed rather than supplied. */
     assumedSize: boolean;
+    /**
+     * Where the starting rent came from.
+     *
+     * "listing" is the property's own asking rent — a fact about this
+     * lease. "market" is the median of comparable leases nearby — an
+     * estimate of what a place like this costs. Every figure on the
+     * page is computed off it, so which one it is belongs on screen:
+     * measured and modelled are never blended here and must never look
+     * alike.
+     */
+    rentSource: "listing" | "market";
   } | null;
 }) {
   const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
@@ -228,12 +239,39 @@ export function AnalyzeResult({
                 with it, so set it if that is wrong.
               </p>
             ) : null}
+            {/* The single number every figure below stands on. Saying
+                where it came from is not a caveat on the modelled case
+                only — the measured case has to be recognisable too, or
+                nobody learns to tell them apart. */}
+            {searchedAddress ? (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {searchedAddress.rentSource === "listing" ? (
+                  <>
+                    Starting from this unit&apos;s asking rent of{" "}
+                    <span className="tabular text-foreground">
+                      {fmtMoney(analysis.defaults.monthlyRent)}
+                    </span>
+                    /mo. Change it below to test a negotiation.
+                  </>
+                ) : (
+                  <>
+                    No asking rent for this address, so the calculator starts
+                    at{" "}
+                    <span className="tabular text-foreground">
+                      {fmtMoney(analysis.defaults.monthlyRent)}
+                    </span>
+                    /mo — the median of the comparable leases below, not this
+                    unit&apos;s own. Set the real one to make the rest exact.
+                  </>
+                )}
+              </p>
+            ) : null}
             {distantMarket ? (
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                 Nearest covered market is {searchedAddress!.market.name},{" "}
                 <span className="tabular">{searchedAddress!.milesAway}</span> miles
-                away — local rules and the starting rent come from there.
-                Comps below are drawn around this address.
+                away — local rules come from there. Comps below are drawn
+                around this address.
               </p>
             ) : null}
             <div className="mt-2.5 flex flex-wrap gap-1.5">

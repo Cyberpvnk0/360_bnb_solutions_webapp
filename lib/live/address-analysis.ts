@@ -14,9 +14,12 @@
  * property and a saved one are the same object by the time anything
  * renders one.
  *
- * The market supplies context the address cannot: local regulation, a
- * median lease to start the calculator from, the terrain. Everything
- * property-specific comes from what the person actually entered.
+ * The market supplies context the address cannot: local regulation, the
+ * terrain, and a median lease to start the calculator from WHEN NOBODY
+ * KNOWS THE REAL ONE. A listing handed over from the Deal Finder does
+ * know it, and its asking rent displaces the median outright — see
+ * AddressSpec.rentMonthly. Everything else property-specific comes from
+ * what the person actually entered.
  */
 
 import { MARKETS, MARKET_BY_SLUG } from "@/lib/mock/markets";
@@ -30,6 +33,21 @@ export interface AddressSpec {
   bedrooms: number;
   bathrooms: number;
   propertyType: PropertyType;
+  /**
+   * The property's own asking rent, when a listing supplied one.
+   *
+   * Absent for a typed address, which has no listing behind it and
+   * genuinely has to be estimated from comparable leases. Present, it
+   * OVERRIDES that estimate: it is what this lease costs rather than
+   * what places like it cost, and every figure the page derives stands
+   * on it.
+   */
+  rentMonthly?: number;
+  /** The unit's own city and state, when a listing supplied them. The
+   *  market's name stands in otherwise, which is right for a typed
+   *  address and wrong for a listing in a suburb the market covers. */
+  city?: string;
+  stateCode?: string;
 }
 
 const EARTH_RADIUS_MILES = 3958.8;
@@ -107,8 +125,8 @@ export function buildAddressAnalysis(
     analysis: {
       id,
       address: spec.address,
-      city: market.name,
-      stateCode: market.stateCode,
+      city: spec.city?.trim() || market.name,
+      stateCode: spec.stateCode?.trim() || market.stateCode,
       marketSlug: market.slug,
       bedrooms: spec.bedrooms,
       bathrooms: spec.bathrooms,
@@ -126,7 +144,10 @@ export function buildAddressAnalysis(
       createdAt: new Date().toISOString().slice(0, 10),
       strComps: [],
       ltrComps,
-      defaults: buildDefaultsFor(ltrComps, spec.bedrooms, id),
+      // The asking rent when a listing gave one, the comp median when
+      // nobody did. Never a blend of the two, and the caller says which
+      // it got so the page can say so too.
+      defaults: buildDefaultsFor(ltrComps, spec.bedrooms, id, spec.rentMonthly),
     },
     market,
     milesAway,

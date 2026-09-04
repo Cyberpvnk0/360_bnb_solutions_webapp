@@ -111,8 +111,31 @@ function buildLtrComps(
   return comps;
 }
 
-function buildDefaults(ltrComps: LtrComp[], bedrooms: number, rng: Rng): DealInputs {
-  const monthlyRent = estimateRentFromComps(ltrComps);
+/**
+ * The calculator's starting values.
+ *
+ * `askingRent` IS THE PROPERTY'S OWN RENT, and it wins outright when
+ * there is one. The comp median is an estimate of what a place like
+ * this leases for; the asking rent is what THIS lease costs, and every
+ * figure on the page — cushion, cash flow, breakeven — is computed off
+ * it. Starting a real listing's analysis from a modelled median put a
+ * number on screen that disagreed with the card the person had just
+ * clicked, in the one field they came to the page to reason about.
+ *
+ * The median is the fallback, not the default: a typed address has no
+ * listing behind it and genuinely has to be estimated. Callers must say
+ * which of the two they got — see AnalyzeResult's rentSource.
+ */
+function buildDefaults(
+  ltrComps: LtrComp[],
+  bedrooms: number,
+  rng: Rng,
+  askingRent?: number
+): DealInputs {
+  const monthlyRent =
+    askingRent !== undefined && Number.isFinite(askingRent) && askingRent > 0
+      ? Math.round(askingRent)
+      : estimateRentFromComps(ltrComps);
   return {
     monthlyRent,
     // Operators negotiate these away routinely, so the calculator starts
@@ -247,7 +270,10 @@ export function analysisForListing(listing: RentalListing): Analysis {
     createdAt: MOCK_TODAY,
     strComps,
     ltrComps,
-    defaults: buildDefaults(ltrComps, listing.bedrooms, rng),
+    // The listing's asking rent, not a median of places like it. The
+    // row on the card and the number in the calculator are then the
+    // same figure, which is the only way they can agree.
+    defaults: buildDefaults(ltrComps, listing.bedrooms, rng, listing.rentMonthly),
   };
   LISTING_ANALYSES.set(listing.analysisId, analysis);
   return analysis;
@@ -290,9 +316,11 @@ export function buildLtrCompsFor(
 export function buildDefaultsFor(
   ltrComps: LtrComp[],
   bedrooms: number,
-  seed: string
+  seed: string,
+  /** The property's own asking rent, when a listing supplied one. */
+  askingRent?: number
 ): DealInputs {
-  return buildDefaults(ltrComps, bedrooms, new Rng(hashStr(seed)));
+  return buildDefaults(ltrComps, bedrooms, new Rng(hashStr(seed)), askingRent);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { estimateRentFromComps } from "@/lib/calc/comps";
-import { analysisForListing } from "./analyses";
+import { ANALYSES, analysisForListing } from "./analyses";
 import { MARKET_BY_SLUG, MARKETS } from "./markets";
 import { submarketsFor } from "./submarkets";
 import {
@@ -113,7 +113,7 @@ describe("rentals", () => {
     expect(RENTAL_BY_ANALYSIS_ID.get(all[10].analysisId)).toBe(all[10]);
   });
 
-  it("analysisForListing mirrors the listing and keeps comp-backed defaults", () => {
+  it("analysisForListing mirrors the listing, rent included", () => {
     for (const listing of allRentals().slice(0, 60)) {
       const a = analysisForListing(listing);
       expect(a.id).toBe(listing.analysisId);
@@ -124,8 +124,26 @@ describe("rentals", () => {
       expect(a.bedrooms).toBe(listing.bedrooms);
       expect(a.bathrooms).toBe(listing.bathrooms);
       expect(a.propertyType).toBe(listing.propertyType);
-      // The same consistency rule every seeded pull obeys: the default
-      // rent IS the median of the LTR comp list shown beside it.
+      // THE ASKING RENT, not the median of the comps beside it.
+      //
+      // This assertion used to say the opposite, and the opposite was
+      // the bug: a listing knows what it costs, and starting its
+      // calculator from an estimate of what places like it cost made
+      // the analyzer disagree with the card that opened it — by two
+      // hundred dollars a month on the first row this test walks, which
+      // moves the cushion, the cash flow and the verdict with it.
+      //
+      // The comp median still governs a TYPED address, which has no
+      // listing behind it. That rule is pinned in the seeded-analysis
+      // check below, where it still belongs.
+      expect(a.defaults.monthlyRent).toBe(listing.rentMonthly);
+    }
+  });
+
+  it("still starts a seeded pull from its own comp median", () => {
+    // The fallback has to keep working: it is the honest answer for
+    // every property nobody has an asking rent for.
+    for (const a of ANALYSES.slice(0, 20)) {
       expect(a.defaults.monthlyRent).toBe(estimateRentFromComps(a.ltrComps));
     }
   });

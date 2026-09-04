@@ -18,6 +18,11 @@ const TYPES: PropertyType[] = ["apartment", "house", "condo", "townhome"];
 const ASSUMED_BEDROOMS = 2;
 const ASSUMED_BATHROOMS = 2;
 
+/** The band a monthly residential lease lives in. Below it is a nightly
+ *  rate or a typo; above it is not a lease this product analyses. */
+const MIN_RENT = 100;
+const MAX_RENT = 100_000;
+
 /**
  * A searched address arrives as query parameters rather than a stored
  * row: the parameters ARE the analysis, so the URL is shareable, needs
@@ -29,6 +34,12 @@ const ASSUMED_BATHROOMS = 2;
  * form standing between a person and the thing they came for. Assume
  * the common shape, run the numbers, and let them correct it on the
  * result — where they can see what the correction changes.
+ *
+ * So is the RENT, and it matters more than the rest. A listing knows
+ * what it asks; a typed address does not, and the analyzer estimates it
+ * from comparable leases. Both are legitimate, they are not the same
+ * kind of fact, and the page has to say which one it is holding — every
+ * figure below the fold is computed off this number.
  */
 function specFrom(
   sp: Record<string, string | string[] | undefined>
@@ -43,6 +54,7 @@ function specFrom(
   const bedrooms = Number(one("bd"));
   const bathrooms = Number(one("ba"));
   const type = one("t") as PropertyType | undefined;
+  const rent = Number(one("r"));
 
   if (!address || address.length < 4) return null;
   if (!Number.isFinite(lat) || Math.abs(lat) > 90) return null;
@@ -60,6 +72,14 @@ function specFrom(
       ? bathrooms
       : null;
 
+  // A residential lease, or nothing. Out of band means a typo or a
+  // hand-edited URL, and a nightly rate read as a monthly one would
+  // silently make every deal on the page look extraordinary.
+  const rentMonthly =
+    Number.isFinite(rent) && rent >= MIN_RENT && rent <= MAX_RENT
+      ? Math.round(rent)
+      : undefined;
+
   return {
     address,
     lat,
@@ -67,6 +87,9 @@ function specFrom(
     bedrooms: bd ?? ASSUMED_BEDROOMS,
     bathrooms: ba ?? ASSUMED_BATHROOMS,
     propertyType: type && TYPES.includes(type) ? type : "house",
+    rentMonthly,
+    city: one("c")?.trim() || undefined,
+    stateCode: one("s")?.trim().slice(0, 2).toUpperCase() || undefined,
     /** True when nobody told us the size and we picked one. The result
      *  page says so rather than presenting a guess as a reading. */
     assumedSize: bd === null || ba === null,
@@ -115,7 +138,14 @@ export default async function AnalyzeResultPage({
         // the building somebody typed rather than of a city centre.
         propertyPoint={point}
         liveComps={liveComps}
-        searchedAddress={{ market, milesAway, assumedSize: spec.assumedSize }}
+        searchedAddress={{
+          market,
+          milesAway,
+          assumedSize: spec.assumedSize,
+          // Which kind of number the calculator opened on. Measured and
+          // modelled are never blended here, and never shown alike.
+          rentSource: spec.rentMonthly === undefined ? "market" : "listing",
+        }}
       />
     );
   }
