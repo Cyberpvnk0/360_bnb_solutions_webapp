@@ -7,12 +7,13 @@
  * View or an aerial of the kerb; the interiors live on the listing
  * site, and this sends people there rather than copying anything here.
  *
- * TWO LABELS, BECAUSE THERE ARE TWO DESTINATIONS. When the row carries
- * its own listing URL this opens that property and says "View photos".
- * When it doesn't, lib/live/listing-links falls back to a quoted,
- * site-scoped search — which FINDS the listing rather than opening it —
- * and the label says "Find photos" instead. The difference is one
- * click, and copy that hides it spends that click on a surprise.
+ * ONE LABEL, TWO DESTINATIONS. When the row carries its own listing URL
+ * this opens that property; when it doesn't, lib/live/listing-links
+ * falls back to a quoted, site-scoped search that finds it. Both say
+ * "View photos", because the button is named for what the reader is
+ * after rather than for our plumbing, and a label that changes under
+ * them is its own kind of noise. The hover title still says which one
+ * it is, so the difference is available without being shouted.
  *
  * One component for all three surfaces, because the rule about WHEN to
  * show it is the interesting part and it should exist once:
@@ -76,13 +77,12 @@ export function PhotosLink({
         className
       )}
     >
-      {onListing ? "View photos" : "Find photos"}
+      View photos
       <ArrowUpRight aria-hidden className="size-3.5" />
-      <span className="sr-only">
-        {onListing
-          ? "(opens the listing in a new tab)"
-          : "(searches the listing sites in a new tab)"}
-      </span>
+      {/* The same words a sighted reader gets. A screen reader saying
+          something the button does not say is a second label, not a
+          better one. */}
+      <span className="sr-only">(opens in a new tab)</span>
     </a>
   );
 }
