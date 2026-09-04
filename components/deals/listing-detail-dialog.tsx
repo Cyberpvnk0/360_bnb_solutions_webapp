@@ -37,7 +37,7 @@ import {
 import { projectDeal } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtNum, fmtPct, localityLine } from "@/lib/format";
 import { benchmark2brInputs } from "@/lib/mock/markets";
-import { BEDROOM_ADR_FACTOR } from "@/lib/mock/rentals";
+import { adrFactorFor } from "@/lib/mock/markets";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
@@ -213,7 +213,7 @@ export function ListingDetailDialog({
   const projection = React.useMemo(() => {
     if (!listing || !market) return null;
     return projectDeal(benchmark2brInputs(listing.rentMonthly), {
-      adr: Math.round(market.adr * BEDROOM_ADR_FACTOR[listing.bedrooms]),
+      adr: Math.round(market.adr * adrFactorFor(listing.bedrooms)),
       marketOccupancy: market.occupancy,
     });
   }, [listing, market]);
@@ -369,7 +369,7 @@ export function ListingDetailDialog({
                 <p className="text-xs text-muted-foreground tabular">
                   {market.name} · {fmtPct(market.occupancy)} occupancy ·{" "}
                   {fmtMoney(
-                    Math.round(market.adr * BEDROOM_ADR_FACTOR[listing.bedrooms])
+                    Math.round(market.adr * adrFactorFor(listing.bedrooms))
                   )}
                   /night for a {listing.bedrooms} bd
                 </p>

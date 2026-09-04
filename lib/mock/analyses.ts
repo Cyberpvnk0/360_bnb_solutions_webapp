@@ -11,7 +11,12 @@
 
 import type { DealInputs } from "@/lib/calc/arbitrage";
 import { estimateRentFromComps } from "@/lib/calc/comps";
-import { BR_MULT, MARKET_BY_SLUG, MARKETS, RENT_MULT } from "./markets";
+import {
+  adrFactorFor,
+  MARKET_BY_SLUG,
+  MARKETS,
+  rentFactorFor,
+} from "./markets";
 import { clamp, daysAgo, hashStr, MOCK_TODAY, Rng, roundTo } from "./seed";
 import type {
   Analysis,
@@ -67,7 +72,7 @@ function buildStrComps(
   rng: Rng
 ): StrComp[] {
   const count = rng.int(8, 10);
-  const baseAdr = marketAdr * BR_MULT[bedrooms];
+  const baseAdr = marketAdr * adrFactorFor(bedrooms);
   const comps: StrComp[] = [];
   for (let c = 0; c < count; c++) {
     const adr = roundTo(rng.jitter(baseAdr, 0.14), 1);
@@ -94,7 +99,7 @@ function buildLtrComps(
   analysisIdx: number | string,
   rng: Rng
 ): LtrComp[] {
-  const baseRent = medianRent2br * RENT_MULT[bedrooms];
+  const baseRent = medianRent2br * rentFactorFor(bedrooms);
   const comps: LtrComp[] = [];
   for (let c = 0; c < 6; c++) {
     comps.push({

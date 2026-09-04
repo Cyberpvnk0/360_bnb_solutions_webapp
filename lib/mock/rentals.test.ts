@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { estimateRentFromComps } from "@/lib/calc/comps";
 import { ANALYSES, analysisForListing } from "./analyses";
-import { MARKET_BY_SLUG, MARKETS } from "./markets";
+import { adrFactorFor, BR_MULT, MARKET_BY_SLUG, MARKETS } from "./markets";
 import { submarketsFor } from "./submarkets";
 import {
   allRentals,
   BASE_FEATURES,
-  BEDROOM_ADR_FACTOR,
   BEDROOM_RENT_FACTOR,
   estimateCushionPts,
   RENTAL_BY_ANALYSIS_ID,
@@ -100,10 +99,32 @@ describe("rentals", () => {
     const pts = estimateCushionPts(listing, market);
     expect(Number.isInteger(pts)).toBe(true);
     expect(estimateCushionPts(listing, market)).toBe(pts);
-    // Sanity: every bedroom count has both factors defined.
+    // Sanity: every bedroom count has a factor, INCLUDING the ones off
+    // the ends of the table. Bare indexing returned undefined there,
+    // and undefined times a dollar figure is NaN all the way down.
+    for (const br of [0, 1, 2, 3, 4, 5, 6, 12]) {
+      expect(adrFactorFor(br)).toBeGreaterThan(0);
+      expect(BEDROOM_RENT_FACTOR[Math.min(5, Math.max(1, br))]).toBeGreaterThan(0);
+    }
+  });
+
+  it("prices a studio off the one-bed floor and holds past five", () => {
+    // The analyzer's size picker offers Studio and 6, so both ends are
+    // one click away. Holding at the table's edge says "this is as far
+    // as the data goes"; extrapolating would invent a premium and print
+    // it as confidently as a measured one.
+    expect(adrFactorFor(0)).toBe(adrFactorFor(1));
+    expect(adrFactorFor(6)).toBe(adrFactorFor(5));
+    expect(adrFactorFor(99)).toBe(adrFactorFor(5));
+    expect(adrFactorFor(Number.NaN)).toBe(adrFactorFor(2));
+  });
+
+  it("uses the same ADR table the analyzer's comps are built from", () => {
+    // Two tables disagreeing by size was worth up to five cushion
+    // points between a card and the analyzer it opens. One table is the
+    // only way they cannot drift apart again.
     for (const br of [1, 2, 3, 4, 5]) {
-      expect(BEDROOM_ADR_FACTOR[br]).toBeGreaterThan(0);
-      expect(BEDROOM_RENT_FACTOR[br]).toBeGreaterThan(0);
+      expect(adrFactorFor(br)).toBe(BR_MULT[br]);
     }
   });
 

@@ -159,11 +159,57 @@ function buildMonthly(seed: MarketSeed, rng: Rng): MarketMonth[] {
   });
 }
 
-/** ADR multipliers by bedroom count relative to the 2BR benchmark. */
+/**
+ * ADR by bedroom count, relative to the 2BR benchmark.
+ *
+ * THE ONE TABLE. There used to be a second copy in lib/mock/rentals
+ * with different values — 1.62 against 1.94 at five bedrooms — and the
+ * two were read by different surfaces: the card by one, the analyzer's
+ * comp set by the other. They agreed only at two bedrooms and fanned
+ * apart in both directions, so the same property graded up to five
+ * cushion points better in the analyzer than on the card that opened
+ * it, systematically, by size. Across the whole seeded fleet the mean
+ * gap was +0.7 points, which is how a monotonic skew hid for months
+ * looking like noise.
+ *
+ * These are the values the market data itself publishes through
+ * buildBedroomAdr, so this is the copy that survived.
+ */
 export const BR_MULT: Record<number, number> = { 1: 0.72, 2: 1, 3: 1.31, 4: 1.62, 5: 1.94 };
 
 /** Long-term rent multipliers by bedroom count relative to the 2BR median. */
 export const RENT_MULT: Record<number, number> = { 1: 0.78, 2: 1, 3: 1.28, 4: 1.52, 5: 1.75 };
+
+/**
+ * A multiplier for ANY bedroom count, including the ones the table has
+ * no row for.
+ *
+ * Bare indexing returned undefined outside 1–5, and undefined times a
+ * dollar figure is NaN — which then propagated through the comp set,
+ * the ADR, the breakeven and every figure derived from them. The size
+ * picker on the analyzer offers Studio and 6, so both ends were one
+ * click away from a page of NaN.
+ *
+ * A studio prices off the one-bedroom floor rather than off nothing,
+ * and past five the table holds rather than extrapolating a premium
+ * nobody measured. Holding is the honest end of a table: it says "this
+ * is as far as the data goes", where a fitted curve would invent a
+ * number and print it with the same confidence as a measured one.
+ */
+function factorFor(table: Record<number, number>, bedrooms: number): number {
+  const n = Number.isFinite(bedrooms) ? Math.round(bedrooms) : 2;
+  return table[Math.min(5, Math.max(1, n))];
+}
+
+/** Nightly rate multiplier for this size, relative to a 2BR. */
+export function adrFactorFor(bedrooms: number): number {
+  return factorFor(BR_MULT, bedrooms);
+}
+
+/** Long-term rent multiplier for this size, relative to a 2BR. */
+export function rentFactorFor(bedrooms: number): number {
+  return factorFor(RENT_MULT, bedrooms);
+}
 
 function buildBedroomAdr(seed: MarketSeed, rng: Rng): BedroomAdr[] {
   const shares = [0.24, 0.34, 0.24, 0.13, 0.05];

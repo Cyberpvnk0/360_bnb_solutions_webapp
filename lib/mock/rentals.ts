@@ -18,7 +18,7 @@
  */
 
 import { breakevenOccupancy, projectDeal } from "@/lib/calc/arbitrage";
-import { benchmark2brInputs, MARKETS } from "./markets";
+import { adrFactorFor, benchmark2brInputs, MARKETS } from "./markets";
 import { hashStr, Rng, roundTo } from "./seed";
 import { submarketsFor } from "./submarkets";
 import type {
@@ -52,16 +52,6 @@ export const BEDROOM_RENT_FACTOR: Record<number, number> = {
   3: 1.28,
   4: 1.55,
   5: 1.8,
-};
-
-/** ADR multipliers by bedroom count vs the market's 2 bd benchmark ADR —
- *  used for the card-level cushion estimate. */
-export const BEDROOM_ADR_FACTOR: Record<number, number> = {
-  1: 0.78,
-  2: 1,
-  3: 1.22,
-  4: 1.45,
-  5: 1.62,
 };
 
 /** Bedrooms 1–5, weighted toward 2–3 like the arbitrage sweet spot. */
@@ -271,7 +261,7 @@ export function estimateCushionPts(
 ): number {
   const inputs = benchmark2brInputs(listing.rentMonthly);
   const assumptions = {
-    adr: Math.round(market.adr * BEDROOM_ADR_FACTOR[listing.bedrooms]),
+    adr: Math.round(market.adr * adrFactorFor(listing.bedrooms)),
     marketOccupancy: market.occupancy,
   };
   const be = breakevenOccupancy(inputs, assumptions);
@@ -302,9 +292,7 @@ export function estimateDeal(
   listing: RentalListing,
   market: Market
 ): DealRead {
-  const nightlyRate = Math.round(
-    market.adr * BEDROOM_ADR_FACTOR[listing.bedrooms]
-  );
+  const nightlyRate = Math.round(market.adr * adrFactorFor(listing.bedrooms));
   const projection = projectDeal(benchmark2brInputs(listing.rentMonthly), {
     adr: nightlyRate,
     marketOccupancy: market.occupancy,
