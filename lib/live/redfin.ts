@@ -32,7 +32,12 @@ import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
 import { cityIdFor, REDFIN_CITY_ID, REDFIN_CITY_PATH } from "@/lib/live/redfin-city";
-import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
+import type {
+  ListingContact,
+  Market,
+  PropertyType,
+  RentalListing,
+} from "@/lib/mock/types";
 
 /**
  * Versioned path, confirmed from ScraperAPI's own generated snippet.
@@ -241,6 +246,79 @@ const TYPE_KEYS = ["propertyType", "homeType"] as const;
 /** Short display chips beside a listing — a second amenity signal. */
 const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
 
+/**
+ * Who the listing says to call.
+ *
+ * PROVISIONAL, like every alias list above it was before a probe pinned
+ * it. Their search rows are undocumented and these are the names the
+ * field plausibly goes by; `?shape=1` reports what the response
+ * actually carries, and whichever of these never fires should be
+ * deleted rather than left as decoration.
+ *
+ * Reading it at all is a deliberate widening. This feed used to supply
+ * one fact — furnished or not — because the thing being taken was
+ * copyrighted. A name and a telephone number are not: they are facts
+ * about who to ring, published so that people ring them, and the whole
+ * point of a lease-hunting tool is to get somebody to that call.
+ */
+const AGENT_NAME_KEYS = [
+  "listingAgentName",
+  "listingAgent.name",
+  "listingAgent",
+  "agentName",
+  "agent.name",
+] as const;
+const BROKER_NAME_KEYS = [
+  "listingBrokerName",
+  "brokers.listingBrokerName",
+  "brokerName",
+  "mlsBrokerName",
+  "sourceDisplayName",
+  "listingBroker",
+] as const;
+const AGENT_PHONE_KEYS = [
+  "listingAgentPhone",
+  "listingAgent.phone",
+  "agentPhone",
+  "brokerPhone",
+  "listingBrokerPhone",
+  "phone",
+  "phoneNumber",
+] as const;
+const AGENT_EMAIL_KEYS = [
+  "listingAgentEmail",
+  "listingAgent.email",
+  "agentEmail",
+  "brokerEmail",
+  "email",
+] as const;
+
+/**
+ * A contact, or nothing. Never a half-built one: a card with a company
+ * name and no way to reach it is a row of grey text pretending to be an
+ * answer, and the panel already says "no contact details published"
+ * more honestly than that.
+ */
+export function contactFromRow(raw: Row): ListingContact | undefined {
+  const agent = pickString(raw, AGENT_NAME_KEYS);
+  const broker = pickString(raw, BROKER_NAME_KEYS);
+  const phone = pickString(raw, AGENT_PHONE_KEYS);
+  const email = pickString(raw, AGENT_EMAIL_KEYS);
+
+  const name = agent ?? broker;
+  if (!name) return undefined;
+  // A name with no way to reach it is worth showing — it is who the
+  // listing is under, and somebody can search it — but a phone or an
+  // email is the reason this exists.
+  return {
+    name,
+    company: agent && broker && agent !== broker ? broker : undefined,
+    phone,
+    email,
+    role: agent ? "Listing agent" : "Listing broker",
+  };
+}
+
 const TYPE_MAP: Record<string, PropertyType> = {
   "single family": "house",
   "single family residential": "house",
@@ -416,6 +494,7 @@ export function mapRedfinListing(
       // A furnished-filtered search is a real amenity answer; the chips
       // alone are not enough to claim we know the full picture.
       featuresKnown: opts.furnished,
+      contact: contactFromRow(raw),
     },
   };
 }

@@ -199,8 +199,11 @@ export interface ListingContact {
   company?: string;
   phone?: string;
   email?: string;
-  /** What this contact is, in the words the panel shows. */
-  role: "Listing agent" | "Property manager" | "Owner";
+  /** What this contact is, in the words the panel shows. "Listing
+   *  broker" is the brokerage rather than a person — some feeds carry
+   *  only that, and calling a firm an agent would be a small lie in
+   *  the one place somebody is about to dial. */
+  role: "Listing agent" | "Listing broker" | "Property manager" | "Owner";
 }
 
 /** A named collection of saved rentals — how a hunter organizes a

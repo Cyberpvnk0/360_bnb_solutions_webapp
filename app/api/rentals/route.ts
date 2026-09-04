@@ -41,6 +41,9 @@ import {
   proseFields,
 } from "@/lib/live/shape";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
+import { fetchRedfinRentals } from "@/lib/live/redfin";
+import { indexBySite, joinListingFacts } from "@/lib/live/listing-join";
+import type { Market, RentalListing } from "@/lib/mock/types";
 
 /** One vendor call. Stated so a slow feed fails as a timeout we can
  *  report, not a platform default that varies by plan. */
@@ -97,6 +100,33 @@ export async function GET(request: Request) {
       return failure(error);
     }
   }
+
+/**
+ * The rentals feed's rows, joined to the listing site's own search for
+ * the same market, so each one carries its page URL and the contact the
+ * listing publishes.
+ *
+ * ONE extra search per market per day, on the same cache the furnished
+ * filter already rides. The feed knows about more inventory than the
+ * portal does, so this never gates which rows are shown — it only adds
+ * to the ones the portal also carries, and a market where the search
+ * fails outright returns the rows exactly as they arrived.
+ *
+ * Failure is deliberately silent. A listing page is an enhancement; a
+ * market's inventory is the product. An unreachable portal must not
+ * take the rentals down with it.
+ */
+async function withListingPages(
+  market: Market,
+  rows: RentalListing[]
+): Promise<RentalListing[]> {
+  try {
+    const { listings } = await fetchRedfinRentals(market);
+    return joinListingFacts(rows, indexBySite(listings));
+  } catch {
+    return rows;
+  }
+}
 
   const market = MARKET_BY_SLUG.get(slug ?? "");
   if (!market) {
@@ -171,7 +201,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const listings = await fetchLiveRentals(market);
+    const listings = await withListingPages(market, await fetchLiveRentals(market));
     const spent = commitLiveSearch(`market:${market.slug}`);
     // Stored for the next instance, deploy, and student. Awaited so a
     // serverless runtime can't freeze the write mid-flight; it still

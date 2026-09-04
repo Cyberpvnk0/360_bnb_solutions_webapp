@@ -13,21 +13,23 @@
  *
  * TWO DESTINATIONS, IN ORDER:
  *
- *   1. The listing's OWN page, when the row came from a source that
- *      told us its URL. That is the exact property, on the site that
- *      published it, one click away. Nothing beats it.
+ *   1. The listing's OWN page on Redfin. That is the exact property, on
+ *      the site that published it, one click away. Nothing beats it,
+ *      and lib/live/listing-join exists to make this the case for as
+ *      many rows as possible rather than only the ones that arrived
+ *      with a URL attached.
  *
- *   2. An address search on the portal with the most rental inventory,
- *      when we hold no page URL. A search rather than a guessed property
- *      URL because we do not know their id for a building and a guess
- *      404s — a dead button is worse than no button. A search lands on
- *      the listing when it exists and on the block when it doesn't.
+ *   2. Realtor, searched by address, for a property Redfin does not
+ *      carry. A search rather than a guessed property URL: Realtor keys
+ *      a property by an internal id, a guessed id 404s, and a dead
+ *      button is worse than no button.
  *
- * Only one search portal, on purpose. Zillow can be addressed BY
- * ADDRESS; Redfin keys a city by an opaque internal id and Realtor keys
- * a property by an internal property id, so neither can be built from
- * an address alone. A menu of one good link and two bad ones is worse
- * than the one link.
+ * NO ZILLOW. It used to hold slot two, on the reasoning that it was the
+ * only portal addressable by address alone. That was true and beside
+ * the point: their address search resolves to the property often enough
+ * to look like it works and misses often enough to be untrustworthy,
+ * and a link that is usually right is worse than one that is either
+ * right or absent, because nobody learns to check it.
  */
 
 export interface Addressed {
@@ -116,14 +118,14 @@ export function photosHref(place: Addressed): string | null {
   const p = parts(place);
   if (!p) return null;
 
-  // "1234 Palm Ave, Tampa, FL" → "1234-Palm-Ave,-Tampa,-FL"
+  // Their search path takes the same address slug their detail URLs
+  // are built from, minus the internal property id we cannot know:
+  // "1234-Palm-Ave_Tampa_FL". Underscores between the parts, hyphens
+  // inside them.
   const slug = [p.street, p.city, p.state]
     .filter(Boolean)
-    .join(", ")
-    .replace(/\s/g, "-");
+    .map((part) => part.replace(/\s+/g, "-"))
+    .join("_");
 
-  // for_rent, because these are rentals and their default search is for
-  // sale — landing on a buy page for a lease is a wrong answer that
-  // looks like a right one.
-  return `https://www.zillow.com/homes/for_rent/${encodeURI(slug)}_rb/`;
+  return `https://www.realtor.com/realestateandhomes-search/${encodeURI(slug)}`;
 }
