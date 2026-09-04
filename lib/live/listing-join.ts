@@ -80,6 +80,27 @@ export function joinListingFacts(
   });
 }
 
+/**
+ * Whether a set of rows has ever been through this join.
+ *
+ * ZERO coverage is the signal, deliberately, and the distinction
+ * matters more than it looks. The portal never carries all of a
+ * market — its search paginates where the feed does not — so "enough
+ * rows have a page" is a test that never passes and would re-run the
+ * join on every request forever. "Any row has a page" is a test that
+ * passes the moment the join has run once, which is exactly the
+ * question being asked: has this set been offered to the join at all.
+ *
+ * It exists because rows written to the store before the join shipped
+ * are served straight back out of it, and never pass through the join
+ * on their way. That is what made twenty properties in a row fall back
+ * to a search link — not a matcher that missed, but a join that was
+ * never given the rows.
+ */
+export function needsListingPages(rows: readonly RentalListing[]): boolean {
+  return rows.length > 0 && !rows.some((r) => r.sourceUrl);
+}
+
 /** How well the two sides met, for the diagnostics that pay for this. */
 export function joinCoverage(
   rows: readonly RentalListing[]

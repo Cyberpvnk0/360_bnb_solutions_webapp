@@ -290,14 +290,25 @@ async function upsert(body: Record<string, unknown>): Promise<WriteResult> {
   }
 }
 
+/**
+ * Store a market's rows.
+ *
+ * `at` KEEPS THE CLOCK HONEST. The default is now, which is right for a
+ * fresh fetch. It is wrong for a rewrite of rows already in the store —
+ * adding each one's listing page, say — because the rows themselves are
+ * no newer than they were, and stamping them now would tell every later
+ * reader the inventory is up to date and hold off the real refresh for
+ * another day. A rewrite passes the timestamp it read.
+ */
 export async function writeMarketListings(
   slug: string,
-  listings: RentalListing[]
+  listings: RentalListing[],
+  at?: string | null
 ): Promise<WriteResult> {
   return upsert({
     market_slug: slug,
     listings,
-    listings_at: new Date().toISOString(),
+    listings_at: at ?? new Date().toISOString(),
   });
 }
 

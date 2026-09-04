@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { indexBySite, joinListingFacts } from "@/lib/live/listing-join";
+import {
+  indexBySite,
+  joinListingFacts,
+  needsListingPages,
+} from "@/lib/live/listing-join";
 import type { RentalListing } from "@/lib/mock/types";
 
 const row = (address: string, extra: Partial<RentalListing> = {}) =>
@@ -95,5 +99,32 @@ describe("joining a feed row to its listing page", () => {
       row("1204 Glencoe St", { sourceUrl: older }),
     ]);
     expect(index.get("1204 glencoe st")?.sourceUrl).toBe(PAGE);
+  });
+});
+
+describe("needsListingPages", () => {
+  const bare = (n: string) => row(n);
+  const paged = (n: string) =>
+    row(n, { sourceUrl: `https://www.redfin.com/${n}` });
+
+  it("is true for rows that have never been through the join", () => {
+    // The store predates the join, so a market searched before it
+    // shipped holds rows with no listing page at all.
+    expect(needsListingPages([bare("1 A St"), bare("2 A St")])).toBe(true);
+  });
+
+  it("is false as soon as ANY row carries a page", () => {
+    // Not "enough" rows — the portal never carries all of a market, so
+    // a coverage threshold is a test that never passes and re-runs the
+    // join on every request forever.
+    expect(
+      needsListingPages([bare("1 A St"), paged("2 A St"), bare("3 A St")])
+    ).toBe(false);
+  });
+
+  it("is false for no rows at all", () => {
+    // Nothing to join, and an empty market must not spend a search
+    // finding that out again on every request.
+    expect(needsListingPages([])).toBe(false);
   });
 });

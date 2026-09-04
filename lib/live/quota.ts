@@ -213,3 +213,63 @@ export function imageryBudget(now = new Date()): QuotaCheck {
 export function resetImageryLedger(): void {
   pictured = { day: "", keys: new Set() };
 }
+
+/* ------------------------------------------------------------------ */
+/* Listing contacts: a ceiling on PAGES read for a phone number        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Contact details come off the listing's own page, one page per
+ * property somebody actually opens, and each page is a billed scrape.
+ *
+ * That is a fundamentally different spend shape from the market search
+ * beside it: a market is one request for five hundred rows, while this
+ * is one request for ONE row, and a student clicking through a grid can
+ * spend a hundred of them in an afternoon without noticing. Hence its
+ * own ceiling rather than a share of the enrichment one — a runaway
+ * here must not be able to eat the budget that answers "is it
+ * furnished" for a whole market.
+ *
+ * Counted per DISTINCT LISTING per day, because that is what bills: the
+ * vendor's answer for one page is cached a month and shared by everyone
+ * on the deployment, so the second student to open the same property
+ * costs nothing and must not consume budget either.
+ *
+ * Same scope caveat as the ledgers above: server memory, per instance,
+ * so this is a guard rather than a lock.
+ */
+export const DEFAULT_DAILY_CONTACT_CAP = 300;
+
+export function contactCap(): number {
+  const raw = Number(process.env.CONTACT_DAILY_CAP);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_DAILY_CONTACT_CAP;
+}
+
+let contacted: Ledger = { day: "", keys: new Set() };
+
+function currentContacted(now: Date): Ledger {
+  const day = dayKey(now);
+  if (contacted.day !== day) contacted = { day, keys: new Set() };
+  return contacted;
+}
+
+/**
+ * Claim today's budget for one listing page, or learn there is none
+ * left. Reserves rather than checks, for the same reason reserveImage
+ * does: the caller is about to spend money.
+ */
+export function reserveContact(key: string, now = new Date()): QuotaCheck {
+  const cap = contactCap();
+  const { keys } = currentContacted(now);
+  const cached = keys.has(key);
+  const allowed = cached || keys.size < cap;
+  if (allowed && !cached) keys.add(key);
+  return { allowed, cached, remaining: Math.max(0, cap - keys.size), cap };
+}
+
+/** Tests only. */
+export function resetContactLedger(): void {
+  contacted = { day: "", keys: new Set() };
+}

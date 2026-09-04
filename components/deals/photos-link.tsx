@@ -1,13 +1,18 @@
 "use client";
 
 /**
- * "View photos" — out to the page where the pictures already live.
+ * Out to the page where the pictures already live.
  *
  * We host no listing imagery at all. The card's picture is a Street
  * View or an aerial of the kerb; the interiors live on the listing
  * site, and this sends people there rather than copying anything here.
- * When the row came from a source that told us its page URL, that is
- * where it goes — the exact listing. Otherwise an address search.
+ *
+ * TWO LABELS, BECAUSE THERE ARE TWO DESTINATIONS. When the row carries
+ * its own listing URL this opens that property and says "View photos".
+ * When it doesn't, lib/live/listing-links falls back to a quoted,
+ * site-scoped search — which FINDS the listing rather than opening it —
+ * and the label says "Find photos" instead. The difference is one
+ * click, and copy that hides it spends that click on a surprise.
  *
  * One component for all three surfaces, because the rule about WHEN to
  * show it is the interesting part and it should exist once:
@@ -24,7 +29,7 @@
  */
 
 import { ArrowUpRight } from "lucide-react";
-import { photosHref, type Addressed } from "@/lib/live/listing-links";
+import { photosLink, type Addressed } from "@/lib/live/listing-links";
 import { cn } from "@/lib/utils";
 
 export function PhotosLink({
@@ -43,14 +48,21 @@ export function PhotosLink({
    */
   variant?: "button" | "pill" | "chip";
 }) {
-  const href = real ? photosHref(place) : null;
-  if (!href) return null;
+  const dest = real ? photosLink(place) : null;
+  if (!dest) return null;
+
+  const onListing = dest.kind === "listing";
 
   return (
     <a
-      href={href}
+      href={dest.href}
       target="_blank"
       rel="noopener noreferrer"
+      title={
+        onListing
+          ? "Opens this property's listing page"
+          : "Searches the listing sites for this exact address"
+      }
       // Cards open a detail panel on click; this must not do both.
       onClick={(e) => e.stopPropagation()}
       className={cn(
@@ -64,9 +76,13 @@ export function PhotosLink({
         className
       )}
     >
-      View photos
+      {onListing ? "View photos" : "Find photos"}
       <ArrowUpRight aria-hidden className="size-3.5" />
-      <span className="sr-only">(opens in a new tab)</span>
+      <span className="sr-only">
+        {onListing
+          ? "(opens the listing in a new tab)"
+          : "(searches the listing sites in a new tab)"}
+      </span>
     </a>
   );
 }

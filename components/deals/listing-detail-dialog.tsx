@@ -54,6 +54,7 @@ import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
 import { analyzeHref } from "@/lib/live/analyze-href";
 import { hasOwnListingPage } from "@/lib/live/listing-links";
+import { useListingContact } from "./use-listing-contact";
 import { cn } from "@/lib/utils";
 
 /** One white surface on the overlay's grey ground. */
@@ -222,7 +223,11 @@ export function ListingDetailDialog({
     : 0;
   const short = cushionPts < 0;
   const isLive = listing?.id.startsWith("live--") ?? false;
-  const contact = listing?.contact;
+  // The feed's own contact when it has one, otherwise the listing page's
+  // — read on open, because reading a page costs money and a property
+  // nobody looked at must not spend any.
+  const looked = useListingContact(listing, open);
+  const contact = listing?.contact ?? looked.contact;
   const locality = listing
     ? localityLine(
         listing.address,
@@ -451,15 +456,26 @@ export function ListingDetailDialog({
 
               {contact ? (
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-7">
-                  <ContactRow icon={User}>
-                    <span className="font-medium">{contact.name}</span>
-                    {contact.company ? (
-                      <span className="text-muted-foreground">
-                        {" · "}
-                        {contact.company}
-                      </span>
-                    ) : null}
-                  </ContactRow>
+                  {/* A page routinely gives a number and no name. Show
+                      the row only when there is somebody to name —
+                      an empty one reads as a name we failed to load. */}
+                  {contact.name || contact.company ? (
+                    <ContactRow icon={User}>
+                      {contact.name ? (
+                        <span className="font-medium">{contact.name}</span>
+                      ) : null}
+                      {contact.company ? (
+                        <span
+                          className={
+                            contact.name ? "text-muted-foreground" : "font-medium"
+                          }
+                        >
+                          {contact.name ? " · " : ""}
+                          {contact.company}
+                        </span>
+                      ) : null}
+                    </ContactRow>
+                  ) : null}
                   {contact.phone ? (
                     <ContactRow
                       icon={Phone}
@@ -474,15 +490,21 @@ export function ListingDetailDialog({
                     </ContactRow>
                   ) : null}
                 </div>
+              ) : looked.status === "loading" ? (
+                <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                  Checking the listing for contact details…
+                </p>
               ) : (
                 <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                  No contact details published for this listing.
-                  {/* Only promise the lister where the link actually
-                      reaches the listing. The address search that
-                      stands in for rows without their own page lands
-                      near the property, not on it. */}
+                  {/* Three different facts, and they must not read the
+                      same. "Couldn't read it" is not "there is none",
+                      and sending somebody away from a number that
+                      exists is the failure that matters here. */}
+                  {looked.status === "unreadable"
+                    ? "Couldn't read this listing's page just now."
+                    : "No contact details published for this listing."}
                   {hasOwnListingPage(listing)
-                    ? " The listing page behind View photos has the lister's details."
+                    ? " The listing page behind View photos has them."
                     : ""}
                 </p>
               )}

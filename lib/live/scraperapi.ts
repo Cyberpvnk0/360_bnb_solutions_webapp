@@ -426,6 +426,12 @@ async function scrape(
  * full of real words, and mining it is how a listing ends up tagged
  * from a block screen's markup. Returns null when every tier was
  * challenged — the caller then reports the row unknown.
+ *
+ * EXPORTED UNDER THE MODULE RULE, NOT AROUND IT. This hands back a
+ * document, so any caller takes on the same obligation the rule states
+ * for this file: the document is a local, and only facts come out of
+ * the function that reads it. lib/live/redfin-contact is the one such
+ * caller today, and it takes a name and a telephone number.
  */
 async function readPage(url: string): Promise<{
   outcome: FetchOutcome;
@@ -465,6 +471,11 @@ async function readPage(url: string): Promise<{
   if (!last && refusal) throw refusal;
   return { outcome: last!, spent, challenged: true };
 }
+
+/** readPage, for the one module outside this file that reads a listing
+ *  page for facts of its own. Named so a grep for it lands on the rule
+ *  above rather than on a generic fetcher. */
+export const readListingPage = readPage;
 
 /* ------------------------------------------------------------------ */
 /* The public surface: flags only                                      */

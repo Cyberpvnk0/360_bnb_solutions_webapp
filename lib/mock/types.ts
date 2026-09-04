@@ -195,15 +195,25 @@ export interface Analysis {
  *  company, or the owner. Preview inventory carries reserved 555-01xx
  *  numbers and example.com addresses; live rows carry the feed's own. */
 export interface ListingContact {
-  name: string;
+  /** Optional, because a listing page routinely publishes a number to
+   *  ring and no name to go with it. "Somebody at this number" is the
+   *  truth in that case, and inventing a name to fill the field would
+   *  put a fiction beside a real telephone number. */
+  name?: string;
   company?: string;
   phone?: string;
   email?: string;
   /** What this contact is, in the words the panel shows. "Listing
    *  broker" is the brokerage rather than a person — some feeds carry
    *  only that, and calling a firm an agent would be a small lie in
-   *  the one place somebody is about to dial. */
-  role: "Listing agent" | "Listing broker" | "Property manager" | "Owner";
+   *  the one place somebody is about to dial. "Listing contact" is the
+   *  honest answer when the page gave a number and never said whose. */
+  role:
+    | "Listing agent"
+    | "Listing broker"
+    | "Property manager"
+    | "Owner"
+    | "Listing contact";
 }
 
 /** A named collection of saved rentals — how a hunter organizes a
