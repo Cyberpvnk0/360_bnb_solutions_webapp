@@ -32,12 +32,7 @@ import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
 import { cityIdFor, REDFIN_CITY_ID, REDFIN_CITY_PATH } from "@/lib/live/redfin-city";
-import type {
-  ListingContact,
-  Market,
-  PropertyType,
-  RentalListing,
-} from "@/lib/mock/types";
+import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
 /**
  * Versioned path, confirmed from ScraperAPI's own generated snippet.
@@ -182,11 +177,30 @@ function pick(row: Row, keys: readonly string[]): unknown {
 }
 
 /** Numbers arrive as numbers, as "$1,850", or as "1,850/mo". */
+/**
+ * The FIRST number in one of their display strings.
+ *
+ * Their rental rows are mostly apartment complexes, and a complex
+ * describes itself as a range: "420-1,050 sq ft", "1-3 beds",
+ * "1.5-2.5 baths". Stripping every non-digit and reading what is left
+ * turns the first of those into four million two hundred and one
+ * thousand and fifty square feet, which is what a card was showing.
+ *
+ * The low end is the honest reading, and it is the one that agrees
+ * with the rest of the row: the price on a complex is its "from"
+ * price, so the smallest floor plan and the cheapest rent belong
+ * together. Reporting the range's top with the range's bottom price
+ * would describe a unit that does not exist.
+ */
 function pickNumber(row: Row, keys: readonly string[]): number | undefined {
   const raw = pick(row, keys);
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string") {
-    const cleaned = Number(raw.replace(/[^0-9.]/g, ""));
+    // A digit, then digits and commas, then optionally a decimal tail —
+    // so "1,050" survives whole and "420-1,050" stops at the dash.
+    const first = raw.match(/\d[\d,]*(?:\.\d+)?/)?.[0];
+    if (first === undefined) return undefined;
+    const cleaned = Number(first.replace(/,/g, ""));
     if (Number.isFinite(cleaned) && cleaned > 0) return cleaned;
   }
   return undefined;
@@ -247,77 +261,21 @@ const TYPE_KEYS = ["propertyType", "homeType"] as const;
 const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
 
 /**
- * Who the listing says to call.
+ * NO CONTACT IN A SEARCH ROW, AND THIS IS THE RECORD OF THAT.
  *
- * PROVISIONAL, like every alias list above it was before a probe pinned
- * it. Their search rows are undocumented and these are the names the
- * field plausibly goes by; `?shape=1` reports what the response
- * actually carries, and whichever of these never fires should be
- * deleted rather than left as decoration.
+ * A shape probe over 164 Jacksonville rentals found no agent name, no
+ * broker name and no email anywhere in the response. There IS a
+ * `phone` field, on every single row, and it is the empty string on
+ * every single one — a slot in their schema that their search never
+ * fills.
  *
- * Reading it at all is a deliberate widening. This feed used to supply
- * one fact — furnished or not — because the thing being taken was
- * copyrighted. A name and a telephone number are not: they are facts
- * about who to ring, published so that people ring them, and the whole
- * point of a lease-hunting tool is to get somebody to that call.
+ * So the speculative alias list that used to sit here has been
+ * deleted rather than left as decoration, which is what the probe was
+ * run to decide. Contact for a rental has to come from the listing
+ * PAGE or from a data vendor; it cannot come from this endpoint, and
+ * a future reader should not spend an afternoon re-deriving that.
  */
-const AGENT_NAME_KEYS = [
-  "listingAgentName",
-  "listingAgent.name",
-  "listingAgent",
-  "agentName",
-  "agent.name",
-] as const;
-const BROKER_NAME_KEYS = [
-  "listingBrokerName",
-  "brokers.listingBrokerName",
-  "brokerName",
-  "mlsBrokerName",
-  "sourceDisplayName",
-  "listingBroker",
-] as const;
-const AGENT_PHONE_KEYS = [
-  "listingAgentPhone",
-  "listingAgent.phone",
-  "agentPhone",
-  "brokerPhone",
-  "listingBrokerPhone",
-  "phone",
-  "phoneNumber",
-] as const;
-const AGENT_EMAIL_KEYS = [
-  "listingAgentEmail",
-  "listingAgent.email",
-  "agentEmail",
-  "brokerEmail",
-  "email",
-] as const;
 
-/**
- * A contact, or nothing. Never a half-built one: a card with a company
- * name and no way to reach it is a row of grey text pretending to be an
- * answer, and the panel already says "no contact details published"
- * more honestly than that.
- */
-export function contactFromRow(raw: Row): ListingContact | undefined {
-  const agent = pickString(raw, AGENT_NAME_KEYS);
-  const broker = pickString(raw, BROKER_NAME_KEYS);
-  const phone = pickString(raw, AGENT_PHONE_KEYS);
-  const email = pickString(raw, AGENT_EMAIL_KEYS);
-
-  const name = agent ?? broker;
-  if (!name) return undefined;
-  // A name with no way to reach it is worth showing — it is who the
-  // listing is under, and somebody can search it — but a phone or an
-  // email is the reason this exists.
-  return {
-    name,
-    company: agent && broker && agent !== broker ? broker : undefined,
-    phone,
-    email,
-    role: agent ? "Listing agent" : "Listing broker",
-  };
-}
 
 const TYPE_MAP: Record<string, PropertyType> = {
   "single family": "house",
@@ -494,7 +452,6 @@ export function mapRedfinListing(
       // A furnished-filtered search is a real amenity answer; the chips
       // alone are not enough to claim we know the full picture.
       featuresKnown: opts.furnished,
-      contact: contactFromRow(raw),
     },
   };
 }

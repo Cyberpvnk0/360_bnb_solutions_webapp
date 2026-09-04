@@ -337,3 +337,29 @@ describe("cities the listing site files under another name", () => {
     }
   });
 });
+
+describe("a complex describes itself as a range", () => {
+  it("reads the low end, not every digit run together", () => {
+    // "420-1,050 sq ft" was reaching a card as 4,201,050 square feet.
+    // Their rental inventory is mostly complexes, so this was most of
+    // the feed, not an edge case.
+    const l = mapped({
+      sq_ft: "420-1,050 sq ft",
+      number_beds: "1-3 beds",
+      number_baths: "1.5-2.5 baths",
+    })!;
+    expect(l.sqft).toBe(420);
+    expect(l.bedrooms).toBe(1);
+    expect(l.bathrooms).toBe(1.5);
+  });
+
+  it("keeps a thousands comma inside one number", () => {
+    expect(mapped({ sq_ft: "1,050 sq ft" })!.sqft).toBe(1_050);
+  });
+
+  it("still reads a plain single figure", () => {
+    const l = mapped({ sq_ft: "940 sq ft", number_beds: "2 beds" })!;
+    expect(l.sqft).toBe(940);
+    expect(l.bedrooms).toBe(2);
+  });
+});
