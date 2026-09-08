@@ -160,7 +160,10 @@ export function matchesFilters(row: Row, f: DealFilters): boolean {
 
 /** Plain-language explanation of a live-feed miss — a wrong key must
  *  never read as "no listings here". */
-function liveFailureLabel(reason: LiveFailureReason | null | undefined): string {
+function liveFailureLabel(
+  reason: LiveFailureReason | null | undefined,
+  marketLimit = 0
+): string {
   switch (reason) {
     case "no-key":
       return "Live feed not configured";
@@ -171,7 +174,11 @@ function liveFailureLabel(reason: LiveFailureReason | null | undefined): string 
     case "daily-cap":
       return "Daily live-search limit reached";
     case "monthly-cap":
-      return "Monthly market limit reached";
+      // A plan with none was never at a limit; it is looking at the
+      // paid feature from outside, and the label should say so.
+      return marketLimit > 0
+        ? "Monthly market limit reached"
+        : "Live listings are on paid plans";
     case "http":
     case "network":
       return "Live feed unreachable";
@@ -209,7 +216,7 @@ export function DealsExplorer({
   const [detailId, setDetailId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(null);
-  const { lists, openUpgrade } = useSession();
+  const { lists, openUpgrade, marketLimit } = useSession();
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -749,7 +756,7 @@ export function DealsExplorer({
             </span>
           ) : liveTarget ? (
             <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
-              {liveFailureLabel(liveReason)} · showing preview
+              {liveFailureLabel(liveReason, marketLimit)} · showing preview
             </span>
           ) : null}
 

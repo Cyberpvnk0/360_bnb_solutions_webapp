@@ -45,19 +45,18 @@ describe("claiming against the plan", () => {
     vi.restoreAllMocks();
   });
 
-  it("meters a market on Free against its small cap, never a pack", async () => {
-    // Free browses a handful of markets a month. The store answers with
-    // the plan's verdict and nothing else: a market never draws on a
-    // pack, whatever the balance.
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ allowed: false, used: 3, cap: 3, source: "none", balance: 40 }]), { status: 200 })
-    );
+  it("refuses a market on Free outright, without a round trip", async () => {
+    // Free touches nothing that costs money. A market never draws on a
+    // pack, so a zero cap is final and there is nothing to ask the
+    // store — the reply is immediate and the client falls back to
+    // preview rows.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const r = await consumeUsage("u1", "free", "market", "market:tampa");
-    expect(r.cap).toBe(TIERS.free.marketLimit);
+    expect(TIERS.free.marketLimit).toBe(0);
     expect(r.allowed).toBe(false);
+    expect(r.cap).toBe(0);
     expect(r.source).toBe("none");
-    const body = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
-    expect(body.p_cap).toBe(TIERS.free.marketLimit);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("still asks the store for an analysis on a plan with none, because a pack may cover it", async () => {

@@ -64,12 +64,19 @@ export const TIERS: Record<TierId, Tier> = {
    * vendor purchase at $0.18 plus its contacts and images, every market
    * bought once for this account alone — with a gross margin above
    * forty percent: Starter 54%, Pro 52%, Scale 45%. Realistic margins,
-   * with half the cap used and the cache shared, run above eighty. The
-   * free tier is bounded so that an account paying nothing cannot
-   * become a cost centre, which unlimited browsing quietly allowed.
+   * with half the cap used and the cache shared, run above eighty.
    *
    * The ladder is a volume discount by design: sixty-eight cents an
    * analysis on Starter, sixty-three on Pro, fifty-five on Scale.
+   *
+   * FREE TOUCHES NOTHING THAT COSTS MONEY. It walks the whole product —
+   * the map, the cards, the calculator, the pipeline — on preview
+   * inventory, which is seeded and free to serve. The moment it reaches
+   * for live data, a market search or an analysis, the plan says no and
+   * the upgrade prompt opens. A small free allowance was tried and is
+   * the wrong shape: accounts are free to create, so any nonzero cap
+   * multiplied by however many accounts somebody cares to make is an
+   * unbounded bill with no revenue against it.
    */
   free: {
     id: "free",
@@ -77,17 +84,17 @@ export const TIERS: Record<TierId, Tier> = {
     priceMonthly: 0,
     priceAnnual: 0,
     pullLimit: 0,
-    marketLimit: 3,
+    marketLimit: 0,
     savedDealLimit: 3,
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
-    blurb: "Browse a few markets and run the numbers by hand.",
+    blurb: "Walk the product on preview inventory before you pay.",
     features: [
-      "3 markets / month",
+      "Preview inventory in every market",
       "Unlimited calculator",
       "3 saved deals",
-      "No property analyses",
+      "Upgrade for live listings and analyses",
     ],
   },
   starter: {

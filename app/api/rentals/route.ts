@@ -200,16 +200,23 @@ function joinAfterResponse(
  * that market's feed every day on a seventeen-dollar plan. Counted by slug,
  * so opening the same market twice is one against the plan.
  *
- * Signed out counts as free. Fails open when the meter is unreachable,
- * with the reason recorded; the platform's own daily ledgers still
- * bound the day.
+ * SIGNED OUT IS REFUSED, not waved through. This route is reachable
+ * without a session — API routes always are — and an earlier version
+ * let a request with no user straight through to the feed. That was
+ * live inventory for anyone with curl and no account at all, which is
+ * a worse hole than any free tier. No user, no market; the preview
+ * rows the client falls back to are seeded and cost nothing.
+ *
+ * Fails open only when the meter itself is unreachable for a SIGNED-IN
+ * account, with the reason recorded; the platform's own daily ledgers
+ * still bound the day.
  */
 async function claimMarket(key: string): Promise<
   | { allowed: true }
   | { allowed: false; used: number; cap: number }
 > {
   const user = await currentUser();
-  if (!user) return { allowed: true };
+  if (!user) return { allowed: false, used: 0, cap: 0 };
   const tier = (await tierOf(user.id)) ?? "free";
   const check = await consumeUsage(user.id, tier, "market", key);
   return check.allowed

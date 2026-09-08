@@ -56,7 +56,9 @@ export function UpgradeModal() {
           ? "Property analyses are a paid feature."
           : "You've used every analysis this month."
       : upgrade.reason === "markets"
-        ? `You've opened ${tier.marketLimit} markets this month.`
+        ? tier.marketLimit === 0
+          ? "Live listings are a paid feature."
+          : `You've opened ${tier.marketLimit} markets this month.`
         : upgrade.reason === "deals"
           ? "You've hit your saved deal limit."
           : "Get more room to run.";
@@ -67,7 +69,9 @@ export function UpgradeModal() {
         ? `${analysis.address}, ${analysis.city} has a full breakeven read waiting — comps included.`
         : "Every analysis turns an address into a breakeven read backed by live comps."
       : upgrade.reason === "markets"
-        ? `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month. Move up to keep browsing — the ones you've opened stay open.`
+        ? tier.marketLimit === 0
+          ? "What you're looking at is preview inventory. Paid plans open today's actual listings in every market, with live comps behind every analysis."
+          : `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month. Move up to keep browsing — the ones you've opened stay open.`
       : upgrade.reason === "deals"
         ? `The ${tier.name} plan holds ${
             Number.isFinite(tier.savedDealLimit) ? tier.savedDealLimit : "unlimited"
