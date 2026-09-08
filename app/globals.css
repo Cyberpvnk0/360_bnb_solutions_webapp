@@ -412,3 +412,30 @@
     transition: none;
   }
 }
+
+/* Comp rows on the analyzer — the pins' twins in the table. Hover (or
+   the pin's hover, mirrored) fills the row the pins' red and turns the
+   type white; pressing deepens it; the selected row stays filled. The
+   selectors carry two classes so they outrank the table's own hover. */
+.comp-row {
+  cursor: pointer;
+  transition:
+    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.comp-row.is-hot,
+.comp-row.is-hot:hover {
+  background-color: #d7263d;
+}
+.comp-row.is-hot td,
+.comp-row.is-hot td * {
+  color: #fff !important;
+  transition: color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.comp-row.is-hot:active {
+  background-color: #8f1020;
+}
+.comp-row.is-selected,
+.comp-row.is-selected:hover {
+  background-color: #b81c31;
+}

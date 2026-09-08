@@ -18,7 +18,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
 import { ArrowUpRight, X } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
-import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
+import { fmtMiles, fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { PropertyThumb } from "./property-thumb";
 import { cn } from "@/lib/utils";
@@ -96,6 +96,10 @@ interface CompsStreetMapProps {
   subjectLabel: string;
   hoveredId: string | null;
   onHover: (id: string | null) => void;
+  /** The comp whose card is docked — owned by the parent so the table
+   *  and the map select the same thing. */
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
   className?: string;
 }
 
@@ -105,11 +109,13 @@ export function CompsStreetMap({
   subjectLabel,
   hoveredId,
   onHover,
+  selectedId,
+  onSelect,
   className,
 }: CompsStreetMapProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
-  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const activeId = selectedId;
   /** The last thing MapLibre complained about, or null once a frame
    *  has actually rendered. Named rather than counted: a blank map
    *  should say whose tiles didn't arrive. */
@@ -127,9 +133,11 @@ export function CompsStreetMap({
   // Keep the latest handler and label reachable from marker listeners
   // without rebuilding the map.
   const onHoverRef = React.useRef(onHover);
+  const onSelectRef = React.useRef(onSelect);
   React.useEffect(() => {
     onHoverRef.current = onHover;
-  }, [onHover]);
+    onSelectRef.current = onSelect;
+  }, [onHover, onSelect]);
   const subjectLabelRef = React.useRef(subjectLabel);
   React.useEffect(() => {
     subjectLabelRef.current = subjectLabel;
@@ -175,7 +183,7 @@ export function CompsStreetMap({
     map.on("sourcedata", (event) => {
       if (event.tile && event.isSourceLoaded) setTileError(null);
     });
-    map.on("click", () => setActiveId(null));
+    map.on("click", () => onSelectRef.current(null));
 
     // Subject pin — brand red diamond in a gold ring.
     const subjectEl = document.createElement("div");
@@ -216,18 +224,34 @@ export function CompsStreetMap({
         "aria-label",
         `${comp.name} — ${fmtMoney(comp.adr)} a night, ${fmtMiles(comp.distanceMiles)} away`
       );
-      el.className =
-        "cursor-pointer rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-semibold text-foreground tabular transition-colors duration-150 hover:border-gold/60 hover:text-gold";
-      el.style.boxShadow = "var(--elev)";
-      el.textContent = fmtMoney(comp.adr);
+      // Same pin as the Deal Finder (styles in globals.css): red pill,
+      // tail on the address, the nightly rate compacted.
+      el.className = "rental-pin";
+      el.textContent = fmtMoneyShort(comp.adr);
       el.addEventListener("mouseenter", () => onHoverRef.current(comp.id));
       el.addEventListener("mouseleave", () => onHoverRef.current(null));
+      el.addEventListener("pointerdown", () => el.classList.add("is-pressed"));
+      const release = () => {
+        if (!el.classList.contains("is-pressed")) return;
+        el.classList.remove("is-pressed");
+        el.animate(
+          [
+            { transform: "scale(0.94) translateY(1px)" },
+            { transform: "scale(1.18)", offset: 0.6 },
+            { transform: "" },
+          ],
+          { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+        );
+      };
+      el.addEventListener("pointerup", release);
+      el.addEventListener("pointerleave", release);
+      el.addEventListener("pointercancel", release);
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        setActiveId((prev) => (prev === comp.id ? null : comp.id));
+        onSelectRef.current(comp.id);
       });
       markers.push(
-        new maplibregl.Marker({ element: el })
+        new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -6] })
           .setLngLat([comp.lon, comp.lat])
           .addTo(map)
       );
@@ -253,11 +277,12 @@ export function CompsStreetMap({
     const pills =
       container.querySelectorAll<HTMLButtonElement>("[data-comp-id]");
     for (const el of pills) {
-      const hot = el.dataset.compId === hoveredId || el.dataset.compId === activeId;
-      el.classList.toggle("border-gold/60", hot);
-      el.classList.toggle("text-gold", hot);
+      const selected = el.dataset.compId === activeId;
+      const hot = el.dataset.compId === hoveredId && !selected;
+      el.classList.toggle("is-hot", hot);
+      el.classList.toggle("is-selected", selected);
       const wrapper = el.parentElement;
-      if (wrapper) wrapper.style.zIndex = hot ? "30" : "10";
+      if (wrapper) wrapper.style.zIndex = selected ? "40" : hot ? "30" : "10";
     }
   }, [hoveredId, activeId]);
 
@@ -285,7 +310,7 @@ export function CompsStreetMap({
                 <button
                   type="button"
                   aria-label="Close listing card"
-                  onClick={() => setActiveId(null)}
+                  onClick={() => onSelect(null)}
                   className="shrink-0 rounded-full p-1 text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
                 >
                   <X aria-hidden className="size-3.5" />
@@ -325,7 +350,7 @@ export function CompsStreetMap({
           <span>Your property</span>
           <span
             aria-hidden
-            className="ml-2 inline-block size-2 rounded-full bg-gold-fill"
+            className="ml-2 inline-block h-2 w-3.5 rounded-full bg-[#d7263d]"
           />
           <span>Comps priced by the night — click one to open it</span>
         </p>

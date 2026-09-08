@@ -14,6 +14,7 @@ import type { StrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { CompsStreetMap, subjectPoint } from "./comps-street-map";
+import { cn } from "@/lib/utils";
 
 const STR_COLUMNS: DataTableColumn<StrComp>[] = [
   {
@@ -78,6 +79,8 @@ export function CompsExplorer({
   live?: boolean;
 }) {
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
+  /** The comp whose card is docked on the map — from a row or a pin. */
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
   // Anchor the map near the market center; Orlando only as a last-resort
   // fallback for an analysis whose market record is missing.
@@ -120,14 +123,24 @@ export function CompsExplorer({
 
       <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0">
+          {/* Rows are the pins' twins: hovering one fills it the pins'
+              red and lifts the pin; clicking docks that comp's card on
+              the map. Styles for .comp-row live in globals.css. */}
           <DataTable
             columns={STR_COLUMNS}
             rows={comps}
             rowKey={(c) => c.id}
             initialSort={{ key: "distance", dir: "asc" }}
             onRowHover={(row) => setHoveredId(row?.id ?? null)}
+            onRowClick={(row) =>
+              setSelectedId((prev) => (prev === row.id ? null : row.id))
+            }
             rowClassName={(row) =>
-              hoveredId === row.id ? "bg-secondary/60" : undefined
+              cn(
+                "comp-row",
+                (hoveredId === row.id || selectedId === row.id) && "is-hot",
+                selectedId === row.id && "is-selected"
+              )
             }
           />
           <p className="border-t border-border py-3 text-xs text-muted-foreground">
@@ -149,6 +162,8 @@ export function CompsExplorer({
           subjectLabel={`Your property — ${address}`}
           hoveredId={hoveredId}
           onHover={setHoveredId}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
           className="lg:sticky lg:top-24 lg:self-start"
         />
       </div>
