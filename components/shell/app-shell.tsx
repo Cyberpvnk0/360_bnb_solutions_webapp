@@ -24,13 +24,20 @@ import { UpgradeModal } from "@/components/upgrade/upgrade-modal";
  * persistent address search and pull counter. The upgrade modal mounts
  * here once so any screen can open it.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  isAdmin = false,
+}: {
+  children: React.ReactNode;
+  /** Decided on the server from the staff list; shows the Admin link. */
+  isAdmin?: boolean;
+}) {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   return (
     <div className="flex min-h-dvh">
       {/* Desktop icon rail */}
-      <aside className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <aside className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col border-r border-border bg-surface lg:flex print:hidden">
         <Link
           href="/dashboard"
           aria-label={`${APP_NAME} home`}
@@ -42,12 +49,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
         </Link>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <SidebarRail />
+          <SidebarRail isAdmin={isAdmin} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-4 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-4 backdrop-blur md:px-6 print:hidden">
           {/* Mobile nav */}
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger asChild>
@@ -70,7 +77,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </SheetTitle>
               </SheetHeader>
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+                <SidebarNav
+                  isAdmin={isAdmin}
+                  onNavigate={() => setMobileNavOpen(false)}
+                />
               </div>
             </SheetContent>
           </Sheet>

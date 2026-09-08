@@ -322,6 +322,11 @@ export const PIPELINE_STAGES: { id: PipelineStage; label: string }[] = [
 export interface Deal {
   id: string;
   analysisId: string;
+  /** The analyzer URL that reopens this exact property. A typed
+   *  address lives in its query string rather than in any table, so
+   *  the pipeline keeps the way back. Absent on rows saved before this
+   *  existed, which fall back to /analyze/{analysisId}. */
+  analysisHref?: string;
   address: string;
   city: string;
   stateCode: string;
@@ -414,29 +419,3 @@ export interface ActivityEvent {
   href?: string;
 }
 
-/* ------------------------------------------------------------------ */
-/* Admin                                                               */
-/* ------------------------------------------------------------------ */
-
-export interface AdminUserRow {
-  id: string;
-  name: string;
-  email: string;
-  tier: TierId;
-  pullsUsed: number;
-  joinedAt: string;
-}
-
-export interface AdminMetrics {
-  mrr: number;
-  activeSubscriptions: number;
-  freeAccounts: number;
-  tierCounts: { tier: TierId; count: number }[];
-  /** Trailing 12 months of address-pull volume. */
-  pullVolume: { month: string; pulls: number }[];
-  /** Modeled variable data cost per paying user per month. */
-  dataCostPerUser: number;
-  /** Fraction of MRR shared with the coaching program. */
-  revShareRate: number;
-  users: AdminUserRow[];
-}

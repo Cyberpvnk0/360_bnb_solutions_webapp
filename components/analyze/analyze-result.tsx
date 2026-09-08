@@ -119,6 +119,9 @@ export function AnalyzeResult({
     used: number;
     cap: number;
     tier: TierId;
+    /** Which pot paid: a fresh charge to the plan or a pack, or a key
+     *  this account already held ("cached") — a reload is not a pull. */
+    source?: "plan" | "pack" | "cached" | "none";
     unmetered?: string;
   } | null;
   /**
@@ -147,13 +150,39 @@ export function AnalyzeResult({
     rentSource: "listing" | "market";
   } | null;
 }) {
-  const { saveDeal, isAnalysisSaved, openUpgrade, tier, refreshUsage } = useSession();
+  const { saveDeal, isAnalysisSaved, openUpgrade, tier, refreshUsage, recordPull } =
+    useSession();
 
   // The server settled the plan count while rendering this page; the
   // header's meter was loaded before that and is one behind. Ask once.
   React.useEffect(() => {
     if (quota) void refreshUsage();
   }, [quota, refreshUsage]);
+
+  /** The URL that reopens exactly this: a typed address lives in the
+   *  query string, so the pipeline and the recent list keep the whole
+   *  thing rather than an id nothing can resolve. Read at the moment of
+   *  use, never at render, so the server and client HTML agree. */
+  const hereHref = () =>
+    typeof window === "undefined"
+      ? `/analyze/${analysis.id}`
+      : `${window.location.pathname}${window.location.search}`;
+
+  // A pull the plan just paid for goes into the account's history —
+  // once per property per page, and never for a reload the meter
+  // recognised, which bought nothing and is not a second pull. Recorded
+  // whether or not the comps arrived: the plan was charged either way,
+  // and the way back to the property is what the record is for.
+  const recorded = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!quota?.allowed) return;
+    if (quota.source !== "plan" && quota.source !== "pack") return;
+    if (recorded.current === analysis.id) return;
+    recorded.current = analysis.id;
+    recordPull(analysis, hereHref());
+    // hereHref reads window at call time and needs no dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quota, analysis, recordPull]);
   /**
    * Does this address exist?
    *
@@ -191,7 +220,7 @@ export function AnalyzeResult({
   const handleSave = () => {
     // Save the scenario on screen — the user's edited inputs, not the
     // comp defaults they may have already negotiated away from.
-    const result = saveDeal(analysis, inputs);
+    const result = saveDeal(analysis, inputs, hereHref());
     if (result.ok) {
       toast.success("Saved to pipeline", {
         description: `${analysis.address} is now in Prospecting.`,
@@ -205,15 +234,18 @@ export function AnalyzeResult({
     }
   };
 
+  /**
+   * The landlord packet is the browser's own print-to-PDF of this page
+   * with the shell stripped (see the print rules in globals.css). No
+   * library, no upload, and the PDF is exactly what is on screen — the
+   * figures a landlord is being shown are the ones the student saw.
+   */
   const handleExport = () => {
-    if (tier.pdfExport) {
-      toast.success("Landlord packet exported", {
-        description:
-          "A lender-style PDF of this analysis. Download is stubbed in this preview.",
-      });
-    } else {
+    if (!tier.pdfExport) {
       openUpgrade({ reason: "generic" });
+      return;
     }
+    window.print();
   };
 
   return (
@@ -316,10 +348,10 @@ export function AnalyzeResult({
               </StatusChip>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 print:hidden">
             <Button variant="outline" onClick={handleExport} className="gap-1.5">
               <FileDown aria-hidden className="size-4" />
-              Landlord packet
+              Landlord packet (PDF)
               {!tier.pdfExport ? (
                 <span className="text-[10px] uppercase tracking-wider text-gold">
                   Pro

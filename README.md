@@ -23,9 +23,11 @@ npm test        # calc engine unit tests (vitest)
 npm run build   # production build
 ```
 
-The top-right avatar menu has a **Demo: view as** switcher to preview the
-product as Free / Starter / Pro / Scale — the fastest way to see the
-upgrade flow (submit an address on /analyze as a Free user).
+Every account starts on Free and is metered server-side. To exercise the
+paid features locally, set `MOCK_CHECKOUT=1` and pick a plan on
+/settings?tab=billing — the tier is written for real, with no payment
+behind it, so never leave that on in production. Staff emails listed in
+`ADMIN_EMAILS` get /admin and the diagnostic routes.
 
 ### Live rentals (RentCast)
 

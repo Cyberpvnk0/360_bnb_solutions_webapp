@@ -24,9 +24,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Columns3, TriangleAlert } from "lucide-react";
+import { Columns3, FileDown, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { fmtMoney } from "@/lib/format";
+import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/csv";
+import { fmtMoney, fmtNum } from "@/lib/format";
 import {
   PIPELINE_STAGES,
   type Deal,
@@ -101,7 +102,8 @@ function BoardColumn({
 }
 
 export function PipelineBoard() {
-  const { ready, deals, tier, openUpgrade, moveDeal } = useSession();
+  const { ready, deals, landlords, tier, openUpgrade, moveDeal, recordExport } =
+    useSession();
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [openDealId, setOpenDealId] = React.useState<string | null>(null);
   // The last opened deal stays rendered so the drawer's 300ms exit
@@ -126,6 +128,45 @@ export function PipelineBoard() {
 
   const limit = tier.savedDealLimit;
   const atCapacity = Number.isFinite(limit) && deals.length >= limit;
+
+  /** Every deal on the board, one row each, with the landlords behind
+   *  it by name. Scale includes the export; other plans see the plan. */
+  const exportPipeline = () => {
+    if (!tier.csvExport) {
+      openUpgrade({ reason: "export" });
+      return;
+    }
+    const stageLabel = (id: PipelineStage) =>
+      PIPELINE_STAGES.find((s) => s.id === id)?.label ?? id;
+    const landlordName = (id: string) => landlords.find((l) => l.id === id)?.name ?? "";
+    const columns: CsvColumn<Deal>[] = [
+      { header: "Address", value: (d) => d.address },
+      { header: "City", value: (d) => d.city },
+      { header: "State", value: (d) => d.stateCode },
+      { header: "Market", value: (d) => d.marketSlug },
+      { header: "Bedrooms", value: (d) => d.bedrooms },
+      { header: "Stage", value: (d) => stageLabel(d.stage) },
+      {
+        header: "Breakeven occupancy (%)",
+        value: (d) => Math.round(d.breakevenOccupancy * 100),
+      },
+      { header: "Net cash flow / mo ($)", value: (d) => d.netCashFlow },
+      {
+        header: "Landlords",
+        value: (d) => d.landlordIds.map(landlordName).filter(Boolean).join("; "),
+      },
+      { header: "Notes", value: (d) => d.notes },
+      { header: "Saved", value: (d) => d.createdAt.slice(0, 10) },
+      { header: "Updated", value: (d) => d.updatedAt.slice(0, 10) },
+      {
+        header: "Analysis",
+        value: (d) => d.analysisHref ?? `/analyze/${d.analysisId}`,
+      },
+    ];
+    downloadCsv(csvFileName("pipeline"), toCsv(deals, columns));
+    recordExport(`${fmtNum(deals.length)} pipeline deals`, "/pipeline");
+    toast.success(`Exported ${fmtNum(deals.length)} deals`);
+  };
   const activeDeal = activeId ? deals.find((d) => d.id === activeId) : null;
   const openDeal = openDealId
     ? deals.find((d) => d.id === openDealId) ?? null
@@ -174,18 +215,30 @@ export function PipelineBoard() {
           title="Pipeline"
           description="Every deal from first call to first guest."
           actions={
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium tabular text-foreground">
-                {deals.length}
-              </span>{" "}
-              of{" "}
-              {Number.isFinite(limit) ? (
-                <span className="tabular">{limit}</span>
-              ) : (
-                "unlimited"
-              )}{" "}
-              deals
-            </p>
+            <>
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium tabular text-foreground">
+                  {deals.length}
+                </span>{" "}
+                of{" "}
+                {Number.isFinite(limit) ? (
+                  <span className="tabular">{limit}</span>
+                ) : (
+                  "unlimited"
+                )}{" "}
+                deals
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={exportPipeline}
+                disabled={!ready || deals.length === 0}
+              >
+                <FileDown aria-hidden className="size-4" />
+                Export CSV
+              </Button>
+            </>
           }
         />
 

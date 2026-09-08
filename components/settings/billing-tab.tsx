@@ -1,16 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Receipt } from "lucide-react";
 import { toast } from "sonner";
 import {
   TIERS,
   annualEffectiveMonthly,
   type TierId,
 } from "@/config/app";
-import { getInvoices } from "@/lib/data";
 import { fmtDate, fmtMoneyCents, fmtNum } from "@/lib/format";
-import type { Invoice } from "@/lib/mock/types";
 import {
   BillingToggle,
   PricingTiers,
@@ -18,68 +15,20 @@ import {
 } from "@/components/pricing/pricing-cards";
 import { useSession } from "@/components/providers/session-provider";
 import { PackPicker } from "@/components/upgrade/pack-picker";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/primitives/data-table";
-import { EmptyState } from "@/components/primitives/empty-state";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const INVOICE_COLUMNS: DataTableColumn<Invoice>[] = [
-  {
-    key: "date",
-    header: "Date",
-    cell: (row) => fmtDate(row.date),
-    sortValue: (row) => row.date,
-  },
-  {
-    key: "description",
-    header: "Description",
-    cell: (row) => <span className="text-foreground">{row.description}</span>,
-  },
-  {
-    key: "amount",
-    header: "Amount",
-    align: "right",
-    cell: (row) => fmtMoneyCents(row.amount),
-    sortValue: (row) => row.amount,
-  },
-  {
-    key: "status",
-    header: "Status",
-    align: "right",
-    cell: (row) => (
-      <StatusChip tone={row.status === "paid" ? "gold" : "outline"}>
-        {row.status === "paid" ? "Paid" : "Open"}
-      </StatusChip>
-    ),
-  },
-];
 
 export function BillingTab() {
   const { ready, user, tier, pullsUsed, pullLimit, credits, upgradeTo, openUpgrade } =
     useSession();
   const [billing, setBilling] = React.useState<BillingCycle>("annual");
-  const [invoices, setInvoices] = React.useState<Invoice[] | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    getInvoices().then((rows) => {
-      if (!cancelled) setInvoices(rows);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   if (!ready || !user) {
     return (
       <div className="space-y-8">
         <Skeleton className="h-44 w-full" />
         <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-96 w-full" />
         <Skeleton className="h-96 w-full" />
       </div>
     );
@@ -171,33 +120,6 @@ export function BillingTab() {
             </div>
           )}
         </div>
-      </section>
-
-      {/* Invoice history */}
-      <section className="overflow-hidden rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="text-sm font-semibold text-foreground">
-            Invoice history
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Every charge to date.
-          </p>
-        </div>
-        <DataTable
-          columns={INVOICE_COLUMNS}
-          rows={invoices ?? []}
-          rowKey={(row) => row.id}
-          loading={invoices === null}
-          skeletonRows={5}
-          emptyState={
-            <EmptyState
-              icon={Receipt}
-              title="No invoices yet."
-              description="Charges appear here once a paid plan starts."
-              className="border-0"
-            />
-          }
-        />
       </section>
 
       {/* Change plan */}

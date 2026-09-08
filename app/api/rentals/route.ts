@@ -24,8 +24,7 @@
  */
 
 import { after, NextResponse } from "next/server";
-import { currentUser } from "@/lib/supabase/server";
-import { consumeUsage, tierOf } from "@/lib/db/usage";
+import { claimMarket, monthlyCap, requireAdmin } from "@/lib/auth/gate";
 import {
   fetchLiveRentals,
   fetchLiveRentalsByZip,
@@ -190,49 +189,6 @@ function joinAfterResponse(
   });
 }
 
-/**
- * The account's plan, asked before any market is served.
- *
- * Distinct markets per month is the one browsing limit a plan carries.
- * It is not a cost meter — a market is shared and cached, so the
- * hundredth student to open Jacksonville costs nothing — it is what
- * keeps a lone account in a market nobody else looks at from re-buying
- * that market's feed every day on a seventeen-dollar plan. Counted by slug,
- * so opening the same market twice is one against the plan.
- *
- * SIGNED OUT IS REFUSED, not waved through. This route is reachable
- * without a session — API routes always are — and an earlier version
- * let a request with no user straight through to the feed. That was
- * live inventory for anyone with curl and no account at all, which is
- * a worse hole than any free tier. No user, no market; the preview
- * rows the client falls back to are seeded and cost nothing.
- *
- * Fails open only when the meter itself is unreachable for a SIGNED-IN
- * account, with the reason recorded; the platform's own daily ledgers
- * still bound the day.
- */
-async function claimMarket(key: string): Promise<
-  | { allowed: true }
-  | { allowed: false; used: number; cap: number }
-> {
-  const user = await currentUser();
-  if (!user) return { allowed: false, used: 0, cap: 0 };
-  const tier = (await tierOf(user.id)) ?? "free";
-  const check = await consumeUsage(user.id, tier, "market", key);
-  return check.allowed
-    ? { allowed: true }
-    : { allowed: false, used: check.used, cap: check.cap };
-}
-
-/** The refusal, in the shape every other live failure uses, plus the
- *  two figures the upgrade prompt needs to be specific. */
-function monthlyCap(used: number, cap: number) {
-  return NextResponse.json(
-    { live: false, reason: "monthly-cap", used, cap, status: null },
-    { status: 429 }
-  );
-}
-
 /** Same shape for every failure, so the client can explain itself. */
 function failure(error: unknown) {
   if (error instanceof RentCastError) {
@@ -305,6 +261,10 @@ export async function GET(request: Request) {
   // Costs no vendor request when this market was already searched today
   // — the probe shares the feed's Data-Cache entry.
   if (shape) {
+    // Staff only: a diagnostic that can spend a vendor request on a
+    // market nobody has opened today, and prints the vendor's schema.
+    const admin = await requireAdmin();
+    if (!admin.ok) return admin.response;
     try {
       const raw = await fetchRawRentals(market);
       const fields = describeFields(raw);

@@ -174,7 +174,9 @@ function DealDrawerBody({ deal }: { deal: Deal }) {
         {/* Links */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Button asChild variant="outline" size="sm">
-            <Link href={`/analyze/${deal.analysisId}`}>Open full analysis</Link>
+            <Link href={deal.analysisHref ?? `/analyze/${deal.analysisId}`}>
+              Open full analysis
+            </Link>
           </Button>
           <Link
             href={`/deals?market=${deal.marketSlug}`}

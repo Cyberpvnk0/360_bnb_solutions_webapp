@@ -74,6 +74,7 @@ function toDeal(row: Row): Deal {
   return {
     id: str(row.id),
     analysisId: str(row.analysis_id),
+    analysisHref: str(snap.analysisHref) || undefined,
     address: str(row.address),
     city: str(row.city),
     stateCode: str(row.state_code),
@@ -225,6 +226,7 @@ export async function persistDeal(
       market_slug: deal.marketSlug,
       stage: deal.stage,
       snapshot: {
+        analysisHref: deal.analysisHref ?? null,
         bedrooms: deal.bedrooms,
         breakevenOccupancy: deal.breakevenOccupancy,
         netCashFlow: deal.netCashFlow,

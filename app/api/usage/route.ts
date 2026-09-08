@@ -13,6 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/gate";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
 import { rentcastBudget } from "@/lib/live/quota";
@@ -27,6 +28,10 @@ import { maxPages } from "@/lib/live/redfin";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  // Vendor balances and the arithmetic behind the bill. Staff only.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
   const usage = await scraperUsage();
   // One furnished search is one paginated pass. The structured endpoint
   // bills one credit per page, and the page cap is the only knob. Read

@@ -1,16 +1,21 @@
 "use client";
 
 /**
- * /admin — internal operator metrics. MRR, tier mix, pull volume, and the
- * unit economics after the coaching-program rev share and data costs.
- * Everything is computed from getAdminMetrics(); no hardcoded dollars.
+ * /admin — the operator's view: who is on what plan, what the month has
+ * bought, and what is outstanding on packs.
+ *
+ * Every figure is read from the store through /api/admin/metrics, with
+ * the arithmetic written down in lib/admin/metrics beside the query it
+ * came from. Nothing on this page is modelled, and where a number does
+ * not exist yet — nothing has been billed, so there is no revenue — the
+ * card says "list price" and means it.
  */
 
 import * as React from "react";
-import { MoveDownRight } from "lucide-react";
-import { getAdminMetrics } from "@/lib/data";
-import { fmtMoney, fmtMoneyCents, fmtNum, fmtPct } from "@/lib/format";
-import type { AdminMetrics } from "@/lib/mock/types";
+import { TriangleAlert } from "lucide-react";
+import { CREDIT_PACKS, TIERS } from "@/config/app";
+import type { AdminMetrics } from "@/lib/admin/metrics";
+import { fmtMoney, fmtMonth, fmtNum } from "@/lib/format";
 import { PageHeader } from "@/components/primitives/page-header";
 import { StatCard, StatHeader } from "@/components/primitives/stat-card";
 import { StatusChip } from "@/components/primitives/status-chip";
@@ -42,12 +47,10 @@ function ChartCard({
 function LedgerRow({
   label,
   value,
-  negative,
   strong,
 }: {
   label: React.ReactNode;
   value: string;
-  negative?: boolean;
   strong?: boolean;
 }) {
   return (
@@ -62,15 +65,10 @@ function LedgerRow({
       </span>
       <span
         className={cn(
-          "inline-flex items-center gap-1.5 text-sm tabular",
-          negative && "text-neg",
-          strong && "font-semibold text-gold",
-          !negative && !strong && "text-foreground"
+          "text-sm tabular",
+          strong ? "font-semibold text-gold" : "text-foreground"
         )}
       >
-        {negative ? (
-          <MoveDownRight aria-hidden className="size-3" strokeWidth={2.5} />
-        ) : null}
         {value}
       </span>
     </div>
@@ -79,29 +77,42 @@ function LedgerRow({
 
 export function AdminScreen() {
   const [metrics, setMetrics] = React.useState<AdminMetrics | null>(null);
+  const [failed, setFailed] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
-    getAdminMetrics().then((m) => {
-      if (!cancelled) setMetrics(m);
-    });
+    fetch("/api/admin/metrics", { cache: "no-store" })
+      .then(async (res) => {
+        const body = (await res.json().catch(() => null)) as
+          | AdminMetrics
+          | { reason?: string }
+          | null;
+        if (cancelled) return;
+        if (!res.ok || !body || !("period" in body)) {
+          setFailed(
+            body && "reason" in body && body.reason === "admin-only"
+              ? "This account is not on the staff list."
+              : "The metrics could not be read."
+          );
+          return;
+        }
+        setMetrics(body);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed("The metrics could not be read.");
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const loading = metrics === null;
-
-  const arpu = metrics ? metrics.mrr / metrics.activeSubscriptions : 0;
-  const programShare = metrics ? metrics.mrr * metrics.revShareRate : 0;
-  const dataCosts = metrics
-    ? metrics.dataCostPerUser * metrics.activeSubscriptions
-    : 0;
-  const netBeforeOverhead = metrics
-    ? metrics.mrr - programShare - dataCosts
-    : 0;
-
+  const loading = metrics === null && failed === null;
   const sk = (w: string) => <Skeleton className={cn("mt-0.5 h-7", w)} />;
+
+  const pullVolume =
+    metrics?.byPeriod.map((p) => ({ month: `${p.period}-01`, pulls: p.analyses })) ??
+    [];
+  const periodLabel = metrics ? fmtMonth(`${metrics.period}-01`) : "";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
@@ -109,59 +120,76 @@ export function AdminScreen() {
         title={
           <span className="inline-flex flex-wrap items-center gap-3">
             Admin
-            <StatusChip tone="outline">Internal</StatusChip>
+            <StatusChip tone="outline">Staff</StatusChip>
           </span>
         }
-        description="Operator metrics. Not visible to customers."
+        description="Every account, what the month has bought, and what is outstanding. Read from the store; nothing here is modelled."
       />
 
-      {/* Stat header */}
+      {failed || metrics?.error ? (
+        <div className="mt-6 flex items-start gap-3 rounded-sm border border-border bg-secondary/40 px-4 py-3">
+          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-neg" />
+          <div className="text-sm text-foreground">
+            {failed ?? "The store answered with an error."}
+            {metrics?.error ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">{metrics.error}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {metrics?.truncated ? (
+        <p className="mt-4 text-xs text-muted-foreground">
+          One of the reads hit the store&apos;s row ceiling, so the totals
+          below undercount. The accounts list is the newest thousand.
+        </p>
+      ) : null}
+
       <StatHeader className="mt-8">
         <StatCard
-          label="MRR"
+          label="Accounts"
           serif
-          value={metrics ? fmtMoney(metrics.mrr) : sk("w-24")}
+          value={metrics ? fmtNum(metrics.accounts) : sk("w-16")}
         />
         <StatCard
-          label="Active subscriptions"
-          value={metrics ? fmtNum(metrics.activeSubscriptions) : sk("w-16")}
+          label="On a paid plan"
+          value={metrics ? fmtNum(metrics.paying) : sk("w-16")}
         />
         <StatCard
-          label="Free accounts"
-          value={metrics ? fmtNum(metrics.freeAccounts) : sk("w-16")}
-        />
-        <StatCard
-          label="ARPU"
-          value={metrics ? fmtMoneyCents(arpu) : sk("w-20")}
-        />
-        <StatCard
-          label="Est. data cost / paying user"
-          value={metrics ? fmtMoneyCents(metrics.dataCostPerUser) : sk("w-16")}
+          label="Plans at list price"
+          value={metrics ? fmtMoney(metrics.listMrr) : sk("w-24")}
           sub={
-            <span className="text-[11px] text-muted-foreground">per month</span>
+            <span className="text-[11px] text-muted-foreground">
+              per month, if every paid plan were billed monthly
+            </span>
           }
         />
         <StatCard
-          label="Program rev share"
-          value={metrics ? fmtMoney(programShare) : sk("w-20")}
+          label={`Analyses in ${periodLabel || "this month"}`}
+          value={metrics ? fmtNum(metrics.analysesThisPeriod) : sk("w-16")}
           sub={
-            metrics ? (
-              <span className="text-[11px] text-muted-foreground tabular">
-                {fmtPct(metrics.revShareRate)} of MRR
-              </span>
-            ) : (
-              <Skeleton className="h-3 w-16" />
-            )
+            <span className="text-[11px] text-muted-foreground">
+              distinct properties, every account
+            </span>
+          }
+        />
+        <StatCard
+          label={`Markets opened in ${periodLabel || "this month"}`}
+          value={metrics ? fmtNum(metrics.marketsThisPeriod) : sk("w-16")}
+        />
+        <StatCard
+          label="Pack credits outstanding"
+          value={metrics ? fmtNum(metrics.creditsOutstanding) : sk("w-16")}
+          sub={
+            <span className="text-[11px] text-muted-foreground">
+              analyses bought and not yet used
+            </span>
           }
         />
       </StatHeader>
 
-      {/* Charts */}
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <ChartCard
-          title="Tier distribution"
-          sub="Every account in the cohort, by plan."
-        >
+        <ChartCard title="Plan mix" sub="Every account, by plan.">
           {metrics ? (
             <TierDonut tierCounts={metrics.tierCounts} />
           ) : (
@@ -171,11 +199,11 @@ export function AdminScreen() {
           )}
         </ChartCard>
         <ChartCard
-          title="Pull volume"
-          sub="Address pulls per month, trailing 12 months."
+          title="Analyses bought"
+          sub="Distinct properties analysed per month, trailing 12 months."
         >
           {metrics ? (
-            <PullVolumeChart pullVolume={metrics.pullVolume} />
+            <PullVolumeChart pullVolume={pullVolume} />
           ) : (
             <div className="flex h-[268px] items-end gap-2 px-2 pb-2">
               {Array.from({ length: 12 }).map((_, i) => (
@@ -190,59 +218,97 @@ export function AdminScreen() {
         </ChartCard>
       </div>
 
-      {/* Unit economics */}
-      <div className="mt-10 rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="text-sm font-semibold text-foreground">
-            Unit economics
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Monthly, at the current cohort mix.
-          </p>
+      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-sm border border-border bg-card">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-sm font-semibold text-foreground">Plans</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Accounts on each, and what those plans list for.
+            </p>
+          </div>
+          {metrics ? (
+            <div className="divide-y divide-border">
+              {metrics.tierCounts.map(({ tier, count }) => (
+                <LedgerRow
+                  key={tier}
+                  label={`${TIERS[tier].name} · ${fmtNum(count)}`}
+                  value={
+                    TIERS[tier].priceMonthly > 0
+                      ? fmtMoney(count * TIERS[tier].priceMonthly)
+                      : "—"
+                  }
+                />
+              ))}
+              <LedgerRow label="At list, per month" value={fmtMoney(metrics.listMrr)} strong />
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between px-6 py-3.5">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        {metrics ? (
-          <div className="divide-y divide-border">
-            <LedgerRow label="MRR" value={fmtMoney(metrics.mrr)} />
-            <LedgerRow
-              label={`Coaching program share (${fmtPct(metrics.revShareRate)})`}
-              value={`−${fmtMoney(programShare)}`}
-              negative
-            />
-            <LedgerRow
-              label="Est. data costs"
-              value={`−${fmtMoney(dataCosts)}`}
-              negative
-            />
-            <LedgerRow
-              label="Net before overhead"
-              value={fmtMoney(netBeforeOverhead)}
-              strong
-            />
+
+        <div className="rounded-sm border border-border bg-card">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-sm font-semibold text-foreground">
+              Packs granted in {periodLabel || "this month"}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Top-ups fulfilled this month, by pack.
+            </p>
           </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between px-6 py-3.5"
-              >
-                <Skeleton className="h-4 w-48" />
-                <Skeleton className="h-4 w-20" />
+          {metrics ? (
+            metrics.packsThisPeriod.length === 0 ? (
+              <p className="px-6 py-6 text-sm text-muted-foreground">
+                No packs granted this month.
+              </p>
+            ) : (
+              <div className="divide-y divide-border">
+                {metrics.packsThisPeriod.map(({ pack, count }) => (
+                  <LedgerRow
+                    key={pack}
+                    label={`${CREDIT_PACKS[pack].label} · ${fmtNum(count)}`}
+                    value={fmtMoney(count * CREDIT_PACKS[pack].price)}
+                  />
+                ))}
+                <LedgerRow
+                  label="Pack revenue at list"
+                  value={fmtMoney(
+                    metrics.packsThisPeriod.reduce(
+                      (s, p) => s + p.count * CREDIT_PACKS[p.pack].price,
+                      0
+                    )
+                  )}
+                  strong
+                />
               </div>
-            ))}
-          </div>
-        )}
+            )
+          ) : (
+            <div className="divide-y divide-border">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between px-6 py-3.5">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Users */}
       <div className="mt-10 overflow-hidden rounded-sm border border-border bg-card">
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            A sample of the cohort, newest first.
+            Newest first. Usage is this month&apos;s, against each plan&apos;s cap.
           </p>
         </div>
-        <AdminUsersTable users={metrics?.users ?? []} loading={loading} />
+        <AdminUsersTable users={metrics?.accountsList ?? []} loading={loading} />
       </div>
     </div>
   );

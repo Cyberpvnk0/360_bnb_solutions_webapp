@@ -4,13 +4,15 @@
  * Client-side session state: who the user is, what tier they're on, how
  * many pulls they've used, their saved deals and landlord contacts.
  *
- * UI-only pass: state lives in memory, seeded from lib/data on mount.
- * When auth + billing + persistence arrive, this provider keeps its API
- * and swaps its internals for server calls.
+ * Every row here belongs to the signed-in account and is loaded from its
+ * own tables (lib/db/user-data). Signed out there is nothing: no user,
+ * no deals, no landlords — the proxy sends visitors to sign in before
+ * any of this renders, and the public pages that do mount this provider
+ * treat a null user as exactly that.
  */
 
 import * as React from "react";
-import { CREDIT_PACKS, TIERS, type PackId, type Tier, type TierId } from "@/config/app";
+import { TIERS, type PackId, type Tier, type TierId } from "@/config/app";
 import { currentPeriod } from "@/lib/db/usage-period";
 import {
   breakevenOccupancy,
@@ -31,13 +33,6 @@ import {
   persistWatch,
 } from "@/lib/db/user-data";
 import {
-  getActivity,
-  getDeals,
-  getLandlords,
-  getSessionUser,
-} from "@/lib/data";
-import { MOCK_TODAY } from "@/lib/mock/seed";
-import {
   defaultLists,
   readLists,
   writeLists,
@@ -53,7 +48,7 @@ import type {
   SessionUser,
 } from "@/lib/mock/types";
 
-export type UpgradeReason = "pulls" | "markets" | "deals" | "generic";
+export type UpgradeReason = "pulls" | "markets" | "deals" | "export" | "generic";
 
 interface UpgradeState {
   open: boolean;
@@ -97,7 +92,10 @@ interface SessionContextValue {
 
   /** Spend one pull. Returns false (and opens nothing) if none remain. */
   consumePull: () => boolean;
-  saveDeal: (analysis: Analysis, inputs?: DealInputs) => SaveDealResult;
+  /** `href` is the analyzer URL that reopens this exact property — a
+   *  typed address lives in its query string, not in any table, so the
+   *  pipeline has to be told how to get back to it. */
+  saveDeal: (analysis: Analysis, inputs?: DealInputs, href?: string) => SaveDealResult;
   isAnalysisSaved: (analysisId: string) => boolean;
   moveDeal: (dealId: string, stage: PipelineStage) => void;
   updateDeal: (dealId: string, patch: Partial<Deal>) => void;
@@ -117,17 +115,21 @@ interface SessionContextValue {
   /** Saved to any list at all. */
   isSaved: (listingId: string) => boolean;
 
-  /** Demo-only: preview the product as another tier. */
-  /** Switch plan. Signed in, this writes the tier through the server
-   *  (the demo checkout, until a processor's webhook is the writer);
-   *  signed out, it previews the seeded world as another tier. */
-  setTier: (tier: TierId) => void;
-  /** Mock checkout: switch tier (clamping usage into the new limit) and
-   *  optionally spend one pull in the same atomic update. */
+  /** Switch plan through the server, which writes the tier (the test
+   *  checkout today, a processor's webhook tomorrow) and answers with
+   *  what actually happened. Optionally spends one pull in the same
+   *  update so the header cannot skip it. */
   upgradeTo: (
     tier: TierId,
     opts?: { consumePull?: boolean }
   ) => Promise<{ ok: true } | { error: string }>;
+
+  /** Note that an analysis was bought for this property, with the URL
+   *  that reopens it — the "recent pulls" list and the activity feed
+   *  are read from these. */
+  recordPull: (analysis: Analysis, href: string) => void;
+  /** Note a spreadsheet export, for the activity feed. */
+  recordExport: (what: string, href: string) => void;
 
   upgrade: UpgradeState;
   openUpgrade: (opts?: { reason?: UpgradeReason; analysis?: Analysis }) => void;
@@ -151,7 +153,7 @@ function nextId(prefix: string): string {
  * names — so every later stage change would update nothing, silently.
  *
  * Falls back to the counter where crypto is unavailable, which is only
- * ever an old browser and only ever affects the signed-out demo.
+ * ever an old browser.
  */
 function storedId(prefix: string): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -163,10 +165,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   /**
    * The signed-in account's id, and the client that speaks for it.
    *
-   * Null means signed out or auth not configured, and everything below
-   * then behaves exactly as it did before: seeded data, held in memory,
-   * gone on refresh. That is a demo, and it should keep working —
-   * somebody should be able to look around before making an account.
+   * Null means signed out or auth not configured. Nothing is loaded
+   * then: `user` stays null and every list stays empty, and the shell
+   * renders its signed-out state. There is no seeded stand-in.
    */
   const [userId, setUserId] = React.useState<string | null>(null);
   const supabase = React.useMemo(
@@ -236,18 +237,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setLandlords(data.landlords);
         setActivity(data.activity);
       } else {
-        // Signed out: the seeded world, so the app is explorable.
-        const [u, d, l, a] = await Promise.all([
-          getSessionUser(),
-          getDeals(),
-          getLandlords(),
-          getActivity(),
-        ]);
-        if (cancelled) return;
-        setUser(u);
-        setDeals(d);
-        setLandlords(l);
-        setActivity(a);
+        // Signed out, or auth not configured: nobody, and nothing.
+        setUser(null);
+        setDeals([]);
+        setLandlords([]);
+        setActivity([]);
       }
 
       setLists(localLists);
@@ -338,8 +332,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
    * Write through to the account, when there is one.
    *
    * Every mutation below updates React state first so the UI responds
-   * immediately, then persists. Signed out, `persist` is a no-op and
-   * the app behaves as the seeded demo it was.
+   * immediately, then persists. Signed out there is no account to write
+   * to and `persist` is a no-op — and no screen that mutates is
+   * reachable signed out.
    *
    * A failure is logged rather than swallowed. It cannot block the
    * interaction — the change is already on screen — but a person who
@@ -404,7 +399,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const saveDeal = React.useCallback(
-    (analysis: Analysis, inputs?: DealInputs): SaveDealResult => {
+    (analysis: Analysis, inputs?: DealInputs, href?: string): SaveDealResult => {
       if (deals.some((d) => d.analysisId === analysis.id)) {
         return { ok: false, reason: "duplicate" };
       }
@@ -419,6 +414,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const deal: Deal = {
         id: storedId("d"),
         analysisId: analysis.id,
+        analysisHref: href,
         address: analysis.address,
         city: analysis.city,
         stateCode: analysis.stateCode,
@@ -579,7 +575,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const created: DealList = {
       id: nextId("list"),
       name: name.trim() || "Untitled list",
-      createdAt: MOCK_TODAY,
+      createdAt: new Date().toISOString().slice(0, 10),
       listings: [],
     };
     setLists((prev) => [...prev, created]);
@@ -692,28 +688,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
-  /**
-   * The user-menu switcher. Signed in it is a real plan change and goes
-   * through upgradeTo; signed out it previews the seeded demo world as
-   * another tier, which is all it ever was.
-   */
-  const setTier = React.useCallback(
-    (tierId: TierId) => {
-      if (userId) {
-        void upgradeTo(tierId);
-        return;
-      }
-      setUser((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          tier: tierId,
-          pullsUsed: Math.min(prev.pullsUsed, TIERS[tierId].pullLimit),
-          marketsUsed: Math.min(prev.marketsUsed, TIERS[tierId].marketLimit),
-        };
+  const recordPull = React.useCallback(
+    (analysis: Analysis, href: string) => {
+      pushActivity({
+        type: "pull",
+        message: `Analyzed ${analysis.address}, ${analysis.city}`,
+        at: new Date().toISOString(),
+        href,
       });
     },
-    [userId, upgradeTo]
+    [pushActivity]
+  );
+
+  const recordExport = React.useCallback(
+    (what: string, href: string) => {
+      pushActivity({
+        type: "export",
+        message: `Exported ${what}`,
+        at: new Date().toISOString(),
+        href,
+      });
+    },
+    [pushActivity]
   );
 
   const openUpgrade = React.useCallback(
@@ -764,8 +760,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     toggleListMembership,
     listsWithListing,
     isSaved,
-    setTier,
     upgradeTo,
+    recordPull,
+    recordExport,
     upgrade,
     openUpgrade,
     closeUpgrade,

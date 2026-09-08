@@ -4,7 +4,6 @@ import Link from "next/link";
 import { LogOut, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import * as React from "react";
-import { TIER_ORDER, TIERS } from "@/config/app";
 import { useSession } from "@/components/providers/session-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -13,12 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,7 +45,7 @@ export function ThemeToggle() {
 }
 
 export function UserMenu() {
-  const { ready, user, tier, setTier } = useSession();
+  const { ready, user, tier } = useSession();
   // Sign-out is a POST to the route that clears the session server-side
   // and 303s to the sign-in page. A hidden form, submitted from the menu
   // item, so the browser follows the redirect as a real navigation.
@@ -86,6 +80,9 @@ export function UserMenu() {
         <DropdownMenuLabel>
           <div className="text-sm font-medium text-foreground">{user.name}</div>
           <div className="text-xs font-normal text-muted-foreground">{user.email}</div>
+          <div className="mt-1 text-xs font-normal text-muted-foreground">
+            {tier.name} plan
+          </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
@@ -94,27 +91,6 @@ export function UserMenu() {
         <DropdownMenuItem asChild>
           <Link href="/settings?tab=billing">Billing &amp; plan</Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <span>
-              Demo: view as{" "}
-              <span className="text-muted-foreground">{tier.name}</span>
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup
-              value={tier.id}
-              onValueChange={(v) => setTier(v as (typeof TIER_ORDER)[number])}
-            >
-              {TIER_ORDER.map((id) => (
-                <DropdownMenuRadioItem key={id} value={id}>
-                  {TIERS[id].name}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
         <DropdownMenuSeparator />
         {/* "Log out" used to router.push("/") — a navigation, not a
             sign-out. The session cookie survived it, so every door led

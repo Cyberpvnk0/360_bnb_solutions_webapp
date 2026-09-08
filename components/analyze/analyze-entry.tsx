@@ -23,14 +23,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Crosshair, MapPin } from "lucide-react";
-import { getRecentAnalyses } from "@/lib/data";
 import type { Analysis } from "@/lib/mock/types";
 import { fmtDate } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { PageHeader } from "@/components/primitives/page-header";
-import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -52,7 +50,7 @@ export function AnalyzeEntry({
   prefill?: AddressMatch | null;
 }) {
   const router = useRouter();
-  const { ready, tier, canPull, pullsRemaining, consumePull, openUpgrade } =
+  const { ready, tier, canPull, pullsRemaining, consumePull, openUpgrade, activity } =
     useSession();
 
   const [query, setQuery] = React.useState(
@@ -82,11 +80,16 @@ export function AnalyzeEntry({
    *  outage look identical without it. */
   const [noMatch, setNoMatch] = React.useState(false);
   const [pulling, setPulling] = React.useState(false);
-  const [recent, setRecent] = React.useState<Analysis[] | null>(null);
-
-  React.useEffect(() => {
-    getRecentAnalyses(5).then(setRecent);
-  }, []);
+  /**
+   * This account's own recent analyses: the pulls it has paid for,
+   * read from its activity, each carrying the URL that reopens the
+   * property. There is no seeded history — a new account's list is
+   * empty because it is.
+   */
+  const recent = React.useMemo(
+    () => activity.filter((e) => e.type === "pull" && e.href).slice(0, 5),
+    [activity]
+  );
 
   React.useEffect(() => {
     const q = query.trim();
@@ -320,7 +323,7 @@ export function AnalyzeEntry({
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">Recent pulls</h2>
         </div>
-        {recent === null ? (
+        {!ready ? (
           <div className="divide-y divide-border">
             {Array.from({ length: 5 }).map((_, i) => (
               <div
@@ -342,20 +345,17 @@ export function AnalyzeEntry({
           </div>
         ) : (
           <ul className="divide-y divide-border">
-            {recent.map((a) => (
-              <li key={a.id}>
+            {recent.map((e) => (
+              <li key={e.id}>
                 <Link
-                  href={`/analyze/${a.id}`}
+                  href={e.href!}
                   className="flex items-center justify-between gap-4 px-6 py-2.5 transition-colors duration-150 hover:bg-secondary/40"
                 >
                   <span className="min-w-0 truncate text-sm text-foreground">
-                    {a.address}, {a.city}, {a.stateCode}
+                    {e.message.replace(/^Analyzed /, "")}
                   </span>
-                  <span className="flex shrink-0 items-center gap-3">
-                    <StatusChip tone="outline">{a.bedrooms} bd</StatusChip>
-                    <span className="text-xs text-muted-foreground tabular">
-                      {fmtDate(a.createdAt)}
-                    </span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular">
+                    {fmtDate(e.at)}
                   </span>
                 </Link>
               </li>

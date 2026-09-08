@@ -22,7 +22,7 @@ import {
 } from "recharts";
 import { TIERS, TIER_ORDER, type TierId } from "@/config/app";
 import { fmtMonth, fmtNum } from "@/lib/format";
-import type { AdminMetrics } from "@/lib/mock/types";
+import type { AdminMetrics } from "@/lib/admin/metrics";
 import {
   AXIS_PROPS,
   CHART,
@@ -129,7 +129,8 @@ export function TierDonut({
 export function PullVolumeChart({
   pullVolume,
 }: {
-  pullVolume: AdminMetrics["pullVolume"];
+  /** `month` is an ISO date on the first of the month. */
+  pullVolume: { month: string; pulls: number }[];
 }) {
   return (
     <div className="h-[268px]">

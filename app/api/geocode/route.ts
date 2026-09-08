@@ -11,11 +11,17 @@
  */
 
 import { NextResponse } from "next/server";
+import { requireSignedIn } from "@/lib/auth/gate";
 import { geocodeCandidates } from "@/lib/live/geocode";
 
 export const maxDuration = 20;
 
 export async function GET(request: Request) {
+  // Free upstream, but an open relay to it is still our bandwidth and
+  // our rate limit at the geocoder; an account is the price of asking.
+  const who = await requireSignedIn();
+  if (!who.ok) return who.response;
+
   const q = new URL(request.url).searchParams.get("q") ?? "";
   if (q.trim().length < 4) return NextResponse.json({ matches: [] });
 

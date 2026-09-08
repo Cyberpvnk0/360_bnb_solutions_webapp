@@ -32,6 +32,7 @@
  * bill tracks distinct addresses rather than pageviews.
  */
 
+import { requireAdmin, requirePaid, requireSignedIn } from "@/lib/auth/gate";
 import { fetchAerial, aerialKeyNamesSeen, hasAerialKey } from "@/lib/live/aerial";
 import {
   fetchStreetView,
@@ -59,6 +60,9 @@ export async function GET(request: Request) {
    * it is showing a kerb or a roof, and only this knows which.
    */
   if (searchParams.get("probe")) {
+    // Reads two booleans off the environment; any account may ask.
+    const who = await requireSignedIn();
+    if (!who.ok) return who.response;
     return Response.json(
       {
           street: hasGoogleKey(),
@@ -80,6 +84,10 @@ export async function GET(request: Request) {
      * page of aerials and reads as thin coverage.
      */
     if (searchParams.get("check")) {
+      // A setup diagnostic that spends a geocode and names the
+      // deployment's keys by status. Staff only.
+      const admin = await requireAdmin();
+      if (!admin.ok) return admin.response;
       // Times Square, and Google's own headquarters. Both certainly
       // exist, so anything other than OK is our configuration.
       const [street, geocoding] = await Promise.all([
@@ -138,6 +146,13 @@ export async function GET(request: Request) {
   ) {
     return new Response("Bad coordinates", { status: 400 });
   }
+
+  // A kerb shot is billed per address. Only live rows ask for one, and
+  // only paid plans are served live rows — this makes that true of the
+  // route as well as of the page, so a URL pasted into a free account's
+  // tab (or curl) draws nothing at Google's expense.
+  const paid = await requirePaid();
+  if (!paid.ok) return paid.response;
 
   const wanted = searchParams.get("source");
   const only =

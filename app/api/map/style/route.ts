@@ -27,6 +27,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { requireSignedIn } from "@/lib/auth/gate";
 
 /** Styles are static for long stretches; one fetch serves everyone. */
 const REVALIDATE_SECONDS = 86_400;
@@ -88,6 +89,11 @@ function resolve(): { url: string; provider: string } {
 }
 
 export async function GET() {
+  // The style carries the tile key. Anyone signed in gets it — the
+  // browser needs it to draw — but not anyone at all.
+  const who = await requireSignedIn();
+  if (!who.ok) return who.response;
+
   // Raster is assembled here, so it needs no upstream fetch at all —
   // one less thing between a request and a visible map.
   const rasterKey =

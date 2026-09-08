@@ -7,7 +7,9 @@
  */
 
 import * as React from "react";
-import { Contact, Lock, Plus, Search } from "lucide-react";
+import { Contact, FileDown, Lock, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
+import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/csv";
 import { fmtDate, fmtNum } from "@/lib/format";
 import type { Landlord, StrPolicy } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
@@ -31,6 +33,30 @@ import { LandlordSheet } from "./landlord-sheet";
 import { StrPolicyChip } from "./str-policy-chip";
 
 type PolicyFilter = "all" | StrPolicy;
+
+const STR_LABEL: Record<StrPolicy, string> = {
+  yes: "Yes",
+  no: "No",
+  negotiable: "Negotiable",
+};
+
+/** What leaves in the spreadsheet — the book as the table shows it,
+ *  plus the deal addresses each contact is behind. */
+function bookColumns(dealAddress: (id: string) => string): CsvColumn<Landlord>[] {
+  return [
+    { header: "Name", value: (l) => l.name },
+    { header: "Company", value: (l) => l.company ?? "" },
+    { header: "Phone", value: (l) => l.phone },
+    { header: "Email", value: (l) => l.email },
+    { header: "Units controlled", value: (l) => l.unitsControlled },
+    { header: "Allows STR", value: (l) => STR_LABEL[l.allowsStr] },
+    { header: "Last contacted", value: (l) => l.lastContacted ?? "" },
+    { header: "Deals", value: (l) => l.dealIds.length },
+    { header: "Deal addresses", value: (l) => l.dealIds.map(dealAddress).filter(Boolean).join("; ") },
+    { header: "Notes", value: (l) => l.notes },
+    { header: "Added", value: (l) => l.createdAt.slice(0, 10) },
+  ];
+}
 
 const COLUMNS: DataTableColumn<Landlord>[] = [
   {
@@ -98,7 +124,7 @@ const COLUMNS: DataTableColumn<Landlord>[] = [
 ];
 
 export function LandlordsView() {
-  const { ready, landlords } = useSession();
+  const { ready, landlords, deals, tier, openUpgrade, recordExport } = useSession();
   const [query, setQuery] = React.useState("");
   const [policy, setPolicy] = React.useState<PolicyFilter>("all");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -132,12 +158,45 @@ export function LandlordsView() {
     </Button>
   );
 
+  /** The book as filtered on screen, to a CSV. Scale includes it; the
+   *  other plans are shown the upgrade rather than a disabled button. */
+  const exportBook = () => {
+    if (!tier.csvExport) {
+      openUpgrade({ reason: "export" });
+      return;
+    }
+    const address = (id: string) => {
+      const d = deals.find((x) => x.id === id);
+      return d ? `${d.address}, ${d.city}, ${d.stateCode}` : "";
+    };
+    downloadCsv(csvFileName("landlords"), toCsv(filtered, bookColumns(address)));
+    recordExport(`${fmtNum(filtered.length)} landlords`, "/landlords");
+    toast.success(`Exported ${fmtNum(filtered.length)} landlords`);
+  };
+
+  const exportButton = (
+    <Button
+      variant="outline"
+      className="gap-1.5"
+      onClick={exportBook}
+      disabled={!ready || filtered.length === 0}
+    >
+      <FileDown aria-hidden className="size-4" />
+      Export CSV
+    </Button>
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
         title="Landlords"
         description="The relationships behind every lease."
-        actions={addButton}
+        actions={
+          <>
+            {exportButton}
+            {addButton}
+          </>
+        }
       />
 
       {/* Privacy strip — the selling point, stated plainly. */}

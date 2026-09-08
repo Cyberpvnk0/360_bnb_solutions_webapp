@@ -94,7 +94,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
  * Desktop icon rail: icon tile with the page name beneath, stacked.
  * The active item carries the gold-washed tile and the thin gold left rule.
  */
-export function SidebarRail() {
+export function SidebarRail({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const { tier, openUpgrade } = useSession();
 
@@ -111,10 +111,16 @@ export function SidebarRail() {
         <RailLink key={item.href} item={item} pathname={pathname} />
       ))}
 
-      <div aria-hidden className="mx-4 my-3 border-t border-border" />
-      {NAV_INTERNAL.map((item) => (
-        <RailLink key={item.href} item={item} pathname={pathname} />
-      ))}
+      {/* Staff only. The page 404s for everyone else; the link should
+          not advertise it. Decided on the server, from ADMIN_EMAILS. */}
+      {isAdmin ? (
+        <>
+          <div aria-hidden className="mx-4 my-3 border-t border-border" />
+          {NAV_INTERNAL.map((item) => (
+            <RailLink key={item.href} item={item} pathname={pathname} />
+          ))}
+        </>
+      ) : null}
 
       <div className="mt-auto flex flex-col items-center gap-2 border-t border-border p-3">
         <StatusChip tone={tier.id === "free" ? "neutral" : "gold"}>
@@ -138,7 +144,13 @@ export function SidebarRail() {
  * Full-width nav list used by the mobile sheet.
  * Active item carries the thin gold left rule.
  */
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({
+  onNavigate,
+  isAdmin = false,
+}: {
+  onNavigate?: () => void;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const { tier, openUpgrade } = useSession();
 
@@ -157,12 +169,14 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </div>
 
-      <div className="mt-8">
-        <p className="metric-label px-5 pb-2">Internal</p>
-        {NAV_INTERNAL.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
-        ))}
-      </div>
+      {isAdmin ? (
+        <div className="mt-8">
+          <p className="metric-label px-5 pb-2">Staff</p>
+          {NAV_INTERNAL.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-auto border-t border-border p-5">
         <div className="flex items-center justify-between gap-2">

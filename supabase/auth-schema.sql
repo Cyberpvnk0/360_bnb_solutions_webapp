@@ -407,3 +407,16 @@ revoke execute on function public.consume_usage(uuid, text, text, text, integer)
   from public, anon, authenticated;
 grant execute on function public.consume_usage(uuid, text, text, text, integer)
   to service_role;
+
+/* ------------------------------------------------------------------ */
+/* The plan is not the browser's to set                                */
+/* ------------------------------------------------------------------ */
+
+/* The "own profile" policy lets an account update its own row, which
+   until now included `tier` — so a free account could write
+   tier = 'scale' from devtools and every server-side meter, reading the
+   same row, would have believed it. Column privileges sit beside row
+   policies: the row is still theirs to edit, these two columns are
+   not. The server writes the tier with the secret key (service_role),
+   which these revokes do not touch. */
+revoke update (tier, pulls_used) on public.profiles from authenticated, anon;

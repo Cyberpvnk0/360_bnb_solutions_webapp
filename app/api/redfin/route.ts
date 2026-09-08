@@ -13,6 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { claimMarket, monthlyCap, requireAdmin } from "@/lib/auth/gate";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import { fetchRedfinRentals, redfinRentalsUrlFor, RedfinError } from "@/lib/live/redfin";
 import { probeCityId } from "@/lib/live/redfin-city";
@@ -57,6 +58,14 @@ export async function GET(request: Request) {
   }
   const furnished = searchParams.get("furnished") === "1";
   const shape = searchParams.get("shape");
+
+  // The two diagnostics spend vendor credits on purpose and print the
+  // vendor's own schema, so they are staff-only. The furnished search
+  // below is a product feature and answers to the account's plan.
+  if (shape || searchParams.get("resolve")) {
+    const admin = await requireAdmin();
+    if (!admin.ok) return admin.response;
+  }
 
   // Resolver check: which city id this market lands on, and the URL it
   // produces — cheap, and the answer worth pasting into the seeded map
@@ -167,6 +176,12 @@ export async function GET(request: Request) {
       return failure(error);
     }
   }
+
+  // Same key as the rentals feed, so a market the account has already
+  // opened this month is not charged again for its furnished search —
+  // and a plan with no markets is told so before anything is spent.
+  const plan = await claimMarket(`market:${market.slug}`);
+  if (!plan.allowed) return monthlyCap(plan.used, plan.cap);
 
   const cacheKey = `redfin:${market.slug}:${furnished ? "furnished" : "all"}`;
   const gate = checkLiveSearch(cacheKey);

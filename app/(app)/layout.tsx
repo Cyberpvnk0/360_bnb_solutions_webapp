@@ -1,7 +1,12 @@
 import { AppShell } from "@/components/shell/app-shell";
+import { isAdminEmail } from "@/lib/auth/gate";
+import { currentUser } from "@/lib/supabase/server";
 
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return <AppShell>{children}</AppShell>;
+  // Whether to show the staff link, decided here where ADMIN_EMAILS is
+  // readable. The admin page checks again for itself; this is display.
+  const user = await currentUser();
+  return <AppShell isAdmin={isAdminEmail(user?.email)}>{children}</AppShell>;
 }

@@ -307,3 +307,21 @@
 .dark .maplibregl-canvas {
   filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
 }
+
+/* Printing an analysis is how a landlord packet leaves the app: the
+   browser's own Save-as-PDF, on a page stripped to the analysis. The
+   shell (rail, header, action buttons) carries `print:hidden`; this
+   flattens what is left onto white. */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  main {
+    width: 100% !important;
+  }
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+}

@@ -16,6 +16,7 @@ import * as React from "react";
 import {
   ArrowDownWideNarrow,
   Bookmark,
+  FileDown,
   Info,
   LayoutGrid,
   Loader2,
@@ -28,6 +29,8 @@ import {
   getLiveRentalsByZip,
   type LiveFailureReason,
 } from "@/lib/data";
+import { toast } from "sonner";
+import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/csv";
 import { fmtNum } from "@/lib/format";
 import { estimateDeal, type DealRead } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
@@ -216,7 +219,7 @@ export function DealsExplorer({
   const [detailId, setDetailId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(null);
-  const { lists, openUpgrade, marketLimit } = useSession();
+  const { lists, openUpgrade, marketLimit, tier, recordExport } = useSession();
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -364,10 +367,29 @@ export function DealsExplorer({
     furnishedTarget && redfin?.slug === furnishedTarget
   );
 
-  const marketRows =
-    liveTarget && live?.slug === liveTarget.slug ? live.listings : null;
+  /**
+   * What a market shows when the feed did not answer. A plan with no
+   * markets is looking at the paid feature from outside, and the
+   * preview set is what it is shown — labelled as such. A PAID account
+   * was promised today's inventory, and a stand-in that looks like it
+   * is worse than an empty grid that says why; it gets nothing.
+   */
+  const previewStandIn = marketLimit === 0;
+  const marketRows = React.useMemo(
+    () =>
+      liveTarget && live?.slug === liveTarget.slug
+        ? live.isLive || previewStandIn
+          ? live.listings
+          : []
+        : null,
+    [liveTarget, live, previewStandIn]
+  );
   const liveActive = Boolean(
     liveTarget && live?.slug === liveTarget.slug && live.isLive
+  );
+  /** The feed refused or failed for a paid account: nothing stands in. */
+  const liveFailed = Boolean(
+    liveTarget && live?.slug === liveTarget.slug && !live.isLive && !previewStandIn
   );
   const liveChecking = Boolean(
     liveTarget && liveChecked !== liveTarget.slug
@@ -465,6 +487,54 @@ export function DealsExplorer({
     [filtered, visibleCount]
   );
   const remaining = Math.max(0, filtered.length - visibleCount);
+
+  /**
+   * The lead list, as filtered and sorted on screen, to a CSV. What a
+   * card shows is what a row carries: the property, its asking rent,
+   * the read beside it, the listing's own contact when it published
+   * one, and the listing page. No prose, no photos — the same rule as
+   * the screen. Scale includes the export; other plans see the plan.
+   */
+  const exportLeads = () => {
+    if (!tier.csvExport) {
+      openUpgrade({ reason: "export" });
+      return;
+    }
+    const bySlug = new Map(markets.map((m) => [m.slug, m.name]));
+    const columns: CsvColumn<Row>[] = [
+      { header: "Address", value: (r) => r.listing.address },
+      { header: "City", value: (r) => r.listing.city },
+      { header: "State", value: (r) => r.listing.stateCode },
+      { header: "Market", value: (r) => bySlug.get(r.listing.marketSlug) ?? r.listing.marketSlug },
+      { header: "Type", value: (r) => TYPE_LABEL[r.listing.propertyType] },
+      { header: "Bedrooms", value: (r) => r.listing.bedrooms },
+      { header: "Bathrooms", value: (r) => r.listing.bathrooms },
+      { header: "Sq ft", value: (r) => r.listing.sqft || "" },
+      { header: "Asking rent / mo ($)", value: (r) => r.listing.rentMonthly },
+      { header: "Days on market", value: (r) => r.listing.daysOnMarket ?? "" },
+      { header: "Pet friendly", value: (r) => r.listing.petFriendly },
+      { header: "Est. nightly rate ($)", value: (r) => Math.round(r.deal.nightlyRate) },
+      { header: "Breakeven occupancy (%)", value: (r) => Math.round(r.deal.breakeven * 100) },
+      { header: "Cushion (pts)", value: (r) => r.deal.cushionPts },
+      { header: "Est. net cash flow / mo ($)", value: (r) => Math.round(r.deal.netCashFlow) },
+      { header: "Contact", value: (r) => r.listing.contact?.name ?? "" },
+      { header: "Contact company", value: (r) => r.listing.contact?.company ?? "" },
+      { header: "Contact phone", value: (r) => r.listing.contact?.phone ?? "" },
+      { header: "Contact email", value: (r) => r.listing.contact?.email ?? "" },
+      { header: "Contact role", value: (r) => r.listing.contact?.role ?? "" },
+      { header: "Listing page", value: (r) => r.listing.sourceUrl ?? "" },
+    ];
+    const stem = zip
+      ? `leads-zip-${zip}`
+      : liveTarget
+        ? `leads-${liveTarget.slug}`
+        : listFilter
+          ? `leads-${lists.find((l) => l.id === listFilter)?.name ?? "list"}`
+          : "leads";
+    downloadCsv(csvFileName(stem), toCsv(filtered, columns));
+    recordExport(`${fmtNum(filtered.length)} leads`, "/deals");
+    toast.success(`Exported ${fmtNum(filtered.length)} rentals`);
+  };
 
   // Asking Redfin costs a request, so it happens only once a student
   // actually turns Furnished on, and only for a single named market.
@@ -756,9 +826,22 @@ export function DealsExplorer({
             </span>
           ) : liveTarget ? (
             <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
-              {liveFailureLabel(liveReason, marketLimit)} · showing preview
+              {liveFailureLabel(liveReason, marketLimit)}
+              {previewStandIn ? " · showing preview" : ""}
             </span>
           ) : null}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={exportLeads}
+            disabled={filtered.length === 0}
+            title="Export the rentals on screen as a spreadsheet"
+          >
+            <FileDown aria-hidden className="size-3.5" />
+            Export CSV
+          </Button>
 
           <Select
             value={sort}
@@ -913,6 +996,8 @@ export function DealsExplorer({
                       }`
                     : zipFailed
                     ? liveFailureLabel(zipResult?.reason)
+                    : liveFailed
+                      ? liveFailureLabel(liveReason, marketLimit)
                     : zipActive
                       ? `No active rentals in ZIP ${zip}`
                       : marketEmpty
@@ -930,6 +1015,14 @@ export function DealsExplorer({
                         : zipResult?.reason === "quota"
                           ? "This month's live-feed requests are used up. Market searches still browse the preview inventory."
                           : "ZIP search reads live inventory only, and the feed didn't answer. Search a market by name to browse the preview set."
+                      : liveFailed
+                        ? liveReason === "monthly-cap"
+                          ? `You've opened every market the ${tier.name} plan includes this month. Markets you've already opened still load; a bigger plan opens more.`
+                          : liveReason === "daily-cap"
+                            ? "This app pulls a limited number of new markets live each day so the data bill stays predictable. It resets at midnight UTC; markets already opened today still load instantly."
+                            : liveReason === "quota"
+                              ? "This month's live-feed requests are used up. Nothing is shown in their place."
+                              : `The live feed didn't answer for ${liveTarget?.name ?? "this market"}. Nothing stands in for today's inventory — try again in a moment.`
                       : zipActive
                         ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
                         : marketEmpty

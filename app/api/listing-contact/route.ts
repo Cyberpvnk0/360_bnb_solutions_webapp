@@ -22,6 +22,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { requirePaid } from "@/lib/auth/gate";
 import { fetchRedfinContact, isListingPageUrl } from "@/lib/live/redfin-contact";
 import { reserveContact } from "@/lib/live/quota";
 import { ScraperApiError } from "@/lib/live/scraperapi";
@@ -32,6 +33,11 @@ import { ScraperApiError } from "@/lib/live/scraperapi";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
+  // A listing page is a billed read, made for one person's click.
+  // Only accounts on a plan that buys anything may spend it.
+  const paid = await requirePaid();
+  if (!paid.ok) return paid.response;
+
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url");
   // Counts only — which strategies fired, never what the page said.

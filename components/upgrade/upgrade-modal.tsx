@@ -61,7 +61,9 @@ export function UpgradeModal() {
           : `You've opened ${tier.marketLimit} markets this month.`
         : upgrade.reason === "deals"
           ? "You've hit your saved deal limit."
-          : "Get more room to run.";
+          : upgrade.reason === "export"
+            ? "Spreadsheet export is on the Scale plan."
+            : "Get more room to run.";
 
   const subheading =
     upgrade.reason === "pulls"
@@ -76,7 +78,9 @@ export function UpgradeModal() {
         ? `The ${tier.name} plan holds ${
             Number.isFinite(tier.savedDealLimit) ? tier.savedDealLimit : "unlimited"
           } deals. Move up to keep building your pipeline.`
-        : "The calculator stays unlimited on every plan. Paid plans add property analyses, more markets, and pipeline capacity.";
+        : upgrade.reason === "export"
+          ? "Take your lead list, pipeline and landlord book with you as a CSV that opens in any spreadsheet. Scale includes it."
+          : "The calculator stays unlimited on every plan. Paid plans add property analyses, more markets, and pipeline capacity.";
 
   const [switching, setSwitching] = React.useState<TierId | null>(null);
 

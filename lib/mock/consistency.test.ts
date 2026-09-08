@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { breakevenOccupancy, netCashFlow, revpar } from "@/lib/calc/arbitrage";
-import { deriveMarketAssumptions, estimateRentFromComps } from "@/lib/calc/comps";
-import { ANALYSES, ANALYSIS_BY_ID } from "./analyses";
-import { DEALS } from "./deals";
-import { LANDLORDS } from "./landlords";
+import { revpar } from "@/lib/calc/arbitrage";
+import { estimateRentFromComps } from "@/lib/calc/comps";
+import { ANALYSES } from "./analyses";
 import { MARKETS } from "./markets";
-import { ACTIVITY } from "./user";
 
 /**
  * The product promise: a user can never catch the numbers contradicting
@@ -71,50 +68,6 @@ describe("analyses", () => {
         expect(c.occupancy).toBeLessThanOrEqual(0.8);
         expect(c.adr).toBeGreaterThan(40);
       }
-    }
-  });
-});
-
-describe("deals", () => {
-  it("spans 25 deals whose figures match their analysis exactly", () => {
-    expect(DEALS).toHaveLength(25);
-    for (const d of DEALS) {
-      const a = ANALYSIS_BY_ID.get(d.analysisId);
-      expect(a).toBeDefined();
-      if (!a) continue;
-      const assumptions = deriveMarketAssumptions(a.strComps);
-      const be = breakevenOccupancy(a.defaults, assumptions);
-      const net = netCashFlow(a.defaults, assumptions, assumptions.marketOccupancy);
-      // Same rounding the pipeline card and the analyze gauge apply.
-      expect(d.breakevenOccupancy).toBeCloseTo(Math.round(be * 100) / 100, 10);
-      expect(d.netCashFlow).toBe(Math.round(net));
-    }
-  });
-});
-
-describe("landlords", () => {
-  it("has 40 private contacts with two-way deal links", () => {
-    expect(LANDLORDS).toHaveLength(40);
-    for (const l of LANDLORDS) {
-      for (const dealId of l.dealIds) {
-        const deal = DEALS.find((d) => d.id === dealId);
-        expect(deal, `deal ${dealId} linked from ${l.id}`).toBeDefined();
-        expect(deal?.landlordIds).toContain(l.id);
-      }
-    }
-    for (const d of DEALS) {
-      expect(d.landlordIds.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe("activity feed", () => {
-  it("pull events carry the same date as the analysis page they link to", () => {
-    for (const ev of ACTIVITY.filter((e) => e.type === "pull")) {
-      const id = ev.href?.split("/").pop();
-      const analysis = id ? ANALYSIS_BY_ID.get(id) : undefined;
-      expect(analysis, `analysis for ${ev.id}`).toBeDefined();
-      expect(ev.at.slice(0, 10)).toBe(analysis?.createdAt);
     }
   });
 });

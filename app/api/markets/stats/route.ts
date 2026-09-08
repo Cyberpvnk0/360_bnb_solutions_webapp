@@ -17,6 +17,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { requireSignedIn } from "@/lib/auth/gate";
 import {
   readMarketStatsFor,
   storeConfigured,
@@ -28,6 +29,11 @@ import {
 const MAX_SLUGS = 60;
 
 export async function GET(request: Request) {
+  // Store-only and unbilled, but the figures were paid for and belong
+  // to the product, not to anyone with the URL.
+  const who = await requireSignedIn();
+  if (!who.ok) return who.response;
+
   const raw = new URL(request.url).searchParams.get("slugs") ?? "";
   const slugs = raw
     .split(",")

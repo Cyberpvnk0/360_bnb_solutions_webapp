@@ -1,8 +1,8 @@
 "use client";
 
 import { TIERS, TIER_ORDER } from "@/config/app";
+import type { AdminAccount } from "@/lib/admin/metrics";
 import { fmtDate, fmtNum } from "@/lib/format";
-import type { AdminUserRow } from "@/lib/mock/types";
 import {
   DataTable,
   type DataTableColumn,
@@ -16,10 +16,10 @@ const TIER_CHIP_TONE = {
   scale: "gold",
 } as const;
 
-const COLUMNS: DataTableColumn<AdminUserRow>[] = [
+const COLUMNS: DataTableColumn<AdminAccount>[] = [
   {
     key: "user",
-    header: "User",
+    header: "Account",
     cell: (row) => (
       <div className="min-w-0">
         <div className="font-medium text-foreground">{row.name}</div>
@@ -30,7 +30,7 @@ const COLUMNS: DataTableColumn<AdminUserRow>[] = [
   },
   {
     key: "tier",
-    header: "Tier",
+    header: "Plan",
     cell: (row) => (
       <StatusChip tone={TIER_CHIP_TONE[row.tier]}>
         {TIERS[row.tier].name}
@@ -39,21 +39,41 @@ const COLUMNS: DataTableColumn<AdminUserRow>[] = [
     sortValue: (row) => TIER_ORDER.indexOf(row.tier),
   },
   {
-    key: "pulls",
-    header: "Pulls",
+    key: "analyses",
+    header: "Analyses",
     align: "right",
     cell: (row) => (
       <span className="tabular">
-        {fmtNum(row.pullsUsed)} / {fmtNum(TIERS[row.tier].pullLimit)}
+        {fmtNum(row.analysesUsed)} / {fmtNum(TIERS[row.tier].pullLimit)}
       </span>
     ),
-    sortValue: (row) => row.pullsUsed,
+    sortValue: (row) => row.analysesUsed,
+  },
+  {
+    key: "markets",
+    header: "Markets",
+    align: "right",
+    cell: (row) => (
+      <span className="tabular">
+        {fmtNum(row.marketsUsed)} / {fmtNum(TIERS[row.tier].marketLimit)}
+      </span>
+    ),
+    sortValue: (row) => row.marketsUsed,
+  },
+  {
+    key: "credits",
+    header: "Pack credits",
+    align: "right",
+    cell: (row) => (
+      <span className="tabular">{row.credits > 0 ? fmtNum(row.credits) : "—"}</span>
+    ),
+    sortValue: (row) => row.credits,
   },
   {
     key: "joined",
     header: "Joined",
     align: "right",
-    cell: (row) => fmtDate(row.joinedAt),
+    cell: (row) => (row.joinedAt ? fmtDate(row.joinedAt) : "—"),
     sortValue: (row) => row.joinedAt,
   },
 ];
@@ -62,7 +82,7 @@ export function AdminUsersTable({
   users,
   loading,
 }: {
-  users: AdminUserRow[];
+  users: AdminAccount[];
   loading: boolean;
 }) {
   return (
