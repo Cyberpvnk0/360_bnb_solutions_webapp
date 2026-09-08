@@ -197,12 +197,15 @@ interface DealsExplorerProps {
   /** A location to open on, from ?market= — how a deal, an analysis or
    *  a listing hands off to "the rentals here". */
   initialQuery?: string;
+  /** A saved list to open on, from ?list= — the Saved page's way in. */
+  initialList?: string | null;
 }
 
 export function DealsExplorer({
   markets,
   totals,
   initialQuery = "",
+  initialList = null,
 }: DealsExplorerProps) {
   const [filters, setFilters] = React.useState<DealFilters>(
     // Seeded from ?market=, so arriving from a deal or an analysis lands
@@ -224,8 +227,8 @@ export function DealsExplorer({
   const [mobilePane, setMobilePane] = React.useState<"list" | "map">("list");
   const [detailId, setDetailId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
-  const [listFilter, setListFilter] = React.useState<string | null>(null);
-  const { lists, openUpgrade, marketLimit, tier, recordExport } = useSession();
+  const [listFilter, setListFilter] = React.useState<string | null>(initialList);
+  const { ready, lists, openUpgrade, marketLimit, tier, recordExport } = useSession();
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -691,6 +694,10 @@ export function DealsExplorer({
    */
   const awaitingFeed =
     zipChecking || redfinChecking || Boolean(liveTarget && liveChecking);
+  /** Opened on ?list= before the account's lists have arrived: the
+   *  list is not missing, it is in the post, and the empty state must
+   *  not say otherwise. */
+  const awaitingLists = Boolean(listFilter && !ready);
 
   /**
    * The feed answered for this market and had nothing in it.
@@ -994,7 +1001,7 @@ export function DealsExplorer({
                 </p>
               ) : null}
             </div>
-          ) : awaitingFeed && filtered.length === 0 ? (
+          ) : (awaitingFeed || awaitingLists) && filtered.length === 0 ? (
             <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-2">
               {Array.from({ length: 6 }, (_, i) => (
                 <div
@@ -1027,6 +1034,10 @@ export function DealsExplorer({
                     ? liveFailureLabel(zipResult?.reason)
                     : liveFailed
                       ? liveFailureLabel(liveReason, marketLimit)
+                    : listFilter && !liveTarget && !zip
+                      ? lists.some((l) => l.id === listFilter)
+                        ? `${lists.find((l) => l.id === listFilter)?.name ?? "This list"} is empty`
+                        : "That list isn't here"
                     : zipActive
                       ? `No active rentals in ZIP ${zip}`
                       : marketEmpty
@@ -1052,6 +1063,10 @@ export function DealsExplorer({
                             : liveReason === "quota"
                               ? "This month's live-feed requests are used up. Nothing is shown in their place."
                               : `The live feed didn't answer for ${liveTarget?.name ?? "this market"}. Nothing stands in for today's inventory — try again in a moment.`
+                      : listFilter && !liveTarget && !zip
+                        ? lists.some((l) => l.id === listFilter)
+                          ? "Save rentals to it from any listing with Add to list, and they show here."
+                          : "It may have been deleted, or it belongs to another account. Your lists are under Saved; or search a market."
                       : zipActive
                         ? "Nothing is listed for rent there right now. Try a nearby ZIP or search the market by name."
                         : marketEmpty

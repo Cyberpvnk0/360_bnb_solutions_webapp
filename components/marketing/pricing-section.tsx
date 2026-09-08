@@ -32,7 +32,7 @@ export function PricingSection() {
 
       <PricingTiers
         billing={billing}
-        onSelect={() => router.push("/dashboard")}
+        onSelect={() => router.push("/deals")}
         className="mt-12"
       />
 

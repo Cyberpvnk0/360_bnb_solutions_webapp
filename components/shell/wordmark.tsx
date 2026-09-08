@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /** The product wordmark: gold mark + serif name. Renames via config/app. */
 export function Wordmark({
-  href = "/dashboard",
+  href = "/deals",
   className,
 }: {
   href?: string;

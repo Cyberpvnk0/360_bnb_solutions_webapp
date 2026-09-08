@@ -1,7 +1,10 @@
-import { DashboardScreen } from "@/components/dashboard/dashboard-screen";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Dashboard" };
-
+/**
+ * There is no dashboard. A fresh account has nothing to summarise, and
+ * the work starts in the Deal Finder — so that is where every door
+ * leads. The route stays so old links and bookmarks land somewhere.
+ */
 export default function DashboardPage() {
-  return <DashboardScreen />;
+  redirect("/deals");
 }

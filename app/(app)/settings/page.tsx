@@ -2,7 +2,7 @@ import { SettingsScreen, type SettingsTab } from "@/components/settings/settings
 
 export const metadata = { title: "Settings" };
 
-const TABS: SettingsTab[] = ["profile", "billing", "notifications"];
+const TABS: SettingsTab[] = ["profile", "billing"];
 
 export default async function SettingsPage({
   searchParams,

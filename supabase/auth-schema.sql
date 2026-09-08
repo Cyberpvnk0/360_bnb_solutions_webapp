@@ -447,3 +447,48 @@ update public.profiles
    set tier = 'scale'
  where tier = 'free'
    and updated_at = created_at;
+
+/* ------------------------------------------------------------------ */
+/* Saved rental lists                                                  */
+/* ------------------------------------------------------------------ */
+
+/* Deal Finder's lists used to live in localStorage — one browser, one
+   device, gone with the profile. They are the account's now, like its
+   deals and landlords. A list is a name; an item is the rental as it
+   stood when it was saved (a jsonb snapshot), because the live feed
+   rolls daily and a saved address must still show its rent and size a
+   month later. One row per rental per list. */
+create table if not exists public.deal_lists (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  name       text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.deal_list_items (
+  list_id    uuid not null references public.deal_lists (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  listing_id text not null,
+  listing    jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (list_id, listing_id)
+);
+
+alter table public.deal_lists      enable row level security;
+alter table public.deal_list_items enable row level security;
+
+drop policy if exists "own lists" on public.deal_lists;
+create policy "own lists" on public.deal_lists
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own list items" on public.deal_list_items;
+create policy "own list items" on public.deal_list_items
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete
+  on public.deal_lists, public.deal_list_items
+  to authenticated, service_role;
+
+create index if not exists deal_lists_user_idx      on public.deal_lists (user_id, created_at);
+create index if not exists deal_list_items_user_idx on public.deal_list_items (user_id, list_id);

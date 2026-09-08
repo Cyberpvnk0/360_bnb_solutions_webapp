@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /settings — account, plan, and notification preferences.
+ * /settings — account and plan.
  * Tab state lives in the URL (?tab=) so deep links like
  * /settings?tab=billing from the pull counter land on the right pane.
  */
@@ -10,10 +10,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/primitives/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillingTab } from "./billing-tab";
-import { NotificationsTab } from "./notifications-tab";
 import { ProfileTab } from "./profile-tab";
 
-export type SettingsTab = "profile" | "billing" | "notifications";
+export type SettingsTab = "profile" | "billing";
 
 export function SettingsScreen({ initialTab }: { initialTab: SettingsTab }) {
   const router = useRouter();
@@ -23,10 +22,7 @@ export function SettingsScreen({ initialTab }: { initialTab: SettingsTab }) {
   // /settings?tab=billing while already on /settings switches panes, and
   // browser back/forward walk the tab history.
   const raw = searchParams.get("tab");
-  const tab: SettingsTab =
-    raw === "billing" || raw === "notifications" || raw === "profile"
-      ? raw
-      : initialTab;
+  const tab: SettingsTab = raw === "billing" || raw === "profile" ? raw : initialTab;
 
   const handleTabChange = (value: string) => {
     router.replace(`/settings?tab=${value}`, { scroll: false });
@@ -36,23 +32,19 @@ export function SettingsScreen({ initialTab }: { initialTab: SettingsTab }) {
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
         title="Settings"
-        description="Your account, your plan, and what we send you."
+        description="Your account and your plan."
       />
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-8">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
         <TabsContent value="profile" className="mt-8">
           <ProfileTab />
         </TabsContent>
         <TabsContent value="billing" className="mt-8">
           <BillingTab />
-        </TabsContent>
-        <TabsContent value="notifications" className="mt-8">
-          <NotificationsTab />
         </TabsContent>
       </Tabs>
     </div>

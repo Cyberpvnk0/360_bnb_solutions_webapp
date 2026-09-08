@@ -20,10 +20,10 @@ export default function MarketingLayout({
               Pricing
             </a>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/dashboard">Log in</Link>
+              <Link href="/deals">Log in</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/dashboard">Get started</Link>
+              <Link href="/deals">Get started</Link>
             </Button>
           </nav>
         </div>

@@ -4,7 +4,7 @@
  * The margin of safety is the market's observed occupancy minus the
  * occupancy this lease needs just to cover its costs. It is the hero
  * metric everywhere else in the product (the gauge, the Deal Finder
- * cards' cushion, the dashboard), so the grade is a reading of it and
+ * cards' cushion, the pipeline board), so the grade is a reading of it and
  * nothing else — never a second opinion computed some other way.
  *
  * Three grades, three colours. GREAT is the Deal Finder's own "good"

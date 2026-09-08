@@ -12,6 +12,8 @@
  */
 
 import * as React from "react";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import { DEFAULT_TIER, TIERS, type PackId, type Tier, type TierId } from "@/config/app";
 import { currentPeriod } from "@/lib/db/usage-period";
 import {
@@ -23,6 +25,7 @@ import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { authConfigured } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
+  deleteListRow,
   loadCredits,
   loadUsage,
   loadUserData,
@@ -30,13 +33,12 @@ import {
   persistDeal,
   persistDealPatch,
   persistLandlord,
+  persistList,
+  persistListItem,
   persistWatch,
+  removeListItem,
 } from "@/lib/db/user-data";
-import {
-  defaultLists,
-  readLists,
-  writeLists,
-} from "@/lib/storage/deal-lists";
+import { readLists, writeLists } from "@/lib/storage/deal-lists";
 import type {
   ActivityEvent,
   Analysis,
@@ -64,6 +66,9 @@ export interface SaveDealResult {
 }
 
 interface SessionContextValue {
+  /** Set when the account could not be loaded in this tab — the shell
+   *  shows a way out instead of skeletons that never resolve. */
+  bootError: string | null;
   /** False until mock data has hydrated. */
   ready: boolean;
   user: SessionUser | null;
@@ -124,6 +129,9 @@ interface SessionContextValue {
     opts?: { consumePull?: boolean }
   ) => Promise<{ ok: true } | { error: string }>;
 
+  /** Change the display name — written by the server, mirrored here
+   *  once it says so. */
+  updateName: (name: string) => Promise<{ ok: true } | { error: string }>;
   /** Note that an analysis was bought for this property, with the URL
    *  that reopens it — the "recent pulls" list and the activity feed
    *  are read from these. */
@@ -161,6 +169,72 @@ function storedId(prefix: string): string {
     : nextId(prefix);
 }
 
+/**
+ * This device's old lists, moved up to the account ONCE.
+ *
+ * Before lists were rows they lived in localStorage, so a staff tester
+ * may have a shortlist sitting in this browser that the account has
+ * never seen. When the account has NO lists and this device has some,
+ * the device's lists are written to the account. Nothing else happens
+ * on boot: no default list is seeded (a list is made the moment
+ * somebody names one), so two tabs booting at once cannot each invent
+ * a "My shortlist", and deleting the last list leaves none.
+ *
+ * ONCE MEANS ONCE-SUCCESSFULLY. The device copy is cleared only after
+ * every list and every item wrote. A failed write — the tables not yet
+ * created, a token the store rejects, a dropped connection — leaves the
+ * device copy where it was, says so, and returns nothing, so the same
+ * boot tomorrow tries again with nothing lost in between.
+ *
+ * NEVER on the strength of a failed read: an account whose lists could
+ * not be read is not an account with no lists. The caller checks that
+ * before calling this.
+ */
+async function adoptLists(
+  supabase: NonNullable<ReturnType<typeof supabaseBrowser>>,
+  userId: string
+): Promise<DealList[] | null> {
+  const local = (readLists(window.localStorage) ?? []).filter(
+    (l) => l.listings.length > 0
+  );
+  if (local.length === 0) return null;
+
+  const seed: DealList[] = local.map((l) => ({
+    ...l,
+    // Fresh ids: the device's were counters, and the table wants uuids.
+    id: storedId("list"),
+    name: l.name.trim() || "Untitled list",
+    createdAt: new Date().toISOString().slice(0, 10),
+  }));
+
+  let failures = 0;
+  for (const list of seed) {
+    const made = await persistList(supabase, userId, list);
+    if (!made.ok) {
+      failures += 1;
+      console.error("[arbicore] failed to move a list to the account:", made.error);
+      continue;
+    }
+    for (const listing of list.listings) {
+      const put = await persistListItem(supabase, userId, list.id, listing);
+      if (!put.ok) {
+        failures += 1;
+        console.error("[arbicore] failed to move a saved rental:", put.error);
+      }
+    }
+  }
+
+  if (failures > 0) {
+    toast.error("Your saved lists from this device couldn't be moved to your account yet.", {
+      description: "They are still on this device. Reload to try again.",
+    });
+    return null;
+  }
+  // Moved. Clearing the device copy is what makes this once.
+  writeLists(window.localStorage, []);
+  return seed;
+}
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   /**
    * The signed-in account's id, and the client that speaks for it.
@@ -176,94 +250,156 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const [ready, setReady] = React.useState(false);
+  const [bootError, setBootError] = React.useState<string | null>(null);
   const [user, setUser] = React.useState<SessionUser | null>(null);
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [landlords, setLandlords] = React.useState<Landlord[]>([]);
   const [activity, setActivity] = React.useState<ActivityEvent[]>([]);
-  // Server and first client render agree on the default; this device's
-  // saved lists arrive right after mount (see the bootstrap effect), so
-  // there's no hydration mismatch and no flash of someone else's data.
-  const [lists, setLists] = React.useState<DealList[]>(defaultLists);
-  const [listsLoaded, setListsLoaded] = React.useState(false);
+  // Lists are the account's rows now, loaded with everything else.
+  const [lists, setLists] = React.useState<DealList[]>([]);
   const [upgrade, setUpgrade] = React.useState<UpgradeState>({
     open: false,
     reason: "generic",
   });
 
+  /** Bumped to load the account again — after a sign-in that happened
+   *  in this tab, or a sign-out. The provider outlives those navigations
+   *  (it sits in the root layout), so a boot that ran once, signed out,
+   *  would otherwise be the boot that stands for the whole session. */
+  const [bootNonce, setBootNonce] = React.useState(0);
+
+  // The id the last boot settled on, readable from the listener below
+  // without re-subscribing every time it changes.
+  const userIdRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  React.useEffect(() => {
+    if (!supabase) return;
+    const { data: sub } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
+      // Only a CHANGE of who is signed in warrants a reload. Token
+      // refreshes fire this too and change nothing the page shows.
+      if (event === "SIGNED_OUT") setBootNonce((n) => n + 1);
+      if (event === "SIGNED_IN" && session?.user.id !== userIdRef.current) {
+        setBootNonce((n) => n + 1);
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [supabase]);
+
   React.useEffect(() => {
     let cancelled = false;
 
+    /**
+     * Load the account. EVERY PATH ENDS IN `ready`. An earlier version
+     * let a thrown error leave `ready` false forever, which rendered as
+     * a page of skeletons with nothing to click — the worst possible
+     * failure, because it looks like loading. Now a failure is a
+     * message, and the shell shows a way out.
+     */
     const boot = async () => {
-      // Lists stay on the device either way: they are a scratchpad of
-      // rentals worth a second look, not a record worth an account.
-      const localLists = readLists(window.localStorage) ?? defaultLists();
+      setBootError(null);
+      try {
+        // Who is signed in. The cookie session first — no round trip,
+        // and it is what the server already verified for this page —
+        // then the auth server if the cookie yields nothing.
+        let id: string | null = null;
+        let authEmail: string | undefined;
+        let createdAt: string | undefined;
+        if (supabase) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          let authUser = sessionData.session?.user ?? null;
+          if (!authUser) {
+            const { data, error } = await supabase.auth.getUser();
+            if (error) console.warn("[arbicore] auth.getUser:", error.message);
+            authUser = data.user;
+          }
+          id = authUser?.id ?? null;
+          authEmail = authUser?.email;
+          createdAt = authUser?.created_at;
+        }
 
-      const auth = supabase ? await supabase.auth.getUser() : null;
-      const id = auth?.data.user?.id ?? null;
-
-      if (cancelled) return;
-      setUserId(id);
-
-      if (supabase && id) {
-        // A real account: their rows, and nothing seeded. An empty
-        // pipeline for a new user is the truth, and dressing it with
-        // sample deals they never saved would be worse than empty.
-        const [data, usage, credits] = await Promise.all([
-          loadUserData(supabase, id),
-          // THIS period's meter, from the table the browser cannot
-          // write — not profiles.pulls_used, which it could.
-          loadUsage(supabase, id, currentPeriod()),
-          loadCredits(supabase, id),
-        ]);
         if (cancelled) return;
-        const joined = auth?.data.user?.created_at ?? new Date().toISOString();
-        setUser({
-          id,
-          name: data.profile?.fullName ?? auth?.data.user?.email ?? "You",
-          email: data.profile?.email ?? auth?.data.user?.email ?? "",
-          tier: (data.profile?.tier ?? DEFAULT_TIER) as TierId,
-          pullsUsed: usage.analysesUsed,
-          marketsUsed: usage.marketsUsed,
-          credits,
-          watchedMarketSlugs: data.watchedMarketSlugs,
-          joinedAt: joined,
-          // No billing yet. A period end invented here would show a
-          // renewal date nobody is going to be charged on, which is a
-          // worse lie than an honest blank.
-          periodEnd: null,
-          billingCycle: null,
-        });
-        setDeals(data.deals);
-        setLandlords(data.landlords);
-        setActivity(data.activity);
-      } else {
-        // Signed out, or auth not configured: nobody, and nothing.
-        setUser(null);
-        setDeals([]);
-        setLandlords([]);
-        setActivity([]);
-      }
+        setUserId(id);
 
-      setLists(localLists);
-      setListsLoaded(true);
-      setReady(true);
+        if (supabase && id) {
+          // A real account: their rows, and nothing seeded. An empty
+          // pipeline for a new user is the truth, and dressing it with
+          // sample deals they never saved would be worse than empty.
+          const [data, usage, credits] = await Promise.all([
+            loadUserData(supabase, id),
+            // THIS period's meter, from the table the browser cannot
+            // write — not profiles.pulls_used, which it could.
+            loadUsage(supabase, id, currentPeriod()),
+            loadCredits(supabase, id),
+          ]);
+          if (cancelled) return;
+          setUser({
+            id,
+            name: data.profile?.fullName ?? authEmail ?? "You",
+            email: data.profile?.email ?? authEmail ?? "",
+            tier: (data.profile?.tier ?? DEFAULT_TIER) as TierId,
+            pullsUsed: usage.analysesUsed,
+            marketsUsed: usage.marketsUsed,
+            credits,
+            watchedMarketSlugs: data.watchedMarketSlugs,
+            joinedAt: createdAt ?? new Date().toISOString(),
+            // No billing yet. A period end invented here would show a
+            // renewal date nobody is going to be charged on, which is a
+            // worse lie than an honest blank.
+            periodEnd: null,
+            billingCycle: null,
+          });
+          setDeals(data.deals);
+          setLandlords(data.landlords);
+          setActivity(data.activity);
+          setLists(data.lists);
+
+          // A table that could not be read is not an empty table. Say
+          // so, once, rather than showing a clean empty account.
+          if (data.failed.length > 0) {
+            console.error("[arbicore] some account data failed to load:", data.failed);
+            toast.error("Some of your saved data didn't load.", {
+              description: "Reload to try again. Nothing was changed.",
+            });
+          }
+
+          // This device's pre-account lists, moved up — AFTER the page
+          // is usable, never blocking it, and never when the lists read
+          // failed (an unreadable account is not an empty one).
+          const listsReadOk = !data.failed.some((f) => f.startsWith("deal_list"));
+          if (listsReadOk && data.lists.length === 0) {
+            void adoptLists(supabase, id).then((adopted) => {
+              // Merge, never replace: the person may have made a list
+              // in the seconds this took.
+              if (adopted && !cancelled) setLists((prev) => [...prev, ...adopted]);
+            });
+          }
+        } else {
+          // Signed out, or auth not configured: nobody, and nothing.
+          setUser(null);
+          setDeals([]);
+          setLandlords([]);
+          setActivity([]);
+          setLists([]);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[arbicore] account failed to load:", error);
+        setBootError(message);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     };
 
     void boot();
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [supabase, bootNonce]);
 
-  // Persist after the first load only — otherwise the default would
-  // overwrite this device's saved lists before they're read.
-  React.useEffect(() => {
-    if (!listsLoaded) return;
-    writeLists(window.localStorage, lists);
-  }, [lists, listsLoaded]);
-
-  // An unknown value on the row (an operator wrote it) is the smallest
-  // plan here as on the server, and never a crash in render.
   const tier = TIERS[user?.tier ?? DEFAULT_TIER] ?? TIERS.free;
   const pullsUsed = user?.pullsUsed ?? 0;
   const pullLimit = tier.pullLimit;
@@ -501,7 +637,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         type: "landlord-added",
         message: `Added landlord contact ${landlord.name}`,
         at: new Date().toISOString(),
-        href: "/landlords",
+        href: "/saved?tab=landlords",
       });
       return landlord;
     },
@@ -573,35 +709,62 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [user, persist]
   );
 
-  const createList = React.useCallback((name: string) => {
-    const created: DealList = {
-      id: nextId("list"),
-      name: name.trim() || "Untitled list",
-      createdAt: new Date().toISOString().slice(0, 10),
-      listings: [],
-    };
-    setLists((prev) => [...prev, created]);
-    return created;
-  }, []);
+  /** Writes of list rows still in flight, by list id. An item added to
+   *  a list created a moment ago must not race the list's own insert —
+   *  the item row points at the list row, and the database refuses an
+   *  item whose list is not there yet. */
+  const listWrites = React.useRef(new Map<string, Promise<unknown>>());
 
-  const renameList = React.useCallback((listId: string, name: string) => {
-    setLists((prev) =>
-      prev.map((l) =>
-        l.id === listId ? { ...l, name: name.trim() || l.name } : l
-      )
-    );
-  }, []);
+  const createList = React.useCallback(
+    (name: string) => {
+      const created: DealList = {
+        id: storedId("list"),
+        name: name.trim() || "Untitled list",
+        createdAt: new Date().toISOString().slice(0, 10),
+        listings: [],
+      };
+      setLists((prev) => [...prev, created]);
+      persist("list", (client, id) => {
+        const write = persistList(client, id, created);
+        listWrites.current.set(created.id, write);
+        void write.finally(() => listWrites.current.delete(created.id));
+        return write;
+      });
+      return created;
+    },
+    [persist]
+  );
 
-  const deleteList = React.useCallback((listId: string) => {
-    setLists((prev) => prev.filter((l) => l.id !== listId));
-  }, []);
+  const renameList = React.useCallback(
+    (listId: string, name: string) => {
+      const next = name.trim();
+      if (!next) return;
+      setLists((prev) =>
+        prev.map((l) => (l.id === listId ? { ...l, name: next } : l))
+      );
+      persist("list name", (client, id) =>
+        persistList(client, id, { id: listId, name: next })
+      );
+    },
+    [persist]
+  );
+
+  const deleteList = React.useCallback(
+    (listId: string) => {
+      setLists((prev) => prev.filter((l) => l.id !== listId));
+      persist("list", (client) => deleteListRow(client, listId));
+    },
+    [persist]
+  );
 
   const toggleListMembership = React.useCallback(
     (listId: string, listing: RentalListing) => {
+      const has = lists
+        .find((l) => l.id === listId)
+        ?.listings.some((x) => x.id === listing.id);
       setLists((prev) =>
         prev.map((l) => {
           if (l.id !== listId) return l;
-          const has = l.listings.some((x) => x.id === listing.id);
           return {
             ...l,
             listings: has
@@ -610,8 +773,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           };
         })
       );
+      persist(has ? "list removal" : "list item", async (client, id) => {
+        // After the list itself, if that write is still on its way.
+        await listWrites.current.get(listId)?.catch(() => undefined);
+        return has
+          ? removeListItem(client, listId, listing.id)
+          : persistListItem(client, id, listId, listing);
+      });
     },
-    []
+    [lists, persist]
   );
 
   const listsWithListing = React.useCallback(
@@ -690,6 +860,32 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
+  const updateName = React.useCallback(
+    async (name: string): Promise<{ ok: true } | { error: string }> => {
+      const next = name.trim();
+      if (!next) return { error: "A name can't be blank." };
+      try {
+        const res = await fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ fullName: next }),
+        });
+        const body = (await res.json().catch(() => null)) as
+          | { ok: true; fullName: string }
+          | { ok: false; hint?: string }
+          | null;
+        if (!body?.ok) {
+          return { error: (body && "hint" in body && body.hint) || "That didn't save." };
+        }
+        setUser((prev) => (prev ? { ...prev, name: body.fullName } : prev));
+        return { ok: true };
+      } catch {
+        return { error: "That didn't save." };
+      }
+    },
+    []
+  );
+
   const recordPull = React.useCallback(
     (analysis: Analysis, href: string) => {
       pushActivity({
@@ -730,6 +926,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value: SessionContextValue = {
+    bootError,
     ready,
     user,
     tier,
@@ -763,6 +960,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     listsWithListing,
     isSaved,
     upgradeTo,
+    updateName,
     recordPull,
     recordExport,
     upgrade,

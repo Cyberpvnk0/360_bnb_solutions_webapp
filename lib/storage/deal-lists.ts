@@ -1,18 +1,19 @@
 /**
- * Deal lists, kept in the browser.
+ * Deal lists as this browser used to keep them.
  *
- * A hunter's saved rentals survive a refresh without an account: the
- * lists live in localStorage on this device only. When real accounts
- * land (Supabase), this module is the seam — swap read/write for
- * fetches and every caller stays put.
+ * Lists belong to the account now (deal_lists / deal_list_items, loaded
+ * through lib/db/user-data). This module remains for two jobs: reading
+ * what an earlier build left in localStorage so it can be moved up to
+ * the account once, and the listing-shape check both paths share.
  *
  * Everything here is defensive by design. Stored JSON is user-editable
  * and can be stale from an older build, so a malformed blob must never
- * break the app: it's discarded and the default list comes back.
+ * break the app: it is discarded.
  */
 
-import { MOCK_TODAY } from "@/lib/mock/seed";
 import type { DealList, RentalListing } from "@/lib/mock/types";
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 export const DEAL_LISTS_KEY = "arbicore.deal-lists.v1";
 
@@ -26,13 +27,13 @@ export function defaultLists(): DealList[] {
     {
       id: "list-default",
       name: "My shortlist",
-      createdAt: MOCK_TODAY,
+      createdAt: today(),
       listings: [],
     },
   ];
 }
 
-function isListing(value: unknown): value is RentalListing {
+export function isListing(value: unknown): value is RentalListing {
   if (!value || typeof value !== "object") return false;
   const l = value as Partial<RentalListing>;
   return (
@@ -70,7 +71,7 @@ export function parseLists(raw: string | null): DealList[] | null {
     lists.push({
       id: l.id,
       name: l.name,
-      createdAt: typeof l.createdAt === "string" ? l.createdAt : MOCK_TODAY,
+      createdAt: typeof l.createdAt === "string" ? l.createdAt : today(),
       listings,
     });
   }
@@ -87,8 +88,9 @@ export function readLists(storage: Pick<Storage, "getItem">): DealList[] | null 
   }
 }
 
-/** Persist lists. Silently no-ops when storage is unavailable or full —
- *  losing a save is never worth crashing a browsing session. */
+/** Overwrite this device's stored lists — used to clear them once they
+ *  have been moved to the account. Silently no-ops when storage is
+ *  unavailable. */
 export function writeLists(
   storage: Pick<Storage, "setItem">,
   lists: DealList[]

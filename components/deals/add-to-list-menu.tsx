@@ -8,7 +8,8 @@
  */
 
 import * as React from "react";
-import { Check, FolderPlus, ListPlus, Plus, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Check, FolderPlus, ListPlus, Plus } from "lucide-react";
 import type { RentalListing } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
 import { Button } from "@/components/ui/button";
@@ -21,14 +22,8 @@ import {
 import { cn } from "@/lib/utils";
 
 export function AddToListMenu({ listing }: { listing: RentalListing }) {
-  const {
-    lists,
-    createList,
-    deleteList,
-    toggleListMembership,
-    listsWithListing,
-    ready,
-  } = useSession();
+  const { lists, createList, toggleListMembership, listsWithListing, ready } =
+    useSession();
   const [open, setOpen] = React.useState(false);
   const [newName, setNewName] = React.useState("");
 
@@ -72,7 +67,7 @@ export function AddToListMenu({ listing }: { listing: RentalListing }) {
           {lists.map((list) => {
             const on = memberOf.includes(list.id);
             return (
-              <div key={list.id} className="group/row flex items-center gap-0.5">
+              <div key={list.id} className="flex items-center">
                 <button
                   type="button"
                   role="checkbox"
@@ -99,19 +94,23 @@ export function AddToListMenu({ listing }: { listing: RentalListing }) {
                     {list.listings.length}
                   </span>
                 </button>
-                {/* Lists persist on this device, so they need a way out. */}
-                <button
-                  type="button"
-                  aria-label={`Delete the list ${list.name}`}
-                  onClick={() => deleteList(list.id)}
-                  className="shrink-0 rounded-sm p-1.5 text-muted-foreground opacity-0 transition-opacity duration-150 hover:bg-secondary hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
-                >
-                  <X aria-hidden className="size-3.5" />
-                </button>
               </div>
             );
           })}
         </div>
+
+        {/* Lists are account data now, and deleting one takes its saved
+            rentals with it — so that lives on the Saved page behind a
+            confirmation, not on a hover-revealed X beside a checkbox. */}
+        {lists.length > 0 ? (
+          <Link
+            href="/saved"
+            className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          >
+            Manage lists
+            <ArrowUpRight aria-hidden className="size-3" />
+          </Link>
+        ) : null}
 
         <div className="flex items-center gap-1.5 border-t border-border p-2">
           <FolderPlus

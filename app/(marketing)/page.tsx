@@ -58,7 +58,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
-                <Link href="/dashboard">Get started</Link>
+                <Link href="/deals">Get started</Link>
               </Button>
               <Button asChild variant="outline" size="lg">
                 <a href="#pricing">See pricing</a>
@@ -176,7 +176,7 @@ export default function LandingPage() {
             The numbers first. Then the keys.
           </p>
           <Button asChild size="lg" className="mt-8">
-            <Link href="/dashboard">Get started</Link>
+            <Link href="/deals">Get started</Link>
           </Button>
           <p className="mt-4 text-sm text-muted-foreground">
             No card required.

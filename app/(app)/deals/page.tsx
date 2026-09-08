@@ -7,11 +7,11 @@ export const metadata = { title: "Deal Finder" };
 export default async function DealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ market?: string }>;
+  searchParams: Promise<{ market?: string; list?: string }>;
 }) {
   // No inventory ships with the page — Deal Finder is search-first, so
   // rentals load for the market or ZIP the user actually asks for.
-  const [{ market }, markets, totals] = await Promise.all([
+  const [{ market, list }, markets, totals] = await Promise.all([
     searchParams,
     getMarkets(),
     getRentalTotals(),
@@ -32,6 +32,8 @@ export default async function DealsPage({
       markets={markets}
       totals={totals}
       initialQuery={initialQuery}
+      // ?list=<id> arrives from the Saved page: open on that list's rows.
+      initialList={list ?? null}
     />
   );
 }

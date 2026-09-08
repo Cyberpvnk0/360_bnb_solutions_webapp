@@ -286,6 +286,45 @@ export async function grantPack(
   }
 }
 
+/**
+ * The display name — the one profile field a person edits. Written with
+ * the secret key like the tier, because the browser has no write on the
+ * row at all any more (see auth-schema.sql). Server only.
+ */
+export async function setFullName(
+  userId: string,
+  fullName: string
+): Promise<{ ok: boolean; detail: string | null }> {
+  const cfg = config();
+  if (!cfg) return { ok: false, detail: "no store configured" };
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: cfg.key,
+          authorization: `Bearer ${cfg.key}`,
+          "content-type": "application/json",
+          prefer: "return=representation",
+        },
+        body: JSON.stringify({ full_name: fullName, updated_at: new Date().toISOString() }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => "")).slice(0, 200);
+      return { ok: false, detail: detail || `HTTP ${res.status}` };
+    }
+    const rows = (await res.json()) as unknown[];
+    if (!rows?.length) return { ok: false, detail: "no profile row" };
+    return { ok: true, detail: null };
+  } catch {
+    return { ok: false, detail: "unreachable or timed out" };
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Readiness                                                           */
 /* ------------------------------------------------------------------ */

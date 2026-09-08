@@ -1,7 +1,6 @@
-import { LandlordsView } from "@/components/landlords/landlords-view";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Landlords" };
-
+/** The landlord book lives under Saved now, beside the rental lists. */
 export default function LandlordsPage() {
-  return <LandlordsView />;
+  redirect("/saved?tab=landlords");
 }

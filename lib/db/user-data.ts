@@ -25,10 +25,13 @@ import type {
   ActivityEvent,
   ActivityType,
   Deal,
+  DealList,
   Landlord,
   PipelineStage,
+  RentalListing,
   StrPolicy,
 } from "@/lib/mock/types";
+import { isListing } from "@/lib/storage/deal-lists";
 
 export interface UserProfile {
   tier: string;
@@ -43,6 +46,16 @@ export interface UserData {
   landlords: Landlord[];
   watchedMarketSlugs: string[];
   activity: ActivityEvent[];
+  /** Saved rental lists, items included, oldest list first. */
+  lists: DealList[];
+  /**
+   * Which reads FAILED, by table. An empty array is not the same as a
+   * table that could not be read, and the difference decides real
+   * things downstream — whether the account is "new" or merely
+   * unreachable. Callers that would write on the strength of an empty
+   * result must check here first.
+   */
+  failed: string[];
 }
 
 export const EMPTY_USER_DATA: UserData = {
@@ -51,6 +64,8 @@ export const EMPTY_USER_DATA: UserData = {
   landlords: [],
   watchedMarketSlugs: [],
   activity: [],
+  lists: [],
+  failed: [],
 };
 
 type Row = Record<string, unknown>;
@@ -129,15 +144,32 @@ export async function loadUserData(
   supabase: SupabaseClient,
   userId: string
 ): Promise<UserData> {
-  const [profile, deals, landlords, watched, activity] = await Promise.all([
+  const [profile, deals, landlords, watched, activity, lists, items] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
     supabase.from("deals").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
     supabase.from("landlords").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
     supabase.from("watched_markets").select("market_slug").eq("user_id", userId),
     supabase.from("activity").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(40),
+    supabase.from("deal_lists").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
+    supabase.from("deal_list_items").select("list_id, listing, created_at").eq("user_id", userId).order("created_at", { ascending: false }),
   ]);
 
+  const failed = (
+    [
+      ["profiles", profile.error],
+      ["deals", deals.error],
+      ["landlords", landlords.error],
+      ["watched_markets", watched.error],
+      ["activity", activity.error],
+      ["deal_lists", lists.error],
+      ["deal_list_items", items.error],
+    ] as const
+  )
+    .filter(([, err]) => err !== null)
+    .map(([table, err]) => `${table}: ${err?.message ?? "unknown error"}`);
+
   return {
+    failed,
     profile: profile.data
       ? {
           tier: str((profile.data as Row).tier, "free"),
@@ -153,7 +185,32 @@ export async function loadUserData(
     landlords: (landlords.data ?? []).map((r) => toLandlord(r as Row)),
     watchedMarketSlugs: (watched.data ?? []).map((r) => str((r as Row).market_slug)),
     activity: (activity.data ?? []).map((r) => toActivity(r as Row)),
+    lists: toLists((lists.data ?? []) as Row[], (items.data ?? []) as Row[]),
   };
+}
+
+/**
+ * Lists and their items, joined here rather than in the query: two
+ * flat selects under row-level security are simpler to reason about
+ * than an embedded resource, and an item whose snapshot no longer
+ * parses as a listing is dropped rather than rendered as a blank card.
+ */
+function toLists(listRows: Row[], itemRows: Row[]): DealList[] {
+  const byList = new Map<string, RentalListing[]>();
+  for (const r of itemRows) {
+    const listId = str(r.list_id);
+    const snapshot = r.listing;
+    if (!listId || !isListing(snapshot)) continue;
+    const arr = byList.get(listId) ?? [];
+    arr.push(snapshot);
+    byList.set(listId, arr);
+  }
+  return listRows.map((r) => ({
+    id: str(r.id),
+    name: str(r.name, "Untitled list"),
+    createdAt: str(r.created_at).slice(0, 10),
+    listings: byList.get(str(r.id)) ?? [],
+  }));
 }
 
 /**
@@ -273,6 +330,63 @@ export async function persistLandlord(
     last_contacted: landlord.lastContacted ?? null,
     updated_at: new Date().toISOString(),
   });
+  return done(error);
+}
+
+/** A list's own row: name and id. Items travel separately. */
+export async function persistList(
+  supabase: SupabaseClient,
+  userId: string,
+  list: Pick<DealList, "id" | "name">
+): Promise<WriteOutcome> {
+  const { error } = await supabase.from("deal_lists").upsert({
+    id: list.id,
+    user_id: userId,
+    name: list.name,
+    updated_at: new Date().toISOString(),
+  });
+  return done(error);
+}
+
+export async function deleteListRow(
+  supabase: SupabaseClient,
+  listId: string
+): Promise<WriteOutcome> {
+  // Items go with it: the foreign key cascades.
+  const { error } = await supabase.from("deal_lists").delete().eq("id", listId);
+  return done(error);
+}
+
+/** One rental into one list, as it stands right now. Re-adding the
+ *  same rental is a no-op rather than an error. */
+export async function persistListItem(
+  supabase: SupabaseClient,
+  userId: string,
+  listId: string,
+  listing: RentalListing
+): Promise<WriteOutcome> {
+  const { error } = await supabase.from("deal_list_items").upsert(
+    {
+      list_id: listId,
+      user_id: userId,
+      listing_id: listing.id,
+      listing,
+    },
+    { onConflict: "list_id,listing_id" }
+  );
+  return done(error);
+}
+
+export async function removeListItem(
+  supabase: SupabaseClient,
+  listId: string,
+  listingId: string
+): Promise<WriteOutcome> {
+  const { error } = await supabase
+    .from("deal_list_items")
+    .delete()
+    .eq("list_id", listId)
+    .eq("listing_id", listingId);
   return done(error);
 }
 

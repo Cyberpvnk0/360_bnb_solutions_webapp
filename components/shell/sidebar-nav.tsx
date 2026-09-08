@@ -2,28 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Binoculars } from "lucide-react";
 import { NAV_INTERNAL, NAV_MAIN, NAV_SYSTEM, type NavItem } from "@/config/nav";
 import { useSession } from "@/components/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { cn } from "@/lib/utils";
 
-/** Deal Finder ships with the /deals screen rather than config/nav.ts,
- *  so it is inserted here — second, right after the dashboard, now that
- *  it is the way into inventory rather than one option beside a market
- *  browser. */
-const DEAL_FINDER: NavItem = {
-  href: "/deals",
-  label: "Deal Finder",
-  icon: Binoculars,
-  match: (p) => p.startsWith("/deals"),
-};
-
-const MAIN_ITEMS: NavItem[] = (() => {
-  const items = NAV_MAIN.filter((i) => i.href !== DEAL_FINDER.href);
-  return [items[0], DEAL_FINDER, ...items.slice(1)].filter(Boolean);
-})();
+const MAIN_ITEMS: NavItem[] = NAV_MAIN;
 
 function NavLink({
   item,

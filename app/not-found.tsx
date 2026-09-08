@@ -12,10 +12,10 @@ export default function NotFound() {
         The address you pulled up doesn&apos;t exist. The deals do.
       </p>
       <Link
-        href="/dashboard"
+        href="/deals"
         className="mt-6 inline-flex h-9 items-center rounded-sm bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors duration-150 hover:bg-brand-deep"
       >
-        Back to the dashboard
+        Back to the Deal Finder
       </Link>
     </div>
   );

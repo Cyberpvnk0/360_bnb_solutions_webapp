@@ -27,9 +27,9 @@ const MIN_PASSWORD = 6;
 /** A `next` we will follow: a path on this site, nothing that a browser
  *  would read as another host (`//host`, `/\host`, `https://host`). */
 function safeNext(raw: string | null): string {
-  if (!raw) return "/dashboard";
+  if (!raw) return "/deals";
   if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
-    return "/dashboard";
+    return "/deals";
   }
   return raw;
 }

@@ -123,7 +123,7 @@ const COLUMNS: DataTableColumn<Landlord>[] = [
   },
 ];
 
-export function LandlordsView() {
+export function LandlordsView({ embedded = false }: { embedded?: boolean }) {
   const { ready, landlords, deals, tier, openUpgrade, recordExport } = useSession();
   const [query, setQuery] = React.useState("");
   const [policy, setPolicy] = React.useState<PolicyFilter>("all");
@@ -170,7 +170,7 @@ export function LandlordsView() {
       return d ? `${d.address}, ${d.city}, ${d.stateCode}` : "";
     };
     downloadCsv(csvFileName("landlords"), toCsv(filtered, bookColumns(address)));
-    recordExport(`${fmtNum(filtered.length)} landlords`, "/landlords");
+    recordExport(`${fmtNum(filtered.length)} landlords`, "/saved?tab=landlords");
     toast.success(`Exported ${fmtNum(filtered.length)} landlords`);
   };
 
@@ -187,17 +187,31 @@ export function LandlordsView() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
-      <PageHeader
-        title="Landlords"
-        description="The relationships behind every lease."
-        actions={
-          <>
+    <div className={embedded ? undefined : "mx-auto max-w-6xl px-4 py-8 md:px-10"}>
+      {/* Under /saved the page header belongs to the tabs; the actions
+          still need a home, so they sit on a row of their own. */}
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            The relationships behind every lease.
+          </p>
+          <div className="flex items-center gap-2">
             {exportButton}
             {addButton}
-          </>
-        }
-      />
+          </div>
+        </div>
+      ) : (
+        <PageHeader
+          title="Landlords"
+          description="The relationships behind every lease."
+          actions={
+            <>
+              {exportButton}
+              {addButton}
+            </>
+          }
+        />
+      )}
 
       {/* Privacy strip — the selling point, stated plainly. */}
       <div className="mt-5 flex items-start gap-2 border-y border-border py-3.5">
