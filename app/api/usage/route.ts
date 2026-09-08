@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
 import { rentcastBudget } from "@/lib/live/quota";
+import { planTablesReady } from "@/lib/db/usage";
 import {
   storeConfigured,
   storeCounts,
@@ -36,6 +37,7 @@ export async function GET() {
 
   const airroi = airRoiBudget();
   const rentcast = rentcastBudget();
+  const plan = await planTablesReady();
   // One database, so this answers across instances where the in-memory
   // counter cannot.
   const stored = await storeCounts().catch(() => null);
@@ -77,6 +79,20 @@ export async function GET() {
      * other ledger here is per day; a cap that assumed the two were the
      * same number is how one afternoon spent a month.
      */
+    /**
+     * Did the plan SQL take? The meter and the pack tables are created
+     * by supabase/auth-schema.sql; a false here with a reason is the
+     * answer to "I ran it, did it work" without a round of clicking.
+     */
+    plan: {
+      tablesReady: plan.usage && plan.credits,
+      usageTable: plan.usage,
+      creditTables: plan.credits,
+      detail: plan.detail,
+      note:
+        "Both true means the monthly meter and the pack balance are live and the secret key can reach them. " +
+        "To test a paid plan before checkout exists, set your own tier in the profiles table.",
+    },
     rentcast: {
       monthlyPlan: rentcast.monthly,
       dailyCap: rentcast.cap,

@@ -216,3 +216,54 @@ export async function grantPack(
     return { ok: false, balance: 0, granted: false, detail: "unreachable or timed out" };
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Readiness                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface PlanTablesStatus {
+  /** The monthly meter exists and the secret key can read it. */
+  usage: boolean;
+  /** The pack balance and ledger exist and the secret key can read them. */
+  credits: boolean;
+  /** What the store said when something was missing. */
+  detail: string | null;
+}
+
+/**
+ * Whether the plan tables have been created — the answer to "did the
+ * SQL take", from one URL instead of a round of clicking.
+ *
+ * A zero-row select with the secret key: 200 means the table exists
+ * and the grant is there; anything else names what is missing. Reads
+ * nothing and writes nothing.
+ */
+export async function planTablesReady(): Promise<PlanTablesStatus> {
+  const cfg = config();
+  if (!cfg) return { usage: false, credits: false, detail: "no store configured" };
+  const probe = async (table: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`${cfg.url}/rest/v1/${table}?select=user_id&limit=0`, {
+        headers: { apikey: cfg.key, authorization: `Bearer ${cfg.key}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        cache: "no-store",
+      });
+      if (res.ok) return null;
+      const body = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+      return `${table}: ${body || `HTTP ${res.status}`}`;
+    } catch {
+      return `${table}: unreachable`;
+    }
+  };
+  const [usage, balance, ledger] = await Promise.all([
+    probe("usage"),
+    probe("credit_balance"),
+    probe("credit_ledger"),
+  ]);
+  const problems = [usage, balance, ledger].filter((p): p is string => p !== null);
+  return {
+    usage: usage === null,
+    credits: balance === null && ledger === null,
+    detail: problems.length ? problems.join("; ") : null,
+  };
+}
