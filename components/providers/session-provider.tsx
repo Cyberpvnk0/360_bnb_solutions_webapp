@@ -216,14 +216,14 @@ async function adoptLists(
       const made = await persistList(supabase, userId, list);
       if (!made.ok) {
         failures += 1;
-        console.error("[arbicore] failed to move a list to the account:", made.error);
+        console.error("[aircore] failed to move a list to the account:", made.error);
         continue;
       }
       for (const listing of list.listings) {
         const put = await persistListItem(supabase, userId, list.id, listing);
         if (!put.ok) {
           failures += 1;
-          console.error("[arbicore] failed to move a saved rental:", put.error);
+          console.error("[aircore] failed to move a saved rental:", put.error);
         }
       }
     }
@@ -244,7 +244,7 @@ async function adoptLists(
   // would read the same device copy and write it twice under different
   // ids. Browsers without the Web Locks API run it unguarded.
   if (typeof navigator !== "undefined" && "locks" in navigator && navigator.locks) {
-    return navigator.locks.request("arbicore.adopt-lists", run);
+    return navigator.locks.request("aircore.adopt-lists", run);
   }
   return run();
 }
@@ -326,7 +326,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           let authUser = sessionData.session?.user ?? null;
           if (!authUser) {
             const { data, error } = await supabase.auth.getUser();
-            if (error) console.warn("[arbicore] auth.getUser:", error.message);
+            if (error) console.warn("[aircore] auth.getUser:", error.message);
             authUser = data.user;
           }
           id = authUser?.id ?? null;
@@ -373,7 +373,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           // A table that could not be read is not an empty table. Say
           // so, once, rather than showing a clean empty account.
           if (data.failed.length > 0) {
-            console.error("[arbicore] some account data failed to load:", data.failed);
+            console.error("[aircore] some account data failed to load:", data.failed);
             toast.error("Some of your saved data didn't load.", {
               description: "Reload to try again. Nothing was changed.",
             });
@@ -401,7 +401,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : String(error);
-        console.error("[arbicore] account failed to load:", error);
+        console.error("[aircore] account failed to load:", error);
         setBootError(message);
       } finally {
         if (!cancelled) setReady(true);
@@ -500,7 +500,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     ) => {
       if (!supabase || !userId) return;
       void run(supabase, userId).then((r) => {
-        if (!r.ok) console.error(`[arbicore] failed to save ${what}:`, r.error);
+        if (!r.ok) console.error(`[aircore] failed to save ${what}:`, r.error);
       });
     },
     [supabase, userId]

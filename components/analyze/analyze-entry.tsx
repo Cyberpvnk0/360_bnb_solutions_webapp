@@ -22,7 +22,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Coins, Crosshair, MapPin } from "lucide-react";
+import { ArrowRight, Coins, Crosshair, Loader2, MapPin } from "lucide-react";
 import type { Analysis } from "@/lib/mock/types";
 import { fmtDate } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
@@ -32,6 +32,13 @@ import { PageHeader } from "@/components/primitives/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { AddressSuggestionList } from "@/components/shell/address-suggestion-list";
+import {
+  MIN_QUERY_LENGTH,
+  resolveSuggestionPoint,
+  useAddressSuggestions,
+  type AddressSuggestion,
+} from "@/components/shell/use-address-suggestions";
 
 /** A geocoded place: what the geocoder calls it, and where it is. */
 interface AddressMatch {
@@ -73,13 +80,31 @@ export function AnalyzeEntry({
           }
         : null)
   );
-  const [suggestions, setSuggestions] = React.useState<AddressMatch[]>([]);
   const [listOpen, setListOpen] = React.useState(false);
-  const [searching, setSearching] = React.useState(false);
-  /** Set when a lookup completed and matched nothing — a typo and an
-   *  outage look identical without it. */
-  const [noMatch, setNoMatch] = React.useState(false);
+  /** A picked suggestion is being placed (text-only providers). */
+  const [locating, setLocating] = React.useState(false);
   const [pulling, setPulling] = React.useState(false);
+
+  // Live suggestions for what is typed — paused once the text IS the
+  // picked address, so picking does not immediately look it up again.
+  const { suggestions, searching, noMatch } = useAddressSuggestions(query, {
+    enabled: place?.address !== query.trim(),
+  });
+  const showList = listOpen && query.trim().length >= MIN_QUERY_LENGTH && !place;
+
+  // The highlight belongs to one list: a new list starts from its first
+  // row. Derived during render rather than reset in an effect.
+  const [highlightFor, setHighlightFor] = React.useState<{
+    list: AddressSuggestion[];
+    index: number;
+  } | null>(null);
+  const highlighted = highlightFor?.list === suggestions ? highlightFor.index : 0;
+  const setHighlighted = (next: number | ((h: number) => number)) =>
+    setHighlightFor({
+      list: suggestions,
+      index: typeof next === "function" ? next(highlighted) : next,
+    });
+
   /**
    * This account's own recent analyses: the pulls it has paid for,
    * read from its activity, each carrying the URL that reopens the
@@ -91,50 +116,30 @@ export function AnalyzeEntry({
     [activity]
   );
 
-  React.useEffect(() => {
-    const q = query.trim();
-    // Already resolved to the thing being shown; nothing to look up.
-    if (place?.address === q) return;
-    // Too short to look up. Clearing the list is the change handler's
-    // job, not this effect's — a synchronous setState here would run on
-    // every render that passes through a short query, and the compiler
-    // is right to refuse it.
-    if (q.length < 4) return;
-
-    let cancelled = false;
-    // Long enough that a street number and name are usually complete —
-    // the geocoder matches whole addresses, not prefixes, so firing on
-    // every character mostly buys empty results.
-    const t = setTimeout(async () => {
-      setSearching(true);
-      setNoMatch(false);
-      try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-        const body = (await res.json()) as { matches?: AddressMatch[] };
-        if (cancelled) return;
-        const matches = body.matches ?? [];
-        setSuggestions(matches);
-        setListOpen(matches.length > 0);
-        setNoMatch(matches.length === 0);
-      } catch {
-        if (!cancelled) setNoMatch(false);
-      } finally {
-        if (!cancelled) setSearching(false);
-      }
-    }, 400);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [query, place]);
-
-  const choose = (match: AddressMatch) => {
+  const choose = async (match: AddressSuggestion) => {
     setQuery(match.address);
-    setPlace(match);
     setListOpen(false);
-    setSuggestions([]);
-    setNoMatch(false);
+    setLocating(true);
+    const point = await resolveSuggestionPoint(match);
+    setLocating(false);
+    setPlace({ address: match.address, point });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!showList) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlighted((h) => Math.min(h + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlighted((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const s = suggestions[highlighted];
+      if (s) void choose(s);
+    } else if (e.key === "Escape") {
+      setListOpen(false);
+    }
   };
 
   const ready_ = place?.point != null;
@@ -249,47 +254,48 @@ export function AnalyzeEntry({
               <input
                 type="text"
                 role="combobox"
-                aria-expanded={listOpen}
+                aria-expanded={showList}
                 aria-controls="analyze-address-listbox"
                 aria-autocomplete="list"
                 aria-label="Property address"
                 placeholder="Start typing a street address…"
                 value={query}
                 onChange={(e) => {
-                  const value = e.target.value;
-                  setQuery(value);
+                  setQuery(e.target.value);
                   // Typing invalidates the pick: the coordinates on
                   // screen belong to the previous address, and running
                   // a projection at them would be quietly wrong.
                   setPlace(null);
-                  if (value.trim().length < 4) {
-                    setSuggestions([]);
-                    setListOpen(false);
-                    setNoMatch(false);
-                  }
+                  setListOpen(true);
                 }}
-                className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-gold/50"
+                onKeyDown={onKeyDown}
+                onFocus={() => setListOpen(true)}
+                onBlur={() => setListOpen(false)}
+                className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-10 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-select/50"
               />
+              {locating || (searching && !place) ? (
+                <Loader2
+                  aria-hidden
+                  className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+                />
+              ) : null}
             </div>
-            {listOpen ? (
-              <div
-                id="analyze-address-listbox"
-                role="listbox"
-                className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-sm border border-border bg-popover"
-              >
-                {suggestions.map((match) => (
-                  <button
-                    key={`${match.address}|${match.point?.lat}`}
-                    type="button"
-                    role="option"
-                    aria-selected={false}
-                    onClick={() => choose(match)}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
-                  >
-                    <MapPin aria-hidden className="size-3.5 shrink-0 text-gold" />
-                    {match.address}
-                  </button>
-                ))}
+            {showList ? (
+              <div className="absolute left-0 right-0 z-30 mt-1">
+                <AddressSuggestionList
+                  id="analyze-address-listbox"
+                  suggestions={suggestions}
+                  highlighted={highlighted}
+                  onHighlight={setHighlighted}
+                  onChoose={(s) => void choose(s)}
+                  footer={
+                    searching && suggestions.length === 0
+                      ? "Searching…"
+                      : noMatch
+                        ? "No address matches yet — keep typing, or add the city."
+                        : "Pick the address to continue"
+                  }
+                />
               </div>
             ) : null}
           </div>
@@ -305,11 +311,15 @@ export function AnalyzeEntry({
           </Button>
           {ready_ ? null : (
             <p className="mt-2 text-xs text-muted-foreground">
-              {searching
-                ? "Looking up that address…"
-                : noMatch
-                  ? "No match for that address. Check the street number and spelling, or add the city and state."
-                  : "Pick an address from the suggestions to continue."}
+              {locating
+                ? "Placing that address…"
+                : place && !place.point
+                  ? "That address couldn't be placed on the map. Try picking it again, or a neighbouring one."
+                  : searching
+                    ? "Looking up that address…"
+                    : noMatch
+                      ? "No address matches yet. Keep typing, or add the city."
+                      : "Pick an address from the suggestions to continue."}
             </p>
           )}
         </div>
