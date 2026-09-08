@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
+import { rentcastBudget } from "@/lib/live/quota";
 import {
   storeConfigured,
   storeCounts,
@@ -34,6 +35,7 @@ export async function GET() {
   const pages = maxPages();
 
   const airroi = airRoiBudget();
+  const rentcast = rentcastBudget();
   // One database, so this answers across instances where the in-memory
   // counter cannot.
   const stored = await storeCounts().catch(() => null);
@@ -69,6 +71,21 @@ export async function GET() {
         "Per-instance and per-day, so the fleet total is this times however many instances are warm — a brake, not a lock. " +
         "Measured price is $0.18 a call, so this cap is about $9 of exposure per instance per day. AIRROI_DAILY_CALLS overrides it. " +
         "A cached analysis costs nothing and never reaches this counter, which is why callsToday staying flat while analyses are viewed is the cache working, not the meter breaking.",
+    },
+    /**
+     * The feed's own meter. Its allowance is quoted per MONTH and every
+     * other ledger here is per day; a cap that assumed the two were the
+     * same number is how one afternoon spent a month.
+     */
+    rentcast: {
+      monthlyPlan: rentcast.monthly,
+      dailyCap: rentcast.cap,
+      usedToday: rentcast.cap - rentcast.remaining,
+      left: rentcast.remaining,
+      note:
+        "Daily cap is the monthly allowance spread over 31 days, floor one. " +
+        "RENTCAST_MONTHLY_REQUESTS states the plan (default 50, the free tier); RENTCAST_DAILY_CAP overrides the arithmetic. " +
+        "On a paid plan, set the monthly figure or Deal Finder opens one new market a day.",
     },
     costModel: {
       pagesPerSearch: pages,

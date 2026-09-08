@@ -1,11 +1,21 @@
 /**
- * Daily ceiling on distinct live searches — the spend guard.
+ * Daily ceiling on distinct live searches — the spend guard for the
+ * per-area vendors: the furnished search, the STR market pulls, the
+ * comps behind an analysis.
  *
- * RentCast bills per request, and our per-area responses cache for 24
- * hours, so the real cost driver is how many DISTINCT markets and ZIPs
- * get searched in a day, not how many people search them. This counts
- * exactly that: the first search of an area reserves a slot; every
- * repeat that day rides the cache for free and never counts again.
+ * NOT THE RENTALS FEED. That one has its own ledger further down, and
+ * the reason is a plan mismatch this ledger used to paper over: its
+ * default of fifty a day was sized to RentCast's free tier, which is
+ * fifty a MONTH. One busy day spent the whole month, and every market
+ * search after that failed until the calendar rolled. Meanwhile four
+ * vendors on four different plans were metered off this one number, so
+ * lowering it to protect RentCast would have strangled the other three.
+ * Each vendor now answers to its own plan.
+ *
+ * Per-area responses cache for 24 hours, so the real cost driver is how
+ * many DISTINCT areas get searched in a day, not how many people search
+ * them. This counts exactly that: the first search of an area reserves
+ * a slot; every repeat that day rides the cache for free.
  *
  * A slot is only committed after a request actually succeeds, so a
  * rejected key or an unreachable feed can't eat the day's budget.
@@ -17,7 +27,6 @@
  * KV, Redis) if you ever need the cap to be exact.
  */
 
-/** Default ceiling: RentCast's free Developer tier is 50 requests. */
 export const DEFAULT_DAILY_LIVE_SEARCH_CAP = 50;
 
 export function dailyCap(): number {
@@ -324,4 +333,99 @@ export function reserveJoin(slug: string, now = new Date()): QuotaCheck {
 /** Tests only. */
 export function resetJoinLedger(): void {
   joined = { day: "", keys: new Set() };
+}
+
+/* ------------------------------------------------------------------ */
+/* The rentals feed: a ceiling sized to a MONTHLY plan                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * RentCast's allowance is quoted per month — fifty on the free tier —
+ * and this product's ledgers are per day. The two were reconciled by
+ * assuming they were the same number, which is how one afternoon of
+ * browsing could spend a month.
+ *
+ * So the feed gets its own ledger, and the DAILY cap is DERIVED: the
+ * monthly allowance spread across the month, never under one. State the
+ * plan you are on in RENTCAST_MONTHLY_REQUESTS and the daily figure
+ * follows; RENTCAST_DAILY_CAP overrides it outright for the case where
+ * you know better than the arithmetic.
+ *
+ * Under one is never right, so the floor is one: a cap of zero would
+ * mean the feed never answers, which reads as an outage rather than a
+ * budget.
+ *
+ * Same shape as the ledger above — check first, commit on success, so a
+ * failed request costs nothing — and the same per-instance caveat.
+ */
+export const DEFAULT_RENTCAST_MONTHLY_REQUESTS = 50;
+
+/** Days a month is budgeted over. Thirty-one, so the allowance holds
+ *  in the longest month rather than running two days short in it. */
+const DAYS_PER_MONTH = 31;
+
+export function rentcastMonthlyCap(): number {
+  const raw = Number(process.env.RENTCAST_MONTHLY_REQUESTS);
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_RENTCAST_MONTHLY_REQUESTS;
+}
+
+export function rentcastDailyCap(): number {
+  const explicit = Number(process.env.RENTCAST_DAILY_CAP);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+  return Math.max(1, Math.floor(rentcastMonthlyCap() / DAYS_PER_MONTH));
+}
+
+let rentcast: Ledger = { day: "", keys: new Set() };
+
+function currentRentcast(now: Date): Ledger {
+  const day = dayKey(now);
+  if (rentcast.day !== day) rentcast = { day, keys: new Set() };
+  return rentcast;
+}
+
+/** May this area be fetched from the rentals feed right now? Doesn't
+ *  consume anything. */
+export function checkRentcastSearch(key: string, now = new Date()): QuotaCheck {
+  const cap = rentcastDailyCap();
+  const { keys } = currentRentcast(now);
+  const cached = keys.has(key);
+  return {
+    allowed: cached || keys.size < cap,
+    cached,
+    remaining: Math.max(0, cap - keys.size),
+    cap,
+  };
+}
+
+/** Record a SUCCESSFUL feed request. Failures never consume a slot. */
+export function commitRentcastSearch(key: string, now = new Date()): QuotaCheck {
+  const cap = rentcastDailyCap();
+  const l = currentRentcast(now);
+  l.keys.add(key);
+  return {
+    allowed: true,
+    cached: false,
+    remaining: Math.max(0, cap - l.keys.size),
+    cap,
+  };
+}
+
+/** What the feed has left today, without claiming any of it. */
+export function rentcastBudget(now = new Date()): QuotaCheck & { monthly: number } {
+  const cap = rentcastDailyCap();
+  const { keys } = currentRentcast(now);
+  return {
+    allowed: keys.size < cap,
+    cached: false,
+    remaining: Math.max(0, cap - keys.size),
+    cap,
+    monthly: rentcastMonthlyCap(),
+  };
+}
+
+/** Tests only. */
+export function resetRentcastLedger(): void {
+  rentcast = { day: "", keys: new Set() };
 }

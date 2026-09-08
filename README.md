@@ -41,13 +41,22 @@ sees it) and responses cache for 24 hours per market, so the free
 50-requests/month tier comfortably covers daily browsing of a handful of
 markets — one request per market per day, shared by every user.
 
-A daily cap (`LIVE_SEARCH_DAILY_CAP`, default 50) bounds the bill: the
-first search of a market or ZIP each day spends a slot, repeats ride the
-cache for free, and failed requests spend nothing. Past the cap, new
+A daily cap bounds the bill, and it is **derived from the monthly
+plan**: set `RENTCAST_MONTHLY_REQUESTS` to your allowance (default 50,
+the free tier) and the feed gets that many spread over 31 days, never
+under one a day. `RENTCAST_DAILY_CAP` overrides the arithmetic outright.
+The first search of a market or ZIP each day spends a slot, repeats ride
+the cache for free, and failed requests spend nothing. Past the cap, new
 areas fall back to preview inventory and say so; the count resets at
-midnight UTC. The ledger lives in server memory, so with several
-instances warm the true ceiling is a small multiple of the cap — move it
-to a shared store (Vercel KV) if you need it exact.
+midnight UTC. On a paid plan, set the monthly figure — the free-tier
+default opens one new market a day. The ledger lives in server memory,
+so with several instances warm the true ceiling is a small multiple of
+the cap — move it to a shared store (Vercel KV) if you need it exact.
+
+The other per-area vendors — the furnished search, STR market pulls, the
+comps behind an analysis — share a separate `LIVE_SEARCH_DAILY_CAP`
+ledger (default 50). They used to share it with the rental feed too,
+sized to a number that was the feed's *monthly* allowance.
 
 #### Does this feed carry descriptions? (field probe)
 
@@ -139,8 +148,9 @@ comps whenever the feed is missing, capped, unreachable, or returns
 fewer than four nearby rentals (too thin to underwrite on).
 
 AirROI bills per call, so comps cache for a day, market analytics for a
-week, and both share the `LIVE_SEARCH_DAILY_CAP` ledger with the rental
-feed. Failed calls spend nothing.
+week, and both share the `LIVE_SEARCH_DAILY_CAP` ledger — separate from
+the rental feed's, which answers to its own monthly plan. Failed calls
+spend nothing.
 
 **Pinning the field names:** the mapper accepts several plausible
 spellings per figure because the payload shape hasn't been observed

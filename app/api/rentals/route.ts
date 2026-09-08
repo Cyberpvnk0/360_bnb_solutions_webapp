@@ -5,7 +5,10 @@
  *
  * A daily cap on DISTINCT areas (lib/live/quota) guards the bill: the
  * first search of a market or ZIP each day spends a slot, repeats ride
- * the 24-hour cache for free, and failures spend nothing.
+ * the 24-hour cache for free, and failures spend nothing. The cap is
+ * the feed's OWN, derived from its monthly plan — it used to share a
+ * fifty-a-day ledger with three other vendors, against a plan that
+ * allows fifty a month.
  *
  * No photos are fetched here, or anywhere. A listing photo is
  * copyrighted separately from the facts around it and this product
@@ -29,8 +32,8 @@ import {
   RentCastError,
 } from "@/lib/live/rentcast";
 import {
-  checkLiveSearch,
-  commitLiveSearch,
+  checkRentcastSearch,
+  commitRentcastSearch,
   reserveJoin,
 } from "@/lib/live/quota";
 import {
@@ -212,7 +215,7 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-    const gate = checkLiveSearch(`zip:${zip}`);
+    const gate = checkRentcastSearch(`zip:${zip}`);
     if (!gate.allowed) {
       return NextResponse.json(
         { live: false, reason: "daily-cap", cap: gate.cap, remaining: 0 },
@@ -221,7 +224,7 @@ export async function GET(request: Request) {
     }
     try {
       const { market, center, listings } = await fetchLiveRentalsByZip(zip);
-      const spent = commitLiveSearch(`zip:${zip}`);
+      const spent = commitRentcastSearch(`zip:${zip}`);
       return NextResponse.json({
         live: true,
         asOf: new Date().toISOString(),
@@ -289,7 +292,7 @@ export async function GET(request: Request) {
   // and serving it spends neither a vendor request nor a quota slot.
   // asOf is the row's real fetch time, never dressed up as now.
   const stored = await readMarketStore(market.slug);
-  const gate = checkLiveSearch(`market:${market.slug}`);
+  const gate = checkRentcastSearch(`market:${market.slug}`);
   if (stored?.listings?.length && isFresh(stored.listingsAt)) {
     // Rows written before the join shipped carry no listing page, and
     // this early return is what kept them from ever getting one. Fill
@@ -315,7 +318,7 @@ export async function GET(request: Request) {
 
   try {
     const listings = await fetchLiveRentals(market);
-    const spent = commitLiveSearch(`market:${market.slug}`);
+    const spent = commitRentcastSearch(`market:${market.slug}`);
     // One timestamp for both writes, so the join's rewrite lands on the
     // same row rather than aging it forward.
     const asOf = new Date().toISOString();

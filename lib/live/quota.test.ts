@@ -2,15 +2,21 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_DAILY_ENRICH_CAP,
   DEFAULT_DAILY_LIVE_SEARCH_CAP,
+  DEFAULT_RENTCAST_MONTHLY_REQUESTS,
   checkLiveSearch,
+  checkRentcastSearch,
+  commitRentcastSearch,
   commitLiveSearch,
   dailyCap,
   joinCap,
   reserveEnrichments,
   reserveJoin,
   resetEnrichLedger,
+  rentcastBudget,
+  rentcastDailyCap,
   resetJoinLedger,
   resetLiveSearchLedger,
+  resetRentcastLedger,
 } from "./quota";
 
 const DAY_ONE = new Date("2026-08-24T12:00:00Z");
@@ -136,5 +142,49 @@ describe("the listing-page join cap", () => {
     for (let i = 0; i < joinCap(); i += 1) reserveJoin(`m-${i}`, today);
     expect(reserveJoin("fresh", today).allowed).toBe(false);
     expect(reserveJoin("fresh", tomorrow).allowed).toBe(true);
+  });
+});
+
+describe("the rentals feed's own ledger", () => {
+  beforeEach(() => resetRentcastLedger());
+
+  it("derives a daily cap from a monthly plan, and never goes under one", () => {
+    // Fifty a month is the free tier. Fifty a day was the old cap —
+    // the whole month, spent by lunch.
+    expect(DEFAULT_RENTCAST_MONTHLY_REQUESTS).toBe(50);
+    expect(rentcastDailyCap()).toBe(1);
+    expect(rentcastDailyCap()).toBeLessThan(DEFAULT_DAILY_LIVE_SEARCH_CAP);
+  });
+
+  it("is separate from the ledger the other vendors share", () => {
+    // Lowering one to protect RentCast must not strangle the comps or
+    // the furnished search, which answer to different plans.
+    commitRentcastSearch("market:jacksonville", DAY_ONE);
+    expect(checkRentcastSearch("market:tampa", DAY_ONE).allowed).toBe(false);
+    expect(checkLiveSearch("str:30.33,-81.66", DAY_ONE).allowed).toBe(true);
+  });
+
+  it("serves a repeat of today's area free, and checks before it spends", () => {
+    expect(checkRentcastSearch("market:jacksonville", DAY_ONE).allowed).toBe(true);
+    // Nothing committed yet: a failed fetch must not cost the slot.
+    expect(checkRentcastSearch("market:tampa", DAY_ONE).allowed).toBe(true);
+    commitRentcastSearch("market:jacksonville", DAY_ONE);
+    const repeat = checkRentcastSearch("market:jacksonville", DAY_ONE);
+    expect(repeat.allowed).toBe(true);
+    expect(repeat.cached).toBe(true);
+    expect(checkRentcastSearch("market:tampa", DAY_ONE).allowed).toBe(false);
+  });
+
+  it("resets on the next UTC day", () => {
+    commitRentcastSearch("market:a", DAY_ONE);
+    expect(checkRentcastSearch("market:b", DAY_ONE).allowed).toBe(false);
+    expect(checkRentcastSearch("market:b", DAY_TWO).allowed).toBe(true);
+  });
+
+  it("reports the plan it is budgeting against", () => {
+    const b = rentcastBudget(DAY_ONE);
+    expect(b.monthly).toBe(50);
+    expect(b.cap).toBe(1);
+    expect(b.remaining).toBe(1);
   });
 });
