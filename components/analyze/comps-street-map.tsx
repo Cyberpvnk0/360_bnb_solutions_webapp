@@ -43,19 +43,6 @@ export interface PlacedComp extends StrComp {
   placed: boolean;
 }
 
-/** Subject sits near the market center, offset deterministically per
- *  analysis so two pulls in one city don't stack. */
-export function subjectPoint(
-  center: { lat: number; lon: number },
-  seedId: string
-): { lat: number; lon: number } {
-  const h = hash(seedId);
-  return {
-    lat: center.lat + (((h % 200) - 100) / 100) * 0.018,
-    lon: center.lon + ((((h >> 8) % 200) - 100) / 100) * 0.022,
-  };
-}
-
 /** True distance, seeded golden-angle bearing — same spread the radar
  *  preview used, now in geographic space. */
 export function placeComps(
@@ -93,6 +80,9 @@ function airbnbAreaUrl(lat: number, lon: number): string {
 interface CompsStreetMapProps {
   comps: StrComp[];
   subject: { lat: number; lon: number };
+  /** False when the subject pin is the market centre standing in for a
+   *  property with no coordinates — the caption says so. */
+  subjectExact?: boolean;
   subjectLabel: string;
   hoveredId: string | null;
   onHover: (id: string | null) => void;
@@ -106,6 +96,7 @@ interface CompsStreetMapProps {
 export function CompsStreetMap({
   comps,
   subject,
+  subjectExact = true,
   subjectLabel,
   hoveredId,
   onHover,
@@ -347,7 +338,7 @@ export function CompsStreetMap({
       <figcaption className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
         <p className="flex items-center gap-1.5">
           <span aria-hidden className="inline-block size-2 rotate-45 bg-brand" />
-          <span>Your property</span>
+          <span>{subjectExact ? "Your property" : "Your property (market centre — exact spot unknown)"}</span>
           <span
             aria-hidden
             className="ml-2 inline-block h-2 w-3.5 rounded-full bg-[#d7263d]"

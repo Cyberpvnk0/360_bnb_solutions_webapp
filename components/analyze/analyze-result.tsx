@@ -637,8 +637,8 @@ export function AnalyzeResult({
       <div className="mt-14 space-y-14 pb-14">
         <CompsExplorer
           comps={analysis.strComps}
-          analysisId={analysis.id}
           address={analysis.address}
+          propertyPoint={propertyPoint}
           marketCenter={marketCenter}
           live={liveComps}
         />

@@ -13,7 +13,7 @@ import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { MetricLabel } from "@/components/primitives/metric-label";
-import { CompsStreetMap, subjectPoint } from "./comps-street-map";
+import { CompsStreetMap } from "./comps-street-map";
 import { cn } from "@/lib/utils";
 
 const STR_COLUMNS: DataTableColumn<StrComp>[] = [
@@ -65,14 +65,19 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
 
 export function CompsExplorer({
   comps,
-  analysisId,
   address,
+  propertyPoint = null,
   marketCenter,
   live = false,
 }: {
   comps: StrComp[];
-  analysisId: string;
   address: string;
+  /** The property's own coordinates — where "Your property" is pinned.
+   *  Every analysis of a real address has them; the comps were bought
+   *  around this exact point, so the pin and the comps agree. */
+  propertyPoint?: { lat: number; lon: number } | null;
+  /** The market's centre: the fallback pin when a property has no
+   *  coordinates of its own, and said to be that on screen. */
   marketCenter: { lat: number; lon: number } | null;
   /** True when these came from the live STR feed rather than the
    *  seeded preview set — the reader deserves to know which. */
@@ -82,20 +87,30 @@ export function CompsExplorer({
   /** The comp whose card is docked on the map — from a row or a pin. */
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
-  // Anchor the map near the market center; Orlando only as a last-resort
-  // fallback for an analysis whose market record is missing.
-  //
-  // MEMOISED ON THE COORDINATES, NOT REBUILT PER RENDER. This object is
-  // the map's anchor, and the map component (rightly) treats a new
-  // anchor as a new map. Built inline, it was a fresh object on every
-  // render — and every hover over the table re-renders this component —
-  // so each hover tore the map down and drew it again: the grey flash
-  // between tiles.
-  const centerLat = marketCenter?.lat ?? 28.54;
-  const centerLon = marketCenter?.lon ?? -81.38;
+  /**
+   * Where "Your property" goes: the property's own coordinates — the
+   * point the comps were bought around — and nothing else.
+   *
+   * An earlier version took the market centre and nudged it by a hash
+   * of the analysis id, a leftover from seeded addresses that had no
+   * real location and needed not to stack. For a real address that put
+   * the diamond up to a mile from the house, beside comps whose
+   * distances were measured from the house. The nudge is gone. Without
+   * coordinates the pin sits at the market centre and the caption says
+   * so; Orlando only as a last resort for an analysis whose market
+   * record is missing.
+   *
+   * MEMOISED ON THE COORDINATES, NOT REBUILT PER RENDER. This object is
+   * the map's anchor, and the map component (rightly) treats a new
+   * anchor as a new map; a fresh object on every hover tore the map
+   * down each time.
+   */
+  const exact = propertyPoint !== null;
+  const subjectLat = propertyPoint?.lat ?? marketCenter?.lat ?? 28.54;
+  const subjectLon = propertyPoint?.lon ?? marketCenter?.lon ?? -81.38;
   const subject = React.useMemo(
-    () => subjectPoint({ lat: centerLat, lon: centerLon }, analysisId),
-    [centerLat, centerLon, analysisId]
+    () => ({ lat: subjectLat, lon: subjectLon }),
+    [subjectLat, subjectLon]
   );
 
   return (
@@ -159,6 +174,7 @@ export function CompsExplorer({
         <CompsStreetMap
           comps={comps}
           subject={subject}
+          subjectExact={exact}
           subjectLabel={`Your property — ${address}`}
           hoveredId={hoveredId}
           onHover={setHoveredId}
