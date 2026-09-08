@@ -55,7 +55,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
         className={cn(
           "flex size-9 items-center justify-center rounded-sm border transition-colors duration-150",
           active
-            ? "border-gold-fill/40 bg-gold-fill/10 text-gold"
+            ? "border-select/40 bg-select/10 text-select"
             : "border-transparent text-muted-foreground group-hover:bg-secondary/60 group-hover:text-foreground"
         )}
       >
@@ -77,7 +77,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
 
 /**
  * Desktop icon rail: icon tile with the page name beneath, stacked.
- * The active item carries the gold-washed tile and the thin gold left rule.
+ * The active item carries the red-washed tile and the thin red left rule.
  */
 export function SidebarRail({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
@@ -127,7 +127,7 @@ export function SidebarRail({ isAdmin = false }: { isAdmin?: boolean }) {
 
 /**
  * Full-width nav list used by the mobile sheet.
- * Active item carries the thin gold left rule.
+ * Active item carries the thin red left rule.
  */
 export function SidebarNav({
   onNavigate,

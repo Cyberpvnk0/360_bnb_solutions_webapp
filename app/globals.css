@@ -283,9 +283,10 @@
   );
 }
 
-/* Thin gold left rule marking active state. */
+/* Thin red left rule marking active state — the same red as every
+   other "this is the one you picked" in the app. */
 @utility active-rule {
-  box-shadow: inset 2px 0 0 0 var(--gold);
+  box-shadow: inset 2px 0 0 0 var(--select);
 }
 
 /* Deeper shadow for hovered interactive cards (no-op in dark). */
