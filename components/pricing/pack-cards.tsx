@@ -14,7 +14,7 @@
  * pricing surface rather than two features glued together.
  */
 
-import { CREDIT_PACKS, PACK_ORDER, packUnitPrice, type PackId } from "@/config/app";
+import { CREDIT_PACKS, PACK_ORDER, type PackId } from "@/config/app";
 import { fmtMoney } from "@/lib/format";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { cn } from "@/lib/utils";
@@ -59,9 +59,6 @@ export function PackCards({
             </span>
             <span className="mt-2 text-sm font-medium text-foreground">
               {pack.analyses} analyses
-            </span>
-            <span className="mt-0.5 text-xs text-muted-foreground tabular">
-              {fmtMoney(packUnitPrice(pack))} each
             </span>
             <span className="mt-3 text-xs font-medium text-gold">
               {busy ? "Adding…" : ctaLabel}
