@@ -30,6 +30,8 @@
      narrowly, red (the existing --red-muted) does not. */
   --green: #1d7a4b;
   --orange: #b8620a;
+  /* Selected / active controls in the Deal Finder: the pins' red. */
+  --select: #d7263d;
 
   /* Semantic mapping (shadcn token names) */
   --background: var(--ink);
@@ -89,6 +91,7 @@
   --gold-fill: #e3b341;
   --green: #4fcf8e;
   --orange: #f2a650;
+  --select: #ef5b6e;
 
   --background: var(--ink);
   --foreground: var(--text);
@@ -157,6 +160,7 @@
   --color-neg: var(--red-muted);
   --color-pos: var(--green);
   --color-warn: var(--orange);
+  --color-select: var(--select);
   --color-gold: var(--gold);
   --color-gold-bright: var(--gold-bright);
   --color-gold-fill: var(--gold-fill);

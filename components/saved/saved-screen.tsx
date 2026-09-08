@@ -7,7 +7,7 @@
  * the tabs.
  */
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/primitives/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LandlordsView } from "@/components/landlords/landlords-view";
@@ -18,15 +18,17 @@ import { ListsTab } from "./lists-tab";
 export type SavedTab = "lists" | "landlords";
 
 export function SavedScreen({ initialTab }: { initialTab: SavedTab }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { lists, landlords } = useSession();
 
   const raw = searchParams.get("tab");
   const tab: SavedTab = raw === "landlords" || raw === "lists" ? raw : initialTab;
 
+  // A shallow history entry, which Next mirrors into useSearchParams
+  // without a server round trip: the pane switches on the click, not
+  // after the request, and back/forward walk the tabs.
   const handleTabChange = (value: string) => {
-    router.replace(`/saved?tab=${value}`, { scroll: false });
+    window.history.pushState(null, "", `/saved?tab=${value}`);
   };
 
 

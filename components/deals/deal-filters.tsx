@@ -4,7 +4,7 @@
  * Filter chips for the Deal Finder — Zillow-familiar: Location, Price,
  * Beds, Baths, Home type. Each chip opens a panel holding a draft of its
  * own values with a Reset / Apply row; nothing changes the list until
- * Apply. An active chip carries a gold dot and its summary. Local to
+ * Apply. An active chip carries a red dot and its summary. Local to
  * /deals by design (the markets explorer keeps its own chips).
  */
 
@@ -166,12 +166,12 @@ function FilterChip({
           className={cn(
             "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
             active
-              ? "border-gold/50 bg-gold-fill/5 text-foreground"
+              ? "border-select/50 bg-select/5 text-foreground"
               : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
           )}
         >
           {active ? (
-            <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
+            <span aria-hidden className="size-1.5 rounded-full bg-select" />
           ) : Icon ? (
             <Icon aria-hidden className="size-3.5" />
           ) : null}
@@ -266,14 +266,14 @@ function PricePanel({
                 className={cn(
                   "rounded-sm border px-3 py-2.5 text-left transition-colors duration-150",
                   on
-                    ? "border-gold/50 bg-gold-fill/10"
+                    ? "border-select/50 bg-select/10"
                     : "border-border hover:bg-secondary/60"
                 )}
               >
                 <span
                   className={cn(
                     "block text-sm font-medium tabular",
-                    on ? "text-gold" : "text-foreground"
+                    on ? "text-select" : "text-foreground"
                   )}
                 >
                   {tier.label}
@@ -351,7 +351,7 @@ function CountTiles({
               className={cn(
                 "h-9 rounded-sm border text-sm transition-colors duration-150 tabular",
                 on
-                  ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                  ? "border-select/50 bg-select/10 font-medium text-select"
                   : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
               )}
             >
@@ -453,7 +453,7 @@ function HomeTypePanel({
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-sm border px-3 py-2 text-sm transition-colors duration-150",
                   on
-                    ? "border-gold/50 bg-gold-fill/5 text-foreground"
+                    ? "border-select/50 bg-select/5 text-foreground"
                     : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 )}
               >
@@ -461,10 +461,10 @@ function HomeTypePanel({
                   aria-hidden
                   className={cn(
                     "flex size-4 shrink-0 items-center justify-center rounded-xs border",
-                    on ? "border-gold/60 bg-gold-fill/10" : "border-border"
+                    on ? "border-select/60 bg-select/10" : "border-border"
                   )}
                 >
-                  {on ? <Check className="size-3 text-gold" /> : null}
+                  {on ? <Check className="size-3 text-select" /> : null}
                 </span>
                 {t.label}
               </button>
@@ -576,7 +576,7 @@ function KeywordsPanel({
                   className={cn(
                     "rounded-full border px-2.5 py-1 text-xs transition-colors duration-150",
                     on
-                      ? "border-gold/50 bg-gold-fill/10 font-medium text-gold"
+                      ? "border-select/50 bg-select/10 font-medium text-select"
                       : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
@@ -679,7 +679,7 @@ export function DealFilterChips({
           !featuresKnown
             ? "cursor-not-allowed border-border text-muted-foreground/50"
             : filters.furnishedOnly
-              ? "border-gold/50 bg-gold-fill/10 text-gold"
+              ? "border-select/50 bg-select/10 text-select"
               : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
         )}
       >

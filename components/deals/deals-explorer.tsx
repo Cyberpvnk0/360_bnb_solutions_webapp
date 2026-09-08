@@ -784,7 +784,7 @@ export function DealsExplorer({
                 className={cn(
                   "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
                   on
-                    ? "border-gold/50 bg-gold-fill/10 text-gold"
+                    ? "border-select/50 bg-select/10 text-select"
                     : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                 )}
               >
@@ -920,7 +920,7 @@ export function DealsExplorer({
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2 text-sm font-medium transition-colors duration-150",
               mobilePane === pane.id
-                ? "border-gold text-foreground"
+                ? "border-select text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
@@ -988,7 +988,7 @@ export function DealsExplorer({
                       onClick={() =>
                         applyLocationQuery(`${m.name}, ${m.stateCode}`)
                       }
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-gold/40 hover:bg-gold-fill/5 hover:text-foreground"
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-select/40 hover:bg-select/5 hover:text-foreground"
                     >
                       {m.name}, {m.stateCode}
                     </button>

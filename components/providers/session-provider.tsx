@@ -194,45 +194,59 @@ async function adoptLists(
   supabase: NonNullable<ReturnType<typeof supabaseBrowser>>,
   userId: string
 ): Promise<DealList[] | null> {
-  const local = (readLists(window.localStorage) ?? []).filter(
-    (l) => l.listings.length > 0
-  );
-  if (local.length === 0) return null;
+  const run = async (): Promise<DealList[] | null> => {
+    // Read INSIDE the lock: a second tab booting the same profile at
+    // the same moment waits here, then finds the key already cleared
+    // by the first and moves nothing twice.
+    const local = (readLists(window.localStorage) ?? []).filter(
+      (l) => l.listings.length > 0
+    );
+    if (local.length === 0) return null;
 
-  const seed: DealList[] = local.map((l) => ({
-    ...l,
-    // Fresh ids: the device's were counters, and the table wants uuids.
-    id: storedId("list"),
-    name: l.name.trim() || "Untitled list",
-    createdAt: new Date().toISOString().slice(0, 10),
-  }));
+    const seed: DealList[] = local.map((l) => ({
+      ...l,
+      // Fresh ids: the device's were counters, and the table wants uuids.
+      id: storedId("list"),
+      name: l.name.trim() || "Untitled list",
+      createdAt: new Date().toISOString().slice(0, 10),
+    }));
 
-  let failures = 0;
-  for (const list of seed) {
-    const made = await persistList(supabase, userId, list);
-    if (!made.ok) {
-      failures += 1;
-      console.error("[arbicore] failed to move a list to the account:", made.error);
-      continue;
-    }
-    for (const listing of list.listings) {
-      const put = await persistListItem(supabase, userId, list.id, listing);
-      if (!put.ok) {
+    let failures = 0;
+    for (const list of seed) {
+      const made = await persistList(supabase, userId, list);
+      if (!made.ok) {
         failures += 1;
-        console.error("[arbicore] failed to move a saved rental:", put.error);
+        console.error("[arbicore] failed to move a list to the account:", made.error);
+        continue;
+      }
+      for (const listing of list.listings) {
+        const put = await persistListItem(supabase, userId, list.id, listing);
+        if (!put.ok) {
+          failures += 1;
+          console.error("[arbicore] failed to move a saved rental:", put.error);
+        }
       }
     }
-  }
 
-  if (failures > 0) {
-    toast.error("Your saved lists from this device couldn't be moved to your account yet.", {
-      description: "They are still on this device. Reload to try again.",
-    });
-    return null;
+    if (failures > 0) {
+      toast.error("Your saved lists from this device couldn't be moved to your account yet.", {
+        description: "They are still on this device. Reload to try again.",
+      });
+      return null;
+    }
+    // Moved. Clearing the device copy is what makes this once.
+    writeLists(window.localStorage, []);
+    return seed;
+  };
+
+  // One tab at a time per browser profile. Two tabs restored together
+  // both boot, both see an account with no lists, and without this both
+  // would read the same device copy and write it twice under different
+  // ids. Browsers without the Web Locks API run it unguarded.
+  if (typeof navigator !== "undefined" && "locks" in navigator && navigator.locks) {
+    return navigator.locks.request("arbicore.adopt-lists", run);
   }
-  // Moved. Clearing the device copy is what makes this once.
-  writeLists(window.localStorage, []);
-  return seed;
+  return run();
 }
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
