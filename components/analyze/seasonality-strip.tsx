@@ -1,32 +1,21 @@
 "use client";
 
 /**
- * The year, month by month.
+ * The year, month by month — one bar per month, one measure, one scale.
  *
- * Everything else on this screen is an annual average, and an average
- * is exactly where a seasonal deal hides. A property can clear its
- * costs comfortably across twelve months and still lose money for four
- * of them in a row — and rent is due monthly, in cash, whether or not
- * September cooperated.
+ * What this replaces drew two rows of bars on two different scales
+ * (revenue above, net below, "scaled separately") and left the reader
+ * to work out which was which. A student underwriting a lease asks one
+ * question of a calendar: which months make money and which lose it.
+ * So: net cash flow per month, up from a shared zero line in gold and
+ * down from it in red, with the dollar figure on every bar. The
+ * sentence at the top says the answer before the bars do.
  *
- * Two rows, because the two answer different questions and the gap
- * between them is the cost of operating. Revenue on top says when the
- * property is busy. Net below says when it actually pays for itself,
- * and a strong revenue month can still be a losing one — which is the
- * whole reason not to show revenue alone.
- *
- * They are scaled independently and labelled as such. Net is a small
- * fraction of revenue, so a shared axis would flatten it into a line
- * and hide the sign changes that matter most.
- *
- * Months below zero are drawn in the same muted red the breakeven gauge
- * uses when a deal doesn't clear, because they mean the same thing.
- *
- * Only drawn when the feed supplied a real distribution for this
- * address. A seeded season rendered with the same confidence as a
- * measured one is decoration that gets somebody to sign a lease.
+ * Seasonality is this address's own: the feed's twelve-month revenue
+ * distribution, applied to the market occupancy the projection uses.
  */
 
+import * as React from "react";
 import {
   monthlyOutlook,
   seasonalRisk,
@@ -36,6 +25,9 @@ import type { DealInputs, MarketAssumptions } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { cn } from "@/lib/utils";
+
+/** Pixel height of each half of the chart (above and below zero). */
+const HALF = 64;
 
 export function SeasonalityStrip({
   inputs,
@@ -48,80 +40,81 @@ export function SeasonalityStrip({
   weights: number[] | undefined;
   className?: string;
 }) {
+  const [hover, setHover] = React.useState<number | null>(null);
   const months = weights ? monthlyOutlook(inputs, assumptions, weights) : null;
   if (!months) return null;
   const risk = seasonalRisk(months);
   if (!risk) return null;
 
-  const netPeak = Math.max(...months.map((m) => Math.abs(m.net)), 1);
-  const revPeak = Math.max(...months.map((m) => m.revenue), 1);
+  const peak = Math.max(...months.map((m) => Math.abs(m.net)), 1);
+  const negatives = months.filter((m) => m.net < 0);
 
   return (
     <div className={className}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <MetricLabel>Cash flow by month</MetricLabel>
-        <span className="text-[11px] text-muted-foreground">
-          {risk.negativeMonths === 0 ? (
-            <>Every month clears its costs</>
-          ) : (
-            <>
-              <span className="font-medium text-foreground">
-                {risk.negativeMonths}
-              </span>{" "}
-              {risk.negativeMonths === 1 ? "month" : "months"} below zero
-              {risk.longestNegativeRun > 1 ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <span className="font-medium text-foreground">
-                    {risk.longestNegativeRun}
-                  </span>{" "}
-                  in a row
-                </>
-              ) : null}
-            </>
-          )}
+        <span className="text-[11px] text-muted-foreground tabular">
+          Net <span className="font-medium text-foreground">{fmtMoneyShort(risk.annualNet)}</span>{" "}
+          on <span className="text-foreground">{fmtMoneyShort(risk.annualRevenue)}</span> gross for
+          the year
         </span>
       </div>
 
-      <div className="mt-3 flex items-end gap-1.5" role="list">
-        {months.map((m) => (
-          <MonthBar key={m.month} month={m} netPeak={netPeak} revPeak={revPeak} />
-        ))}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-3 rounded-xs bg-gold-fill/30" />
-          Gross revenue · {fmtMoneyShort(risk.annualRevenue)}/yr
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-2 w-3 rounded-xs bg-gold-fill/80" />
-          Net cash flow · {fmtMoneyShort(risk.annualNet)}/yr
-        </span>
-        <span>Scaled separately — net is a fraction of revenue.</span>
-      </div>
-
-      <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        {risk.negativeMonths > 0 ? (
+      {/* The answer, in words. */}
+      <p className="mt-2 text-sm text-foreground">
+        {risk.negativeMonths === 0 ? (
           <>
-            The weak stretch costs{" "}
-            <span className="tabular font-medium text-foreground">
-              {fmtMoney(risk.worstCaseDrawdown)}
-            </span>{" "}
-            out of pocket before the strong months repay it — cash you need
-            on hand, not just on the year.{" "}
+            <span className="font-semibold">Every month clears its costs.</span> Best is{" "}
+            {risk.strongest.label} at{" "}
+            <span className="font-semibold tabular">{fmtMoney(risk.strongest.net)}</span>,
+            thinnest {risk.weakest.label} at{" "}
+            <span className="font-semibold tabular">{fmtMoney(risk.weakest.net)}</span>.
           </>
+        ) : (
+          <>
+            <span className="font-semibold text-neg">
+              {risk.negativeMonths} {risk.negativeMonths === 1 ? "month loses" : "months lose"} money
+            </span>{" "}
+            ({negatives.map((m) => m.label).join(", ")}
+            {risk.longestNegativeRun > 1 ? `, ${risk.longestNegativeRun} in a row` : ""}). Keep{" "}
+            <span className="font-semibold tabular">{fmtMoney(risk.worstCaseDrawdown)}</span> on
+            hand to carry them; the strong months repay it.
+          </>
+        )}
+      </p>
+
+      {/* One bar per month from a shared zero line. */}
+      <div className="relative mt-5">
+        <div className="flex items-stretch gap-1.5 sm:gap-2" role="list">
+          {months.map((m, i) => (
+            <MonthBar
+              key={m.month}
+              month={m}
+              peak={peak}
+              hot={hover === i}
+              onHover={(on) => setHover(on ? i : null)}
+            />
+          ))}
+        </div>
+        {hover !== null ? (
+          <div
+            className="pointer-events-none absolute -top-2 z-20 w-max -translate-x-1/2 -translate-y-full rounded-sm border border-border bg-card px-2.5 py-1.5 text-[11px] shadow-md"
+            style={{ left: `${((hover + 0.5) / months.length) * 100}%` }}
+          >
+            <p className="font-medium text-foreground">{months[hover].label}</p>
+            <p className="text-muted-foreground tabular">
+              {fmtMoney(months[hover].revenue)} revenue · {fmtMoney(months[hover].net)} net ·{" "}
+              {fmtPct(months[hover].occupancy)} booked
+              {months[hover].capped ? " (full calendar)" : ""}
+            </p>
+          </div>
         ) : null}
-        Strongest is {risk.strongest.label} at{" "}
-        <span className="tabular text-foreground">
-          {fmtMoneyShort(risk.strongest.net)}
-        </span>
-        , weakest {risk.weakest.label} at{" "}
-        <span className="tabular text-foreground">
-          {fmtMoneyShort(risk.weakest.net)}
-        </span>
-        . Seasonality is this address&apos;s own, applied to occupancy.
+      </div>
+
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        Net cash flow after rent, fees and cleaning, at this address&apos;s own seasonality
+        applied to {fmtPct(assumptions.marketOccupancy)} average occupancy. Gold months earn;
+        red months cost.
       </p>
     </div>
   );
@@ -129,58 +122,79 @@ export function SeasonalityStrip({
 
 function MonthBar({
   month,
-  netPeak,
-  revPeak,
+  peak,
+  hot,
+  onHover,
 }: {
   month: MonthOutlook;
-  netPeak: number;
-  revPeak: number;
+  peak: number;
+  hot: boolean;
+  onHover: (on: boolean) => void;
 }) {
   const negative = month.net < 0;
   // A floor so a near-zero month is still a visible mark rather than a
   // gap that reads as missing data.
-  const netH = Math.max(3, (Math.abs(month.net) / netPeak) * 40);
-  const revH = Math.max(3, (month.revenue / revPeak) * 34);
+  const h = Math.max(3, (Math.abs(month.net) / peak) * (HALF - 18));
 
   return (
-    <div
+    <button
+      type="button"
       role="listitem"
-      className="flex flex-1 flex-col items-center gap-1"
-      title={`${month.label}: ${fmtMoney(month.revenue)} revenue, ${fmtMoney(month.net)} net, at ${fmtPct(month.occupancy)} occupancy${
-        month.capped ? " (capped at a full calendar)" : ""
-      }`}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      onFocus={() => onHover(true)}
+      onBlur={() => onHover(false)}
+      aria-label={`${month.label}: ${fmtMoney(month.net)} net on ${fmtMoney(month.revenue)} revenue`}
+      className="group flex min-w-0 flex-1 flex-col items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-gold/50"
     >
-      {/* Revenue, always positive, its own scale. */}
-      <div className="flex h-[34px] w-full items-end justify-center">
-        <div style={{ height: revH }} className="w-full rounded-t-xs bg-gold-fill/25" />
+      {/* Above the line: the figure, then the bar (positive only). */}
+      <div className="flex w-full flex-col items-center justify-end" style={{ height: HALF }}>
+        {!negative ? (
+          <>
+            <span
+              className={cn(
+                "mb-1 text-[10px] font-medium tabular",
+                hot ? "text-foreground" : "text-muted-foreground"
+              )}
+            >
+              {fmtMoneyShort(month.net)}
+            </span>
+            <div
+              style={{ height: h }}
+              className={cn(
+                "w-full rounded-t-sm bg-gold-fill transition-colors duration-150",
+                hot ? "opacity-100" : "opacity-85"
+              )}
+            />
+          </>
+        ) : null}
       </div>
-      {/* Net above the line */}
-      <div className="flex h-[40px] w-full items-end justify-center">
-        {negative ? null : (
-          <div
-            style={{ height: netH }}
-            className="w-full rounded-t-xs bg-gold-fill/80"
-          />
-        )}
-      </div>
-      <div className="h-px w-full bg-border" />
-      {/* Net below it */}
-      <div className="flex h-[40px] w-full items-start justify-center">
+      <div className="h-px w-full bg-foreground/30" />
+      {/* Below the line: the bar, then the figure (negative only). */}
+      <div className="flex w-full flex-col items-center justify-start" style={{ height: HALF }}>
         {negative ? (
-          <div
-            style={{ height: netH, backgroundColor: "var(--red-muted)" }}
-            className="w-full rounded-b-xs opacity-80"
-          />
+          <>
+            <div
+              style={{ height: h, backgroundColor: "var(--red)" }}
+              className={cn(
+                "w-full rounded-b-sm transition-opacity duration-150",
+                hot ? "opacity-100" : "opacity-85"
+              )}
+            />
+            <span className="mt-1 text-[10px] font-medium text-neg tabular">
+              −{fmtMoneyShort(Math.abs(month.net))}
+            </span>
+          </>
         ) : null}
       </div>
       <span
         className={cn(
-          "text-[9px] tabular",
-          negative ? "font-medium text-foreground" : "text-muted-foreground"
+          "mt-1.5 text-[10px] tabular",
+          negative ? "font-medium text-neg" : hot ? "text-foreground" : "text-muted-foreground"
         )}
       >
         {month.label}
       </span>
-    </div>
+    </button>
   );
 }
