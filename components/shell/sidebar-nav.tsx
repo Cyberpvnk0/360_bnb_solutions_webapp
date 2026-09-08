@@ -29,7 +29,7 @@ function NavLink({
       className={cn(
         "flex items-center gap-3 px-5 py-2.5 text-sm transition-colors duration-150",
         active
-          ? "active-rule bg-secondary/60 font-medium text-foreground"
+          ? "bg-select font-medium text-white"
           : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
       )}
     >
@@ -55,7 +55,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
         className={cn(
           "flex size-9 items-center justify-center rounded-sm border transition-colors duration-150",
           active
-            ? "border-select/40 bg-select/10 text-select"
+            ? "border-select bg-select text-white shadow-[0_1px_3px_rgba(0,0,0,0.25)]"
             : "border-transparent text-muted-foreground group-hover:bg-secondary/60 group-hover:text-foreground"
         )}
       >
@@ -77,7 +77,8 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
 
 /**
  * Desktop icon rail: icon tile with the page name beneath, stacked.
- * The active item carries the red-washed tile and the thin red left rule.
+ * The active item is a solid red tile with a white icon — the pins' red,
+ * filled, not tinted — plus the thin red left rule.
  */
 export function SidebarRail({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
@@ -127,7 +128,7 @@ export function SidebarRail({ isAdmin = false }: { isAdmin?: boolean }) {
 
 /**
  * Full-width nav list used by the mobile sheet.
- * Active item carries the thin red left rule.
+ * Active item is a solid red row with white type.
  */
 export function SidebarNav({
   onNavigate,
