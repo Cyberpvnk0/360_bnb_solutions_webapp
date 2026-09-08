@@ -55,11 +55,14 @@ describe("claiming against the plan", () => {
   });
 
   it("passes the plan's cap to the store and returns its verdict", async () => {
+    // The mocked store echoes whatever cap it was handed, so this test
+    // follows the config rather than pinning a number the plan may move.
+    const cap = TIERS.starter.pullLimit;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ allowed: false, used: 10, cap: 10 }]), { status: 200 })
+      new Response(JSON.stringify([{ allowed: false, used: cap, cap }]), { status: 200 })
     );
     const r = await consumeUsage("u1", "starter", "analysis", "estimate:x", new Date("2026-09-08T12:00:00Z"));
-    expect(r).toEqual({ allowed: false, used: 10, cap: 10, kind: "analysis" });
+    expect(r).toEqual({ allowed: false, used: cap, cap, kind: "analysis" });
     const body = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
     expect(body).toEqual({
       p_user: "u1",
