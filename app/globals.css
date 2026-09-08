@@ -26,6 +26,10 @@
   --gold-bright: #a87b1f;
   /* Chip/fill variants that keep the warm metal read on white */
   --gold-fill: #e3b341;
+  /* Deal grade: green clears costs with room, orange clears them
+     narrowly, red (the existing --red-muted) does not. */
+  --green: #1d7a4b;
+  --orange: #b8620a;
 
   /* Semantic mapping (shadcn token names) */
   --background: var(--ink);
@@ -83,6 +87,8 @@
   --gold: #e3b341;
   --gold-bright: #f5d77a;
   --gold-fill: #e3b341;
+  --green: #4fcf8e;
+  --orange: #f2a650;
 
   --background: var(--ink);
   --foreground: var(--text);
@@ -149,6 +155,8 @@
   --color-brand: var(--red);
   --color-brand-deep: var(--red-deep);
   --color-neg: var(--red-muted);
+  --color-pos: var(--green);
+  --color-warn: var(--orange);
   --color-gold: var(--gold);
   --color-gold-bright: var(--gold-bright);
   --color-gold-fill: var(--gold-fill);

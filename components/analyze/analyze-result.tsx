@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
+import { dealGrade, GRADE_TEXT } from "@/lib/calc/grade";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
 import { TIERS, type TierId } from "@/config/app";
@@ -211,6 +212,10 @@ export function AnalyzeResult({
   const neverBreaksEven = !Number.isFinite(p.breakevenOccupancy);
   const comfortable = p.marginOfSafety >= 0.02;
   const marginPts = Math.round(p.marginOfSafety * 100);
+  // The revenue figure wears the deal's grade: green with room, orange
+  // when it clears costs narrowly, red when the market runs short. Read
+  // from the same margin the gauge shows, so the two never disagree.
+  const grade = dealGrade(neverBreaksEven ? -Infinity : p.marginOfSafety);
   const sleeps = analysis.bedrooms * 2 + 2;
   // Annual figures display as rounded-monthly × 12 so a reader who
   // multiplies the two on-screen numbers gets an exact match.
@@ -382,7 +387,10 @@ export function AnalyzeResult({
               <AnimatedNumber
                 value={annualRevenueDisplay}
                 format={fmtMoney}
-                className="mt-1.5 block font-display text-3xl font-medium leading-tight tracking-tight"
+                className={cn(
+                  "mt-1.5 block font-sans text-3xl font-bold leading-none tracking-tight tabular",
+                  GRADE_TEXT[grade]
+                )}
               />
               <p className="mt-1 text-[11px] text-muted-foreground">
                 gross bookings · {fmtMoney(p.monthlyRevenue)}/mo
