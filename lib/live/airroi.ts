@@ -98,33 +98,34 @@ export const COMPS_REVALIDATE_SECONDS = 86_400; // 1 day
 export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
 
 /**
- * A hard ceiling on billed calls, counted here rather than trusted to
- * the callers.
+ * A CIRCUIT BREAKER on billed calls, not the meter.
  *
- * Every guard above this one rations something adjacent — distinct
- * areas per day, markets per batch — and each of them can be right
- * while the bill still runs away, because none of them counts the thing
- * that costs money. This counts calls.
+ * The meter is the plan: each account's monthly analyses are counted
+ * server-side in lib/db/usage against the tier it pays for, and that
+ * is what decides whether a call may be made. This counter sits behind
+ * it for the day something bypasses the plan — a bug, a loop, a route
+ * that forgot to ask — and it should trip only then.
  *
- * Fifty a day. The measured price is $0.18 a call — eighteen times the
- * published floor, which evidently applies to some endpoint this
- * product does not use — so fifty is about nine dollars of exposure per
- * instance per day.
+ * WHICH MEANS IT MUST SIT ABOVE WHAT PAYING USERS ARE OWED. It used to
+ * be fifty, sized when nothing metered per user. Fifty is one Scale
+ * subscriber's morning; at a thousand accounts the plans entitle the
+ * platform to several hundred fresh purchases a day, and a breaker
+ * below that silently hands paying users modelled comps after the
+ * first hour, in a product whose whole promise is measured ones.
+ *
+ * Five hundred a day is about ninety dollars of exposure per instance
+ * at the measured $0.18 a call. Raise it as the subscriber base grows:
+ * roughly (accounts x average monthly entitlement) / 30, times two for
+ * headroom, and /api/usage shows what the fleet is actually spending.
  *
  * Per-instance and per-day, like the quota beside it. A serverless
  * fleet means the true figure is this times however many instances
- * happen to be warm, so it is a brake rather than a lock. Worth
- * knowing before treating it as a guarantee: three warm instances is
- * roughly twenty-seven dollars a day, which is most of a small balance.
- *
- * A cached analysis never reaches this counter, and with students
- * converging on one course city list most analyses are cached. The
- * ceiling exists for the day something goes wrong, not for the
- * ordinary case.
+ * happen to be warm, so it is a brake rather than a lock. A cached
+ * analysis never reaches this counter.
  */
 const DAILY_CALL_BUDGET = (() => {
   const raw = Number(process.env.AIRROI_DAILY_CALLS);
-  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 50;
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 500;
 })();
 
 let spentDay = "";
@@ -439,7 +440,7 @@ async function call(
       "budget",
       undefined,
       `daily call budget spent (${remaining.used}/${remaining.cap}). ` +
-        "Raise AIRROI_DAILY_CALLS deliberately; the default is low because these calls are not cheap."
+        "This is the circuit breaker behind the per-account plan meter; raise AIRROI_DAILY_CALLS as the subscriber base grows."
     );
   }
   spentCalls += 1;

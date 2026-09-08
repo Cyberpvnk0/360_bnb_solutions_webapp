@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
+import { TIERS, type TierId } from "@/config/app";
 import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
 import { AnimatedNumber } from "@/components/primitives/animated-number";
@@ -92,6 +93,7 @@ export function AnalyzeResult({
   propertyPoint = null,
   liveComps = false,
   searchedAddress = null,
+  quota = null,
 }: {
   analysis: Analysis;
   marketCenter: { lat: number; lon: number } | null;
@@ -106,6 +108,19 @@ export function AnalyzeResult({
   propertyPoint?: { lat: number; lon: number } | null;
   /** True when the comp set came from the live STR feed. */
   liveComps?: boolean;
+  /**
+   * Where this analysis left the account's monthly plan, when there is
+   * an account. `allowed` false means no comps were bought for it and
+   * the read below is modelled — which the page must SAY, because a
+   * student who has run out is owed the reason, not a quieter page.
+   */
+  quota?: {
+    allowed: boolean;
+    used: number;
+    cap: number;
+    tier: TierId;
+    unmetered?: string;
+  } | null;
   /**
    * Set when this came from a typed address rather than a saved deal.
    *
@@ -132,7 +147,13 @@ export function AnalyzeResult({
     rentSource: "listing" | "market";
   } | null;
 }) {
-  const { saveDeal, isAnalysisSaved, openUpgrade, tier } = useSession();
+  const { saveDeal, isAnalysisSaved, openUpgrade, tier, refreshUsage } = useSession();
+
+  // The server settled the plan count while rendering this page; the
+  // header's meter was loaded before that and is one behind. Ask once.
+  React.useEffect(() => {
+    if (quota) void refreshUsage();
+  }, [quota, refreshUsage]);
   /**
    * Does this address exist?
    *
@@ -539,6 +560,33 @@ export function AnalyzeResult({
           </div>
         </div>
       </div>
+
+      {/* The plan, when it decided what is on this page. Only the
+          exhausted case speaks up: a page that is measured needs no
+          caption saying the plan allowed it. */}
+      {quota && !quota.allowed ? (
+        <div className="mt-8 flex flex-col gap-3 rounded-lg border border-gold/40 bg-gold/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              {quota.cap === 0
+                ? `Property analyses aren’t included on the ${TIERS[quota.tier].name} plan.`
+                : `You’ve used ${quota.used} of ${quota.cap} property analyses this month.`}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              The read below is modelled from the market, not measured from
+              live comps around this address. Upgrade to unlock the measured
+              version — it will not count against you twice.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => openUpgrade({ reason: "pulls", analysis })}
+            className="shrink-0"
+          >
+            See plans
+          </Button>
+        </div>
+      ) : null}
 
       {/* Evidence */}
       <div className="mt-14 space-y-14 pb-14">

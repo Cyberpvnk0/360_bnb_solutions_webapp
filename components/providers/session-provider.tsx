@@ -11,6 +11,7 @@
 
 import * as React from "react";
 import { TIERS, type Tier, type TierId } from "@/config/app";
+import { currentPeriod } from "@/lib/db/usage-period";
 import {
   breakevenOccupancy,
   netCashFlow,
@@ -20,12 +21,12 @@ import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { authConfigured } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
+  loadUsage,
   loadUserData,
   persistActivity,
   persistDeal,
   persistDealPatch,
   persistLandlord,
-  persistPullsUsed,
   persistWatch,
 } from "@/lib/db/user-data";
 import {
@@ -51,7 +52,7 @@ import type {
   SessionUser,
 } from "@/lib/mock/types";
 
-export type UpgradeReason = "pulls" | "deals" | "generic";
+export type UpgradeReason = "pulls" | "markets" | "deals" | "generic";
 
 interface UpgradeState {
   open: boolean;
@@ -75,6 +76,11 @@ interface SessionContextValue {
   pullLimit: number;
   pullsRemaining: number;
   canPull: boolean;
+  marketsUsed: number;
+  marketLimit: number;
+  /** Re-read the plan meter from the account. The server settles the
+   *  count when a page spends one, so a page that just did asks once. */
+  refreshUsage: () => Promise<void>;
   deals: Deal[];
   landlords: Landlord[];
   activity: ActivityEvent[];
@@ -189,7 +195,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // A real account: their rows, and nothing seeded. An empty
         // pipeline for a new user is the truth, and dressing it with
         // sample deals they never saved would be worse than empty.
-        const data = await loadUserData(supabase, id);
+        const [data, usage] = await Promise.all([
+          loadUserData(supabase, id),
+          // THIS period's meter, from the table the browser cannot
+          // write — not profiles.pulls_used, which it could.
+          loadUsage(supabase, id, currentPeriod()),
+        ]);
         if (cancelled) return;
         const joined = auth?.data.user?.created_at ?? new Date().toISOString();
         setUser({
@@ -197,7 +208,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           name: data.profile?.fullName ?? auth?.data.user?.email ?? "You",
           email: data.profile?.email ?? auth?.data.user?.email ?? "",
           tier: (data.profile?.tier ?? "free") as TierId,
-          pullsUsed: data.profile?.pullsUsed ?? 0,
+          pullsUsed: usage.analysesUsed,
+          marketsUsed: usage.marketsUsed,
           watchedMarketSlugs: data.watchedMarketSlugs,
           joinedAt: joined,
           // No billing yet. A period end invented here would show a
@@ -247,6 +259,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const pullLimit = tier.pullLimit;
   const pullsRemaining = Math.max(0, pullLimit - pullsUsed);
   const canPull = pullsRemaining > 0;
+  const marketsUsed = user?.marketsUsed ?? 0;
+  const marketLimit = tier.marketLimit;
+
+  const refreshUsage = React.useCallback(async () => {
+    if (!supabase || !userId) return;
+    const usage = await loadUsage(supabase, userId, currentPeriod());
+    setUser((prev) =>
+      prev
+        ? { ...prev, pullsUsed: usage.analysesUsed, marketsUsed: usage.marketsUsed }
+        : prev
+    );
+  }, [supabase, userId]);
 
   /**
    * Write through to the account, when there is one.
@@ -287,16 +311,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
+  /**
+   * A pre-flight answer, not the meter.
+   *
+   * The meter is server-side now (lib/db/usage): the analyzer page
+   * claims the analysis against the plan while it renders, atomically,
+   * from a table the browser cannot write. This only bumps the local
+   * count so the header moves at once; the page then calls
+   * refreshUsage and the true figure replaces it. Nothing is written
+   * from here, and nothing here is trusted.
+   */
   const consumePull = React.useCallback((): boolean => {
     if (!user) return false;
     if (TIERS[user.tier].pullLimit - user.pullsUsed <= 0) return false;
-    const next = user.pullsUsed + 1;
-    setUser((prev) => (prev ? { ...prev, pullsUsed: next } : prev));
-    // Held per account, not per browser: clearing cookies used to reset
-    // somebody's allowance, and every analysis costs real money.
-    persist("pull count", (client, id) => persistPullsUsed(client, id, next));
+    setUser((prev) => (prev ? { ...prev, pullsUsed: prev.pullsUsed + 1 } : prev));
     return true;
-  }, [user, persist]);
+  }, [user]);
 
   const isAnalysisSaved = React.useCallback(
     (analysisId: string) => deals.some((d) => d.analysisId === analysisId),
@@ -534,7 +564,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setUser((prev) => {
       if (!prev) return prev;
       const limit = TIERS[tierId].pullLimit;
-      return { ...prev, tier: tierId, pullsUsed: Math.min(prev.pullsUsed, limit) };
+      return {
+        ...prev,
+        tier: tierId,
+        pullsUsed: Math.min(prev.pullsUsed, limit),
+        marketsUsed: Math.min(prev.marketsUsed, TIERS[tierId].marketLimit),
+      };
     });
   }, []);
 
@@ -574,6 +609,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     user,
     tier,
     pullsUsed,
+    marketsUsed,
+    marketLimit,
+    refreshUsage,
     pullLimit,
     pullsRemaining,
     canPull,

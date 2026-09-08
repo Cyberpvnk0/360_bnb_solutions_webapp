@@ -47,6 +47,7 @@ const USERS: AdminUserRow[] = Array.from({ length: 16 }, (_, i) => {
     email: `${FIRST[i].toLowerCase()}.${LAST[i].toLowerCase()}@example.com`,
     tier,
     pullsUsed: limit === 0 ? 0 : rng.int(0, limit),
+    marketsUsed: rng.int(0, TIERS[tier].marketLimit),
     joinedAt: daysAgo(rng.int(5, 400)),
   };
 });

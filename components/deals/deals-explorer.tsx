@@ -170,6 +170,8 @@ function liveFailureLabel(reason: LiveFailureReason | null | undefined): string 
       return "Live feed quota reached";
     case "daily-cap":
       return "Daily live-search limit reached";
+    case "monthly-cap":
+      return "Monthly market limit reached";
     case "http":
     case "network":
       return "Live feed unreachable";
@@ -207,7 +209,7 @@ export function DealsExplorer({
   const [detailId, setDetailId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(null);
-  const { lists } = useSession();
+  const { lists, openUpgrade } = useSession();
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -243,11 +245,12 @@ export function DealsExplorer({
         market: result.market,
         listings: result.listings,
       });
+      if (result.reason === "monthly-cap") openUpgrade({ reason: "markets" });
     });
     return () => {
       cancelled = true;
     };
-  }, [zip]);
+  }, [zip, openUpgrade]);
 
   const zipActive = Boolean(zip && zipResult?.zip === zip && zipResult.live);
   const zipChecking = Boolean(zip && zipResult?.zip !== zip);
@@ -297,11 +300,15 @@ export function DealsExplorer({
       });
       setLiveReason(result.live ? null : (result.reason ?? "network"));
       setLiveChecked(slug);
+      // The plan, not the feed, said no. The rows on screen are the
+      // market's preview set; the way to the real ones is a bigger plan,
+      // and the modal says which and how many.
+      if (result.reason === "monthly-cap") openUpgrade({ reason: "markets" });
     });
     return () => {
       cancelled = true;
     };
-  }, [liveTarget]);
+  }, [liveTarget, openUpgrade]);
 
 
   /* ---------------------------------------------------------------- */

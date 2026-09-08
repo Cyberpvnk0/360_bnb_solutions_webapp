@@ -40,7 +40,9 @@ export type LiveFailureReason =
   | "bad-zip"
   | "unknown-market"
   /** This app's own daily ceiling on distinct live searches. */
-  | "daily-cap";
+  | "daily-cap"
+  /** The ACCOUNT's plan: distinct markets this month, all opened. */
+  | "monthly-cap";
 
 export interface LiveRentalsResult {
   /** True when the rows are today's actual inventory (RentCast). */

@@ -52,22 +52,26 @@ export function UpgradeModal() {
       ? analysis
         ? "Your projection is ready. Unlock it."
         : tier.id === "free"
-          ? "Address pulls are a paid feature."
-          : "You've used every pull this period."
-      : upgrade.reason === "deals"
-        ? "You've hit your saved deal limit."
-        : "Get more room to run.";
+          ? "Property analyses are a paid feature."
+          : "You've used every analysis this month."
+      : upgrade.reason === "markets"
+        ? `You've opened ${tier.marketLimit} markets this month.`
+        : upgrade.reason === "deals"
+          ? "You've hit your saved deal limit."
+          : "Get more room to run.";
 
   const subheading =
     upgrade.reason === "pulls"
       ? analysis
         ? `${analysis.address}, ${analysis.city} has a full breakeven read waiting — comps included.`
-        : "Every pull turns an address into a breakeven read backed by live comps."
+        : "Every analysis turns an address into a breakeven read backed by live comps."
+      : upgrade.reason === "markets"
+        ? `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month. Move up to keep browsing — the ones you've opened stay open.`
       : upgrade.reason === "deals"
         ? `The ${tier.name} plan holds ${
             Number.isFinite(tier.savedDealLimit) ? tier.savedDealLimit : "unlimited"
           } deals. Move up to keep building your pipeline.`
-        : "Markets and the calculator stay unlimited on every plan. Paid plans add address pulls and pipeline capacity.";
+        : "The calculator stays unlimited on every plan. Paid plans add property analyses, more markets, and pipeline capacity.";
 
   const handleSelect = (tierId: TierId) => {
     const completesPull = upgrade.reason === "pulls" && Boolean(analysis);

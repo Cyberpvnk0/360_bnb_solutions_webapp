@@ -54,7 +54,7 @@ export function PullCounter({ className }: { className?: string }) {
         ) : null}
         {pullsUsed} of {pullLimit}
       </span>{" "}
-      <span className="hidden md:inline">pulls</span>
+      <span className="hidden md:inline">analyses</span>
     </span>
   );
 
@@ -83,7 +83,7 @@ export function PullCounter({ className }: { className?: string }) {
         "flex items-center gap-2 rounded-sm border border-border px-2.5 py-1.5 transition-colors duration-150 hover:bg-secondary/50",
         className
       )}
-      aria-label={`${pullsUsed} of ${pullLimit} address pulls used this period`}
+      aria-label={`${pullsUsed} of ${pullLimit} property analyses used this month`}
     >
       {ring}
       {label}

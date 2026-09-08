@@ -140,6 +140,9 @@ export async function loadUserData(
     profile: profile.data
       ? {
           tier: str((profile.data as Row).tier, "free"),
+          // Kept for the shape; the live figure comes from loadUsage.
+          // profiles.pulls_used is the OLD meter, which the browser
+          // could write and which never reset — see lib/db/usage.
           pullsUsed: num((profile.data as Row).pulls_used),
           email: str((profile.data as Row).email) || null,
           fullName: str((profile.data as Row).full_name) || null,
@@ -150,6 +153,29 @@ export async function loadUserData(
     watchedMarketSlugs: (watched.data ?? []).map((r) => str((r as Row).market_slug)),
     activity: (activity.data ?? []).map((r) => toActivity(r as Row)),
   };
+}
+
+/**
+ * The account's plan usage for one period, read under the "own usage"
+ * policy — the browser may READ its meter so the header is the truth,
+ * but it can never write it; that happens server-side in lib/db/usage.
+ *
+ * Distinct keys, not counters, so the figures are array lengths.
+ */
+export async function loadUsage(
+  supabase: SupabaseClient,
+  userId: string,
+  period: string
+): Promise<{ analysesUsed: number; marketsUsed: number }> {
+  const { data } = await supabase
+    .from("usage")
+    .select("analysis_keys, market_slugs")
+    .eq("user_id", userId)
+    .eq("period", period)
+    .maybeSingle();
+  const row = (data ?? {}) as Row;
+  const len = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  return { analysesUsed: len(row.analysis_keys), marketsUsed: len(row.market_slugs) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -252,28 +278,6 @@ export async function persistWatch(
   return done(error);
 }
 
-/**
- * Spend one analysis.
- *
- * Read-then-write rather than an atomic increment, which is a real
- * limitation worth naming: two tabs analysing at the same moment could
- * each read the same count and write the same new one, costing the
- * budget one pull instead of two. Correcting that needs a database
- * function, and the failure it prevents is a user getting one extra
- * analysis — not worth the machinery until the budget is tight enough
- * to notice.
- */
-export async function persistPullsUsed(
-  supabase: SupabaseClient,
-  userId: string,
-  pullsUsed: number
-): Promise<WriteOutcome> {
-  const { error } = await supabase
-    .from("profiles")
-    .update({ pulls_used: pullsUsed, updated_at: new Date().toISOString() })
-    .eq("id", userId);
-  return done(error);
-}
 
 export async function persistActivity(
   supabase: SupabaseClient,

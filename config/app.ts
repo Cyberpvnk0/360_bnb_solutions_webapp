@@ -26,8 +26,23 @@ export interface Tier {
   priceMonthly: number;
   /** Price per year when billed annually, in dollars. */
   priceAnnual: number;
-  /** Address pulls included per month. 0 for the free tier. */
+  /**
+   * Property analyses included per month — clicks on "Run the numbers",
+   * counted as DISTINCT properties, so a reload is not a second one.
+   * This is the only thing in the product that costs the vendor money
+   * per user, so it is the thing the plan meters.
+   */
   pullLimit: number;
+  /**
+   * Distinct markets an account may open per month.
+   *
+   * Browsing a market is shared and cached, so across a class of
+   * students it costs almost nothing — but a lone account in a market
+   * nobody else looks at re-buys that market's feed daily. The cap
+   * bounds that exposure; for a real user on a paid plan it never
+   * binds.
+   */
+  marketLimit: number;
   /** Max saved deals in the pipeline. Infinity = unlimited. */
   savedDealLimit: number;
   /** Feature flags. */
@@ -43,38 +58,48 @@ export interface Tier {
 }
 
 export const TIERS: Record<TierId, Tier> = {
+  /**
+   * THE CAPS ARE UNIT ECONOMICS, NOT ROUND NUMBERS. Each paid tier
+   * clears its own cost in the worst case — every analysis a fresh
+   * vendor purchase at $0.18, every market a lone re-buy — with a
+   * gross margin above fifty percent: Starter 61%, Pro 59%, Scale 51%.
+   * The free tier is bounded so that an account paying nothing cannot
+   * become a cost centre, which unlimited browsing quietly allowed.
+   */
   free: {
     id: "free",
     name: "Free",
     priceMonthly: 0,
     priceAnnual: 0,
     pullLimit: 0,
+    marketLimit: 3,
     savedDealLimit: 3,
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
-    blurb: "Browse every market and run the numbers by hand.",
+    blurb: "Browse a few markets and run the numbers by hand.",
     features: [
-      "Unlimited market browsing",
+      "3 markets / month",
       "Unlimited calculator",
       "3 saved deals",
-      "No address pulls",
+      "No property analyses",
     ],
   },
   starter: {
     id: "starter",
     name: "Starter",
-    priceMonthly: 9.97,
-    priceAnnual: 99.97,
-    pullLimit: 20,
+    priceMonthly: 9,
+    priceAnnual: 90,
+    pullLimit: 10,
+    marketLimit: 10,
     savedDealLimit: 25,
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
     blurb: "For your first market and your first few landlord calls.",
     features: [
-      "20 address pulls / month",
-      "Unlimited market browsing",
+      "10 property analyses / month",
+      "10 markets / month",
       "Unlimited calculator",
       "25 saved deals",
     ],
@@ -82,9 +107,10 @@ export const TIERS: Record<TierId, Tier> = {
   pro: {
     id: "pro",
     name: "Pro",
-    priceMonthly: 29.97,
-    priceAnnual: 299.97,
-    pullLimit: 100,
+    priceMonthly: 47,
+    priceAnnual: 470,
+    pullLimit: 60,
+    marketLimit: 40,
     savedDealLimit: Infinity,
     pdfExport: true,
     csvExport: false,
@@ -92,8 +118,8 @@ export const TIERS: Record<TierId, Tier> = {
     recommended: true,
     blurb: "For operators underwriting deals every week.",
     features: [
-      "100 address pulls / month",
-      "Unlimited market browsing",
+      "60 property analyses / month",
+      "40 markets / month",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -102,17 +128,18 @@ export const TIERS: Record<TierId, Tier> = {
   scale: {
     id: "scale",
     name: "Scale",
-    priceMonthly: 79.97,
-    priceAnnual: 799.97,
-    pullLimit: 400,
+    priceMonthly: 97,
+    priceAnnual: 970,
+    pullLimit: 150,
+    marketLimit: 100,
     savedDealLimit: Infinity,
     pdfExport: true,
     csvExport: true,
     prioritySupport: true,
     blurb: "For teams running a portfolio across markets.",
     features: [
-      "400 address pulls / month",
-      "Unlimited market browsing",
+      "150 property analyses / month",
+      "100 markets / month",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -125,7 +152,7 @@ export const TIERS: Record<TierId, Tier> = {
 export const TIER_ORDER: TierId[] = ["free", "starter", "pro", "scale"];
 
 /** Effective monthly price when billed annually (two months free).
- *  Rounded to the cent: $99.97/yr → $8.33, $299.97 → $25.00, $799.97 → $66.66. */
+ *  Rounded to the cent: $90/yr → $7.50, $470 → $39.17, $970 → $80.83. */
 export function annualEffectiveMonthly(tier: Tier): number {
   return Math.round((tier.priceAnnual / 12) * 100) / 100;
 }

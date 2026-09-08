@@ -3,9 +3,10 @@ import { annualEffectiveMonthly, annualSavings, TIERS } from "./app";
 
 describe("pricing math", () => {
   it("annual effective monthly prices match the advertised figures", () => {
-    expect(annualEffectiveMonthly(TIERS.starter)).toBe(8.33);
-    expect(annualEffectiveMonthly(TIERS.pro)).toBe(25.0);
-    expect(annualEffectiveMonthly(TIERS.scale)).toBe(66.66);
+    // Two months free on annual: $90/yr, $470/yr, $970/yr.
+    expect(annualEffectiveMonthly(TIERS.starter)).toBe(7.5);
+    expect(annualEffectiveMonthly(TIERS.pro)).toBe(39.17);
+    expect(annualEffectiveMonthly(TIERS.scale)).toBe(80.83);
   });
 
   it("annual is effectively two months free (within a dollar)", () => {
@@ -16,8 +17,8 @@ describe("pricing math", () => {
   });
 
   it("yearly savings are positive on every paid tier", () => {
-    expect(annualSavings(TIERS.starter)).toBeCloseTo(19.67, 2);
-    expect(annualSavings(TIERS.pro)).toBeCloseTo(59.67, 2);
-    expect(annualSavings(TIERS.scale)).toBeCloseTo(159.67, 2);
+    expect(annualSavings(TIERS.starter)).toBeCloseTo(18, 2);
+    expect(annualSavings(TIERS.pro)).toBeCloseTo(94, 2);
+    expect(annualSavings(TIERS.scale)).toBeCloseTo(194, 2);
   });
 });

@@ -24,6 +24,8 @@
  */
 
 import { after, NextResponse } from "next/server";
+import { currentUser } from "@/lib/supabase/server";
+import { consumeUsage, tierOf } from "@/lib/db/usage";
 import {
   fetchLiveRentals,
   fetchLiveRentalsByZip,
@@ -188,6 +190,42 @@ function joinAfterResponse(
   });
 }
 
+/**
+ * The account's plan, asked before any market is served.
+ *
+ * Distinct markets per month is the one browsing limit a plan carries.
+ * It is not a cost meter — a market is shared and cached, so the
+ * hundredth student to open Jacksonville costs nothing — it is what
+ * keeps a lone account in a market nobody else looks at from re-buying
+ * that market's feed every day on a nine-dollar plan. Counted by slug,
+ * so opening the same market twice is one against the plan.
+ *
+ * Signed out counts as free. Fails open when the meter is unreachable,
+ * with the reason recorded; the platform's own daily ledgers still
+ * bound the day.
+ */
+async function claimMarket(key: string): Promise<
+  | { allowed: true }
+  | { allowed: false; used: number; cap: number }
+> {
+  const user = await currentUser();
+  if (!user) return { allowed: true };
+  const tier = (await tierOf(user.id)) ?? "free";
+  const check = await consumeUsage(user.id, tier, "market", key);
+  return check.allowed
+    ? { allowed: true }
+    : { allowed: false, used: check.used, cap: check.cap };
+}
+
+/** The refusal, in the shape every other live failure uses, plus the
+ *  two figures the upgrade prompt needs to be specific. */
+function monthlyCap(used: number, cap: number) {
+  return NextResponse.json(
+    { live: false, reason: "monthly-cap", used, cap, status: null },
+    { status: 429 }
+  );
+}
+
 /** Same shape for every failure, so the client can explain itself. */
 function failure(error: unknown) {
   if (error instanceof RentCastError) {
@@ -215,6 +253,10 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
+    // The plan first: a ZIP is a market to the account that opened it.
+    const plan = await claimMarket(`zip:${zip}`);
+    if (!plan.allowed) return monthlyCap(plan.used, plan.cap);
+
     const gate = checkRentcastSearch(`zip:${zip}`);
     if (!gate.allowed) {
       return NextResponse.json(
@@ -285,6 +327,11 @@ export async function GET(request: Request) {
       return failure(error);
     }
   }
+
+  // The plan before the store: a market already cached for everyone
+  // else still counts as one of THIS account's for the month.
+  const plan = await claimMarket(`market:${market.slug}`);
+  if (!plan.allowed) return monthlyCap(plan.used, plan.cap);
 
   // The durable store first: a fresh row is the same inventory this
   // route would fetch, already fetched — by another instance, an

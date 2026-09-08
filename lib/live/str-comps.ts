@@ -43,19 +43,45 @@ export interface CompsResolution {
  *  for twice. */
 const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** The vendor spec for an analysis at a point — the thing a comp set
+ *  is bought for. One builder, so the plan meter and the cache agree
+ *  on what "one analysis" is. */
+export function compsSpecFor(
+  analysis: Pick<Analysis, "bedrooms" | "bathrooms">,
+  point: { lat: number; lon: number }
+) {
+  return {
+    lat: point.lat,
+    lon: point.lon,
+    bedrooms: analysis.bedrooms,
+    baths: analysis.bathrooms,
+    // Inferred the way the industry does, two to a bedroom, because the
+    // analysis records the property rather than its listing.
+    guests: Math.max(2, analysis.bedrooms * 2),
+  };
+}
+
+/**
+ * What the plan counts as one analysis: this property at this size.
+ *
+ * Deliberately the comps cache key. A reload of the same page is the
+ * same key and never a second one; a re-run at a different size is a
+ * different comp set the vendor bills for, and a different key.
+ */
+export function analysisUsageKey(
+  analysis: Pick<Analysis, "bedrooms" | "bathrooms">,
+  point: { lat: number; lon: number }
+): string {
+  return estimateKey(compsSpecFor(analysis, point));
+}
+
 export async function withLiveComps(
   analysis: Analysis,
   point: { lat: number; lon: number } | null
 ): Promise<CompsResolution> {
   if (!point || !hasAirRoiKey()) return { analysis, liveComps: false };
 
-  const spec = {
-    lat: point.lat,
-    lon: point.lon,
-    bedrooms: analysis.bedrooms,
-    baths: analysis.bathrooms,
-    guests: Math.max(2, analysis.bedrooms * 2),
-  };
+  const spec = compsSpecFor(analysis, point);
 
   // The store before the wallet. A hit costs one database read and no
   // billed call at all, and it survives deploys — which the framework

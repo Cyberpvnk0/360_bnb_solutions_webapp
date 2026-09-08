@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { getAnalysis, getMarket } from "@/lib/data";
 import { resolveLiveAnalysis } from "@/lib/live/resolve";
-import { withLiveComps } from "@/lib/live/str-comps";
+import { analysisUsageKey, withLiveComps } from "@/lib/live/str-comps";
+import { currentUser } from "@/lib/supabase/server";
+import { consumeUsage, tierOf, type UsageCheck } from "@/lib/db/usage";
+import type { TierId } from "@/config/app";
 import {
   buildAddressAnalysis,
   type AddressSpec,
@@ -96,6 +99,30 @@ function specFrom(
   };
 }
 
+/**
+ * May this account spend one analysis on this property?
+ *
+ * Asked BEFORE the comps are bought, because the comps are the
+ * expensive part and the plan is what pays for them. Signed out, or on
+ * a plan with none, the answer is no and the page renders the modelled
+ * read and says so — never a silent substitution.
+ *
+ * Fails open when the meter itself is unreachable (see lib/db/usage):
+ * a paying student refused what they paid for is the worse outcome,
+ * and the vendor's own daily breaker still bounds the day.
+ */
+async function claimAnalysis(
+  analysis: { bedrooms: number; bathrooms: number },
+  point: { lat: number; lon: number } | null
+): Promise<{ check: UsageCheck | null; tier: TierId | null }> {
+  if (!point) return { check: null, tier: null };
+  const user = await currentUser();
+  if (!user) return { check: null, tier: null };
+  const tier = (await tierOf(user.id)) ?? "free";
+  const check = await consumeUsage(user.id, tier, "analysis", analysisUsageKey(analysis, point));
+  return { check, tier };
+}
+
 export default async function AnalyzeResultPage({
   params,
   searchParams,
@@ -116,7 +143,12 @@ export default async function AnalyzeResultPage({
     // the whole advantage of a searched address: comps drawn around the
     // actual street rather than around a city hall several miles away.
     const point = { lat: spec.lat, lon: spec.lon };
-    const { analysis, liveComps } = await withLiveComps(skeleton, point);
+    // The plan before the wallet: no comps are bought for an account
+    // that has none left, and the page says which it is.
+    const { check, tier } = await claimAnalysis(skeleton, point);
+    const { analysis, liveComps } = check?.allowed
+      ? await withLiveComps(skeleton, point)
+      : { analysis: skeleton, liveComps: false };
 
     // No live comps means an empty set, and every derived figure would
     // divide by zero. Fall back to the market model and say so — the
@@ -138,6 +170,7 @@ export default async function AnalyzeResultPage({
         // the building somebody typed rather than of a city centre.
         propertyPoint={point}
         liveComps={liveComps}
+        quota={check ? { ...check, tier: tier ?? "free" } : null}
         searchedAddress={{
           market,
           milesAway,
@@ -157,12 +190,17 @@ export default async function AnalyzeResultPage({
   const center = market ? { lat: market.lat, lon: market.lon } : null;
   // Live comps replace the seeded set before render, so every figure the
   // page derives — ADR, occupancy, breakeven, the revenue range — is real.
-  const { analysis, liveComps } = await withLiveComps(seeded, center);
+  // Same gate as a searched address: the plan pays for the comps.
+  const { check, tier } = await claimAnalysis(seeded, center);
+  const { analysis, liveComps } = check?.allowed
+    ? await withLiveComps(seeded, center)
+    : { analysis: seeded, liveComps: false };
   return (
     <AnalyzeResult
       analysis={analysis}
       marketCenter={center}
       liveComps={liveComps}
+      quota={check ? { ...check, tier: tier ?? "free" } : null}
     />
   );
 }

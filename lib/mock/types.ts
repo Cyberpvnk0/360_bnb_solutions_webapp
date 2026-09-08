@@ -367,7 +367,11 @@ export interface SessionUser {
   name: string;
   email: string;
   tier: TierId;
+  /** Distinct property analyses this month. Read from the server-owned
+   *  meter, never written from the browser. */
   pullsUsed: number;
+  /** Distinct markets opened this month, from the same meter. */
+  marketsUsed: number;
   /** ISO date the current billing period resets. */
   /**
    * When the current billing period ends.
