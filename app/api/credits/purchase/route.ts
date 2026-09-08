@@ -23,7 +23,7 @@
 import { NextResponse } from "next/server";
 import { CREDIT_PACKS, TIERS, type PackId } from "@/config/app";
 import { currentUser } from "@/lib/supabase/server";
-import { grantPack, mockCheckoutEnabled, tierOf } from "@/lib/db/usage";
+import { grantPack, mockCheckoutEnabled, resolveTier } from "@/lib/db/usage";
 
 export async function POST(request: Request) {
   const user = await currentUser();
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
   const pack = CREDIT_PACKS[packId as PackId];
 
-  const tier = (await tierOf(user.id)) ?? "free";
+  const tier = await resolveTier(user.id);
   if (TIERS[tier].pullLimit <= 0) {
     return NextResponse.json({ ok: false, reason: "plan-required", tier }, { status: 403 });
   }

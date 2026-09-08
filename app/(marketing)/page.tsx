@@ -179,7 +179,7 @@ export default function LandingPage() {
             <Link href="/dashboard">Get started</Link>
           </Button>
           <p className="mt-4 text-sm text-muted-foreground">
-            Free plan included. No card required.
+            No card required.
           </p>
         </div>
       </section>

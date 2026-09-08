@@ -10,13 +10,18 @@
  * plan meters would never see it because the plan meters live in two
  * routes. These gates put the plan in front of every spend.
  *
- * THREE LEVELS. Signed in: the map style, store-only reads. Paid: the
+ * FOUR LEVELS. Signed in: the map style, store-only reads. Paid: the
  * routes that spend money for one user — a Street View image, a contact
- * page, a Google geocode. Admin: the diagnostics and the backfill,
- * which spend money on purpose and print figures nobody else should
- * read. Admin is an allowlist of emails in ADMIN_EMAILS, checked
- * against the session's verified email, because a role column would be
- * one more thing to migrate and this is a beta with a staff list.
+ * page. Staff: the operator page and its figures (reads). Operator: the
+ * diagnostics that spend vendor money on purpose with no meter in front.
+ *
+ * STAFF IS OPTIONAL; OPERATOR IS NOT. ADMIN_EMAILS, when set, is the
+ * allowlist for both, checked against the session's email. When it is
+ * not set — the beta, where every account belongs to someone who is
+ * meant to see everything — every signed-in account is staff, and
+ * nobody is an operator until the list or CRON_SECRET is set. Signed
+ * out is never either: the proxy sends visitors to sign in before any
+ * of this runs, and an API call with no session gets a 401 here.
  *
  * Each gate returns either the caller or the response to send instead,
  * so a route's first line is `const g = await requirePaid(); if (!g.ok)
@@ -26,7 +31,7 @@
 import { NextResponse } from "next/server";
 import { TIERS, type TierId } from "@/config/app";
 import { currentUser } from "@/lib/supabase/server";
-import { consumeUsage, tierOf } from "@/lib/db/usage";
+import { consumeUsage, resolveTier } from "@/lib/db/usage";
 
 type SessionUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 
@@ -42,9 +47,18 @@ export function adminEmails(env = process.env.ADMIN_EMAILS): Set<string> {
   );
 }
 
-export function isAdminEmail(email: string | null | undefined, env?: string): boolean {
+/**
+ * May this signed-in email see staff surfaces?
+ *
+ * No email — nobody signed in — is never staff. An EMPTY list means the
+ * deployment has not drawn the line, and everyone signed in is on the
+ * inside of it. A non-empty list means exactly its members.
+ */
+export function isStaff(email: string | null | undefined, env?: string): boolean {
   if (!email) return false;
-  return adminEmails(env).has(email.trim().toLowerCase());
+  const list = adminEmails(env);
+  if (list.size === 0) return true;
+  return list.has(email.trim().toLowerCase());
 }
 
 function refuse(status: number, reason: string, extra: Record<string, unknown> = {}) {
@@ -65,19 +79,67 @@ export async function requireSignedIn(): Promise<Gate<{ user: SessionUser }>> {
 export async function requirePaid(): Promise<Gate<{ user: SessionUser; tier: TierId }>> {
   const user = await currentUser();
   if (!user) return { ok: false, response: refuse(401, "signed-out") };
-  const tier = (await tierOf(user.id)) ?? "free";
+  const tier = await resolveTier(user.id);
   if (TIERS[tier].pullLimit <= 0) {
     return { ok: false, response: refuse(403, "plan-required", { tier }) };
   }
   return { ok: true, user, tier };
 }
 
-/** A signed-in account on the staff list. 404 rather than 403 for the
- *  page-shaped callers: an admin surface should not announce itself. */
-export async function requireAdmin(): Promise<Gate<{ user: SessionUser }>> {
+/** A signed-in account that counts as staff — see isStaff. Guards the
+ *  operator page and its metrics: reads, never spend. */
+export async function requireStaff(): Promise<Gate<{ user: SessionUser }>> {
   const user = await currentUser();
   if (!user) return { ok: false, response: refuse(401, "signed-out") };
-  if (!isAdminEmail(user.email)) return { ok: false, response: refuse(403, "admin-only") };
+  // A named list is only as good as the email being theirs: a project
+  // with confirmations off hands out sessions for any address typed.
+  if (adminEmails().size > 0 && !user.email_confirmed_at) {
+    return { ok: false, response: refuse(403, "admin-only") };
+  }
+  if (!isStaff(user.email)) return { ok: false, response: refuse(403, "admin-only") };
+  return { ok: true, user };
+}
+
+/**
+ * The diagnostics that spend vendor money on purpose and skip the plan
+ * meter and the daily ledgers — the vendor shape probes, the comps
+ * bench, the description miner, the city-id tooling.
+ *
+ * THESE NEVER OPEN BY DEFAULT. "Everyone is staff when no list is set"
+ * is right for a page of figures; it is wrong for a URL that buys a
+ * dozen scrapes per call with no cap behind it, because the beta lets
+ * anyone with an email address register. So an operator is either an
+ * email NAMED in ADMIN_EMAILS with a confirmed address, or a caller
+ * presenting CRON_SECRET (query `secret=` or a Bearer token) — the same
+ * secret the backfill already requires. With neither configured the
+ * routes answer 503 and say what to set.
+ */
+export async function requireOperator(
+  request?: Request
+): Promise<Gate<{ user: SessionUser | null }>> {
+  const secret = process.env.CRON_SECRET;
+  if (secret && request) {
+    const offered =
+      new URL(request.url).searchParams.get("secret") ??
+      request.headers.get("authorization")?.replace(/^Bearer /, "");
+    if (offered === secret) return { ok: true, user: null };
+  }
+  const list = adminEmails();
+  if (list.size === 0 && !secret) {
+    return {
+      ok: false,
+      response: refuse(503, "operator-not-configured", {
+        hint: "set ADMIN_EMAILS (named staff) or CRON_SECRET before this diagnostic will spend anything",
+      }),
+    };
+  }
+  const user = await currentUser();
+  if (!user) return { ok: false, response: refuse(401, "signed-out") };
+  // The list is only as good as the email being theirs. A project with
+  // confirmations off hands out sessions for any address typed at it.
+  if (!user.email_confirmed_at || !list.has((user.email ?? "").trim().toLowerCase())) {
+    return { ok: false, response: refuse(403, "operator-only") };
+  }
   return { ok: true, user };
 }
 
@@ -112,7 +174,7 @@ export async function claimMarket(key: string): Promise<
 > {
   const user = await currentUser();
   if (!user) return { allowed: false, used: 0, cap: 0 };
-  const tier = (await tierOf(user.id)) ?? "free";
+  const tier = await resolveTier(user.id);
   const check = await consumeUsage(user.id, tier, "market", key);
   return check.allowed
     ? { allowed: true }

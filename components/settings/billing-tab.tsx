@@ -35,11 +35,17 @@ export function BillingTab() {
   }
 
   const isPaid = tier.priceMonthly > 0;
+  // No processor yet, so no account has a billing cycle: a paid-tier
+  // plan with none is complimentary, and the page must say so rather
+  // than invent a charge from the list price.
+  const complimentary = isPaid && user.billingCycle === null;
   const priceLine = !isPaid
     ? "$0 forever"
-    : user.billingCycle === "annual"
-      ? `${fmtMoneyCents(annualEffectiveMonthly(tier))}/mo, billed annually at ${fmtMoneyCents(tier.priceAnnual)}`
-      : `${fmtMoneyCents(tier.priceMonthly)}/mo, billed monthly`;
+    : complimentary
+      ? `Included — nothing is billed. Lists at ${fmtMoneyCents(tier.priceMonthly)}/mo.`
+      : user.billingCycle === "annual"
+        ? `${fmtMoneyCents(annualEffectiveMonthly(tier))}/mo, billed annually at ${fmtMoneyCents(tier.priceAnnual)}`
+        : `${fmtMoneyCents(tier.priceMonthly)}/mo, billed monthly`;
 
   const usedFraction = pullLimit > 0 ? Math.min(1, pullsUsed / pullLimit) : 0;
   const exhausted = pullLimit > 0 && pullsUsed >= pullLimit;
@@ -61,7 +67,9 @@ export function BillingTab() {
           <h2 className="text-sm font-semibold text-foreground">
             Current plan
           </h2>
-          {isPaid ? <StatusChip tone="gold">Active</StatusChip> : null}
+          {isPaid ? (
+            <StatusChip tone="gold">{complimentary ? "Included" : "Active"}</StatusChip>
+          ) : null}
         </div>
         <div className="p-6">
           <div className="font-display text-3xl font-medium tracking-tight text-foreground">

@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/gate";
+import { requireStaff } from "@/lib/auth/gate";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
 import { rentcastBudget } from "@/lib/live/quota";
@@ -28,9 +28,10 @@ import { maxPages } from "@/lib/live/redfin";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  // Vendor balances and the arithmetic behind the bill. Staff only.
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // Vendor balances and the arithmetic behind the bill: reads, no
+  // spend. Staff — which is everyone signed in until a list is set.
+  const staff = await requireStaff();
+  if (!staff.ok) return staff.response;
 
   const usage = await scraperUsage();
   // One furnished search is one paginated pass. The structured endpoint
@@ -96,7 +97,7 @@ export async function GET() {
       detail: plan.detail,
       note:
         "Both true means the monthly meter and the pack balance are live and the secret key can reach them. " +
-        "To test a paid plan before checkout exists, set your own tier in the profiles table.",
+        "To test another plan before checkout exists, set MOCK_CHECKOUT=1 and pick it on Settings → Billing.",
     },
     rentcast: {
       monthlyPlan: rentcast.monthly,

@@ -152,8 +152,13 @@ export function AdminScreen() {
           value={metrics ? fmtNum(metrics.accounts) : sk("w-16")}
         />
         <StatCard
-          label="On a paid plan"
+          label="On a paid tier"
           value={metrics ? fmtNum(metrics.paying) : sk("w-16")}
+          sub={
+            <span className="text-[11px] text-muted-foreground">
+              by plan; nothing is billed yet
+            </span>
+          }
         />
         <StatCard
           label="Plans at list price"

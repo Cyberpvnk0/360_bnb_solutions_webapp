@@ -81,9 +81,18 @@ export function CompsExplorer({
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
   // Anchor the map near the market center; Orlando only as a last-resort
   // fallback for an analysis whose market record is missing.
-  const subject = subjectPoint(
-    marketCenter ?? { lat: 28.54, lon: -81.38 },
-    analysisId
+  //
+  // MEMOISED ON THE COORDINATES, NOT REBUILT PER RENDER. This object is
+  // the map's anchor, and the map component (rightly) treats a new
+  // anchor as a new map. Built inline, it was a fresh object on every
+  // render — and every hover over the table re-renders this component —
+  // so each hover tore the map down and drew it again: the grey flash
+  // between tiles.
+  const centerLat = marketCenter?.lat ?? 28.54;
+  const centerLon = marketCenter?.lon ?? -81.38;
+  const subject = React.useMemo(
+    () => subjectPoint({ lat: centerLat, lon: centerLon }, analysisId),
+    [centerLat, centerLon, analysisId]
   );
 
   return (

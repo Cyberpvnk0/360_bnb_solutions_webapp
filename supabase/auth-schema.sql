@@ -409,14 +409,41 @@ grant execute on function public.consume_usage(uuid, text, text, text, integer)
   to service_role;
 
 /* ------------------------------------------------------------------ */
-/* The plan is not the browser's to set                                */
+/* The profile is not the browser's to write                           */
 /* ------------------------------------------------------------------ */
 
-/* The "own profile" policy lets an account update its own row, which
-   until now included `tier` — so a free account could write
-   tier = 'scale' from devtools and every server-side meter, reading the
-   same row, would have believed it. Column privileges sit beside row
-   policies: the row is still theirs to edit, these two columns are
-   not. The server writes the tier with the secret key (service_role),
-   which these revokes do not touch. */
-revoke update (tier, pulls_used) on public.profiles from authenticated, anon;
+/* The "own profile" policy was `for all` and the grants above hand
+   `authenticated` table-level UPDATE, INSERT and DELETE on profiles — so
+   an account could write tier = 'scale' from devtools and every server
+   meter, reading the same row, would believe it. A column-level revoke
+   does NOT close that: PostgreSQL ignores column revokes while the
+   table-level privilege stands. So the table-level privileges go, and
+   the policy narrows to reading. Nothing in the app writes a profile
+   from the browser: the signup trigger inserts (security definer), and
+   the server writes the tier with the secret key (service_role), which
+   none of this touches. */
+revoke insert, update, delete on public.profiles from authenticated, anon;
+drop policy if exists "own profile" on public.profiles;
+create policy "own profile" on public.profiles
+  for select using (auth.uid() = id);
+
+/* ------------------------------------------------------------------ */
+/* Every account on the whole product                                  */
+/* ------------------------------------------------------------------ */
+
+/* The beta: registering and confirming an email is the whole of getting
+   in, and what you get is the largest plan — every feature, the biggest
+   caps, still metered. New profiles take the column default (the signup
+   trigger does not name a tier); accounts made before this ran are
+   moved up too. config/app DEFAULT_TIER says the same thing on the
+   server side, and the two are meant to change together. */
+alter table public.profiles alter column tier set default 'scale';
+/* Only accounts nobody has ever re-planned: the signup trigger stamps
+   created_at and updated_at in one statement, and setTier is the only
+   thing that moves updated_at. So this reaches the accounts that
+   predate the default and leaves alone any account somebody put on a
+   plan on purpose — which is what lets this file stay safe to re-run. */
+update public.profiles
+   set tier = 'scale'
+ where tier = 'free'
+   and updated_at = created_at;

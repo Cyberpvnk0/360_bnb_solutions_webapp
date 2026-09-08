@@ -62,7 +62,7 @@ import {
 import { MarketSearchBox } from "./market-search";
 import { ListingDetailDialog } from "./listing-detail-dialog";
 import { ListingCard } from "./listing-card";
-import { RentalsMap, type MapFocus } from "./rentals-map";
+import { inBounds, RentalsMap, type MapBounds, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 24;
@@ -215,6 +215,12 @@ export function DealsExplorer({
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  /** The map's viewport once the person has moved it; the grid shows
+   *  only rentals inside. Null until they do, and again after a new
+   *  search frames the map. */
+  const [viewBounds, setViewBounds] = React.useState<MapBounds | null>(null);
+  /** Bumped by "Show all" so the map re-frames the searched area. */
+  const [fitNonce, setFitNonce] = React.useState(0);
   const [mobilePane, setMobilePane] = React.useState<"list" | "map">("list");
   const [detailId, setDetailId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
@@ -479,8 +485,10 @@ export function DealsExplorer({
         const list = lists.find((l) => l.id === listFilter);
         return Boolean(list?.listings.some((x) => x.id === r.listing.id));
       })
+      // What the map is looking at, once the person has moved it.
+      .filter((r) => !viewBounds || inBounds(r.listing, viewBounds))
       .sort(by);
-  }, [rows, filters, sort, listFilter, lists]);
+  }, [rows, filters, sort, listFilter, lists, viewBounds]);
 
   const visible = React.useMemo(
     () => filtered.slice(0, visibleCount),
@@ -573,7 +581,7 @@ export function DealsExplorer({
   const mapFocus = React.useMemo<MapFocus | null>(() => {
     if (zipActive && zipResult?.center) {
       return {
-        key: `zip-${zip}`,
+        key: `zip-${zip}#${fitNonce}`,
         lat: zipResult.center.lat,
         lon: zipResult.center.lon,
         radiusMiles: 6,
@@ -583,20 +591,21 @@ export function DealsExplorer({
     // came from the feed or the preview set.
     if (liveTarget) {
       return {
-        key: `market-${liveTarget.slug}`,
+        key: `market-${liveTarget.slug}#${fitNonce}`,
         lat: liveTarget.lat,
         lon: liveTarget.lon,
         radiusMiles: 30,
       };
     }
     return null;
-  }, [zipActive, zipResult, zip, liveTarget]);
+  }, [zipActive, zipResult, zip, liveTarget, fitNonce]);
 
   const hasActiveFilters =
     !isDefaultDealFilters(filters) || zip !== null || listFilter !== null;
   const resetFilters = () => {
     setFilters(DEFAULT_DEAL_FILTERS);
     setZip(null);
+    setViewBounds(null);
     setZipResult(null);
     setListFilter(null);
     resetPaging();
@@ -604,6 +613,7 @@ export function DealsExplorer({
 
   const applyLocationQuery = (query: string) => {
     setZip(null);
+    setViewBounds(null);
     applyFilters({ query });
     setSelectedId(null);
     resetPaging();
@@ -612,9 +622,25 @@ export function DealsExplorer({
   const applyZipSearch = (nextZip: string) => {
     applyFilters({ query: "" });
     setZip(nextZip);
+    setViewBounds(null);
     setSelectedId(null);
     resetPaging();
   };
+
+  /** The map settled after the person moved it: show what it shows.
+   *  Null lifts the constraint (a search re-framed the map). */
+  const handleViewportChange = React.useCallback((bounds: MapBounds | null) => {
+    setViewBounds(bounds);
+    setVisibleCount(PAGE_SIZE);
+    listRef.current?.scrollTo({ top: 0 });
+  }, []);
+
+  /** "Show all": lift the constraint and frame the searched area again. */
+  const resetView = React.useCallback(() => {
+    setViewBounds(null);
+    setFitNonce((n) => n + 1);
+    setVisibleCount(PAGE_SIZE);
+  }, []);
 
   /** Pill click: select the listing, open its panel, and line the card
    *  up behind it so closing the panel lands you in the right place. */
@@ -866,7 +892,7 @@ export function DealsExplorer({
             </SelectContent>
           </Select>
           <span className="whitespace-nowrap text-xs text-muted-foreground tabular">
-            {countLabel}
+            {viewBounds ? `${countLabel} · in map view` : countLabel}
           </span>
         </div>
       </div>
@@ -908,6 +934,9 @@ export function DealsExplorer({
           <RentalsMap
             listings={mapListings}
             focus={mapFocus}
+            onViewportChange={handleViewportChange}
+            viewFiltered={viewBounds !== null}
+            onResetView={resetView}
             hoveredId={hoveredId}
             selectedId={selectedId}
             onHover={setHoveredId}

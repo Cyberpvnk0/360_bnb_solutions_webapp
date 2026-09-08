@@ -32,7 +32,7 @@
  * bill tracks distinct addresses rather than pageviews.
  */
 
-import { requireAdmin, requirePaid, requireSignedIn } from "@/lib/auth/gate";
+import { requireOperator, requirePaid, requireSignedIn } from "@/lib/auth/gate";
 import { fetchAerial, aerialKeyNamesSeen, hasAerialKey } from "@/lib/live/aerial";
 import {
   fetchStreetView,
@@ -85,9 +85,9 @@ export async function GET(request: Request) {
      */
     if (searchParams.get("check")) {
       // A setup diagnostic that spends a geocode and names the
-      // deployment's keys by status. Staff only.
-      const admin = await requireAdmin();
-      if (!admin.ok) return admin.response;
+      // deployment's keys by status. Operator only.
+      const op = await requireOperator(request);
+      if (!op.ok) return op.response;
       // Times Square, and Google's own headquarters. Both certainly
       // exist, so anything other than OK is our configuration.
       const [street, geocoding] = await Promise.all([

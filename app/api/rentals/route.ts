@@ -24,7 +24,7 @@
  */
 
 import { after, NextResponse } from "next/server";
-import { claimMarket, monthlyCap, requireAdmin } from "@/lib/auth/gate";
+import { claimMarket, monthlyCap, requireOperator } from "@/lib/auth/gate";
 import {
   fetchLiveRentals,
   fetchLiveRentalsByZip,
@@ -261,10 +261,10 @@ export async function GET(request: Request) {
   // Costs no vendor request when this market was already searched today
   // — the probe shares the feed's Data-Cache entry.
   if (shape) {
-    // Staff only: a diagnostic that can spend a vendor request on a
-    // market nobody has opened today, and prints the vendor's schema.
-    const admin = await requireAdmin();
-    if (!admin.ok) return admin.response;
+    // Operator only: a diagnostic that spends a vendor request outside
+    // every ledger, and prints the vendor's schema.
+    const op = await requireOperator(request);
+    if (!op.ok) return op.response;
     try {
       const raw = await fetchRawRentals(market);
       const fields = describeFields(raw);

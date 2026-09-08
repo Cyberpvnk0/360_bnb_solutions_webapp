@@ -58,7 +58,9 @@ export function UpgradeModal() {
       : upgrade.reason === "markets"
         ? tier.marketLimit === 0
           ? "Live listings are a paid feature."
-          : `You've opened ${tier.marketLimit} markets this month.`
+          : tier.id === "scale"
+            ? `You've opened every one of this month's ${tier.marketLimit} markets.`
+            : `You've opened ${tier.marketLimit} markets this month.`
         : upgrade.reason === "deals"
           ? "You've hit your saved deal limit."
           : upgrade.reason === "export"
@@ -73,7 +75,9 @@ export function UpgradeModal() {
       : upgrade.reason === "markets"
         ? tier.marketLimit === 0
           ? "What you're looking at is preview inventory. Paid plans open today's actual listings in every market, with live comps behind every analysis."
-          : `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month. Move up to keep browsing — the ones you've opened stay open.`
+          : tier.id === "scale"
+            ? `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month, and that is the largest plan there is. The markets you've already opened stay open; the count resets on the 1st.`
+            : `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month. Move up to keep browsing — the ones you've opened stay open.`
       : upgrade.reason === "deals"
         ? `The ${tier.name} plan holds ${
             Number.isFinite(tier.savedDealLimit) ? tier.savedDealLimit : "unlimited"
@@ -189,8 +193,8 @@ export function UpgradeModal() {
           ) : null}
 
           <p className="mt-6 text-center text-[11px] text-muted-foreground">
-            Prices in USD. Change or cancel any time. Market browsing and the
-            calculator stay unlimited on every plan, including Free.
+            Prices in USD. Change or cancel any time. The calculator stays
+            unlimited on every plan.
           </p>
         </div>
       </DialogContent>

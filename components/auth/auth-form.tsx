@@ -24,6 +24,16 @@ import { MetricLabel } from "@/components/primitives/metric-label";
  *  someone has already typed a password they liked. */
 const MIN_PASSWORD = 6;
 
+/** A `next` we will follow: a path on this site, nothing that a browser
+ *  would read as another host (`//host`, `/\host`, `https://host`). */
+function safeNext(raw: string | null): string {
+  if (!raw) return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+    return "/dashboard";
+  }
+  return raw;
+}
+
 export function AuthForm({
   mode,
   setupProblem = null,
@@ -35,15 +45,69 @@ export function AuthForm({
 }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/dashboard";
+  // Only a path on this site. `?next=https://elsewhere` after a real
+  // sign-in is the textbook open redirect; the callback route already
+  // refuses it and this form must too.
+  const next = safeNext(params.get("next"));
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  // A confirmation link that did not exchange lands here with a reason;
+  // the person deserves to read it rather than a blank sign-in form.
+  const linkExpired = params.get("error") === "link-expired";
+  const [error, setError] = React.useState<string | null>(() =>
+    linkExpired
+      ? "That confirmation link has expired or was already used. Enter your email and resend it, or sign in if you have already confirmed."
+      : null
+  );
+  /** Good news, kept apart from `error` so one cannot erase the other:
+   *  "your email is confirmed" from the callback, "sent again" from a
+   *  resend. */
+  const [notice, setNotice] = React.useState<string | null>(() =>
+    params.get("notice") === "confirmed"
+      ? "Your email is confirmed. Sign in with your password to continue."
+      : null
+  );
   const [sent, setSent] = React.useState(false);
+  const [resent, setResent] = React.useState<"idle" | "sending" | "done">("idle");
 
   const signingUp = mode === "signup";
+
+  /** Where the confirmation link brings them back to: this site's
+   *  callback, which exchanges the code for a session and forwards. */
+  const redirectTo = () =>
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+
+  /**
+   * Another copy of the confirmation email, for the address typed in.
+   *
+   * Two places need it: the "check your email" card, when the first one
+   * never arrived, and a sign-in refused with "email not confirmed",
+   * which is somebody who registered, lost the email, and now cannot
+   * get in by any path this form offered.
+   */
+  const resend = async () => {
+    if (!email) return;
+    setResent("sending");
+    const supabase = supabaseBrowser();
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: redirectTo() },
+    });
+    if (resendError) {
+      setResent("idle");
+      setError(resendError.message);
+      return;
+    }
+    setResent("done");
+    setNotice(`Confirmation email sent again to ${email}. Check spam if it is not there in a minute.`);
+  };
+
+  /** When a resend is the right next step: the service said the email
+   *  is not confirmed, or the link that was meant to confirm it died. */
+  const canResend = /not confirmed/i.test(error ?? "") || (linkExpired && error !== null);
 
   // A form that cannot possibly succeed should say so rather than
   // accept a password and fail quietly.
@@ -64,6 +128,7 @@ export function AuthForm({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setNotice(null);
 
     if (password.length < MIN_PASSWORD) {
       setError(`Password needs at least ${MIN_PASSWORD} characters.`);
@@ -77,9 +142,7 @@ export function AuthForm({
       ? await supabase.auth.signUp({
           email,
           password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-          },
+          options: { emailRedirectTo: redirectTo() },
         })
       : await supabase.auth.signInWithPassword({ email, password });
 
@@ -95,6 +158,7 @@ export function AuthForm({
     // and assuming it broke.
     if (signingUp && data.session === null) {
       setBusy(false);
+      setResent("idle");
       setSent(true);
       return;
     }
@@ -118,11 +182,27 @@ export function AuthForm({
           and you&apos;re in.
         </p>
         <p className="mt-4 text-xs text-muted-foreground">
-          Nothing after a minute? Check spam, or{" "}
+          Nothing after a minute? Check spam,{" "}
+          {resent === "done" ? (
+            <span className="text-foreground">sent again</span>
+          ) : (
+            <button
+              type="button"
+              onClick={resend}
+              disabled={resent === "sending"}
+              className="text-gold underline-offset-2 hover:underline disabled:opacity-60"
+            >
+              {resent === "sending" ? "sending…" : "send it again"}
+            </button>
+          )}
+          , or{" "}
           <button
             type="button"
             onClick={() => {
               setSent(false);
+              setResent("idle");
+              setNotice(null);
+              setError(null);
               setPassword("");
             }}
             className="text-gold underline-offset-2 hover:underline"
@@ -131,6 +211,15 @@ export function AuthForm({
           </button>
           .
         </p>
+        {error ? (
+          <p
+            role="alert"
+            className="mt-4 rounded-sm border px-3 py-2 text-sm"
+            style={{ color: "var(--red-muted)", borderColor: "var(--red-muted)" }}
+          >
+            {error}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -180,6 +269,15 @@ export function AuthForm({
         </label>
       </div>
 
+      {notice ? (
+        <p
+          role="status"
+          className="mt-4 rounded-sm border border-gold/40 bg-gold/[0.06] px-3 py-2 text-sm text-foreground"
+        >
+          {notice}
+        </p>
+      ) : null}
+
       {error ? (
         <p
           role="alert"
@@ -187,6 +285,20 @@ export function AuthForm({
           style={{ color: "var(--red-muted)", borderColor: "var(--red-muted)" }}
         >
           {error}
+          {canResend && resent !== "done" ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={resend}
+                disabled={resent === "sending" || !email}
+                title={email ? undefined : "Enter your email above first"}
+                className="text-gold underline-offset-2 hover:underline disabled:opacity-60"
+              >
+                {resent === "sending" ? "Sending…" : "Resend the confirmation email"}
+              </button>
+            </>
+          ) : null}
         </p>
       ) : null}
 

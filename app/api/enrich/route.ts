@@ -19,7 +19,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/gate";
+import { requireOperator } from "@/lib/auth/gate";
 import { enrichTargets, MAX_ENRICH_PER_REQUEST, targetsFor } from "@/lib/live/enrich";
 import { reserveEnrichments } from "@/lib/live/quota";
 import { fetchLiveRentals, RentCastError } from "@/lib/live/rentcast";
@@ -68,9 +68,9 @@ function readTargets(body: unknown) {
 export async function POST(request: Request) {
   // Every address here is its own billed page read, and nothing in the
   // product calls this route (see README) — it is the miner's bench,
-  // kept for measurement. Staff only.
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // kept for measurement. Operator only.
+  const op = await requireOperator(request);
+  if (!op.ok) return op.response;
 
   const body: unknown = await request.json().catch(() => null);
   const targets = readTargets(body);
@@ -119,8 +119,8 @@ export async function POST(request: Request) {
  * many credits went out, and the resolve rate.
  */
 export async function GET(request: Request) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  const op = await requireOperator(request);
+  if (!op.ok) return op.response;
 
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("probe");

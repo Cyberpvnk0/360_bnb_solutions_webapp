@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { claimMarket, monthlyCap, requireAdmin } from "@/lib/auth/gate";
+import { claimMarket, monthlyCap, requireOperator } from "@/lib/auth/gate";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import { fetchRedfinRentals, redfinRentalsUrlFor, RedfinError } from "@/lib/live/redfin";
 import { probeCityId } from "@/lib/live/redfin-city";
@@ -59,12 +59,13 @@ export async function GET(request: Request) {
   const furnished = searchParams.get("furnished") === "1";
   const shape = searchParams.get("shape");
 
-  // The two diagnostics spend vendor credits on purpose and print the
-  // vendor's own schema, so they are staff-only. The furnished search
-  // below is a product feature and answers to the account's plan.
+  // The two diagnostics spend vendor credits on purpose, skip every
+  // ledger, and print the vendor's own schema: operator-only, and never
+  // open by default. The furnished search below is a product feature
+  // and answers to the account's plan.
   if (shape || searchParams.get("resolve")) {
-    const admin = await requireAdmin();
-    if (!admin.ok) return admin.response;
+    const op = await requireOperator(request);
+    if (!op.ok) return op.response;
   }
 
   // Resolver check: which city id this market lands on, and the URL it

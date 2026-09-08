@@ -17,7 +17,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/gate";
+import { requireOperator } from "@/lib/auth/gate";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import {
   AirRoiError,
@@ -139,9 +139,9 @@ export async function GET(request: Request) {
   // Every path here is a billed call to the comps vendor, made on
   // demand for whatever point the URL names. The product buys comps
   // through the analyzer page, which meters them against a plan; this
-  // route is the diagnostic beside it, and staff-only for that reason.
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // route is the diagnostic beside it, and operator-only for that reason.
+  const op = await requireOperator(request);
+  if (!op.ok) return op.response;
 
   const { searchParams } = new URL(request.url);
   const lat = Number(searchParams.get("lat"));

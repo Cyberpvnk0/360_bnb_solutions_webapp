@@ -23,11 +23,13 @@ npm test        # calc engine unit tests (vitest)
 npm run build   # production build
 ```
 
-Every account starts on Free and is metered server-side. To exercise the
-paid features locally, set `MOCK_CHECKOUT=1` and pick a plan on
-/settings?tab=billing — the tier is written for real, with no payment
-behind it, so never leave that on in production. Staff emails listed in
-`ADMIN_EMAILS` get /admin and the diagnostic routes.
+Anyone can register; confirming the email is the whole of getting in.
+Every account starts on the Scale plan (`DEFAULT_TIER` in config/app.ts,
+matched by the column default in supabase/auth-schema.sql) and is
+metered server-side against that plan's caps. `MOCK_CHECKOUT=1` lets a
+signed-in account switch plans with no payment behind it, for testing
+the other tiers. `ADMIN_EMAILS` is optional: unset, every account sees
+/admin; set, only the listed emails do.
 
 ### Live rentals (RentCast)
 

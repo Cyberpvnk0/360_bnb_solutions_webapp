@@ -8,14 +8,14 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/gate";
+import { requireStaff } from "@/lib/auth/gate";
 import { readAdminMetrics } from "@/lib/admin/metrics";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  const staff = await requireStaff();
+  if (!staff.ok) return staff.response;
   const metrics = await readAdminMetrics();
   return NextResponse.json(metrics, { headers: { "cache-control": "no-store" } });
 }

@@ -12,7 +12,7 @@
  */
 
 import * as React from "react";
-import { TIERS, type PackId, type Tier, type TierId } from "@/config/app";
+import { DEFAULT_TIER, TIERS, type PackId, type Tier, type TierId } from "@/config/app";
 import { currentPeriod } from "@/lib/db/usage-period";
 import {
   breakevenOccupancy,
@@ -221,7 +221,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           id,
           name: data.profile?.fullName ?? auth?.data.user?.email ?? "You",
           email: data.profile?.email ?? auth?.data.user?.email ?? "",
-          tier: (data.profile?.tier ?? "free") as TierId,
+          tier: (data.profile?.tier ?? DEFAULT_TIER) as TierId,
           pullsUsed: usage.analysesUsed,
           marketsUsed: usage.marketsUsed,
           credits,
@@ -262,7 +262,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     writeLists(window.localStorage, lists);
   }, [lists, listsLoaded]);
 
-  const tier = TIERS[user?.tier ?? "free"];
+  // An unknown value on the row (an operator wrote it) is the smallest
+  // plan here as on the server, and never a crash in render.
+  const tier = TIERS[user?.tier ?? DEFAULT_TIER] ?? TIERS.free;
   const pullsUsed = user?.pullsUsed ?? 0;
   const pullLimit = tier.pullLimit;
   const pullsRemaining = Math.max(0, pullLimit - pullsUsed);

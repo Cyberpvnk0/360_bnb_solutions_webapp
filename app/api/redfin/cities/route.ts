@@ -15,7 +15,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/gate";
+import { requireOperator } from "@/lib/auth/gate";
 import {
   probePage,
   resolveBatch,
@@ -35,9 +35,9 @@ import {
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
-  // Setup tooling that spends vendor credits by the page. Staff only.
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // Setup tooling that spends vendor credits by the page. Operator only.
+  const op = await requireOperator(request);
+  if (!op.ok) return op.response;
 
   const { searchParams } = new URL(request.url);
   const raw = Number(searchParams.get("batch"));

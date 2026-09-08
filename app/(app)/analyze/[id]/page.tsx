@@ -3,8 +3,8 @@ import { getAnalysis, getMarket } from "@/lib/data";
 import { resolveLiveAnalysis } from "@/lib/live/resolve";
 import { analysisUsageKey, withLiveComps } from "@/lib/live/str-comps";
 import { currentUser } from "@/lib/supabase/server";
-import { consumeUsage, tierOf, type UsageCheck } from "@/lib/db/usage";
-import type { TierId } from "@/config/app";
+import { consumeUsage, resolveTier, type UsageCheck } from "@/lib/db/usage";
+import { DEFAULT_TIER, type TierId } from "@/config/app";
 import {
   buildAddressAnalysis,
   type AddressSpec,
@@ -118,7 +118,7 @@ async function claimAnalysis(
   if (!point) return { check: null, tier: null };
   const user = await currentUser();
   if (!user) return { check: null, tier: null };
-  const tier = (await tierOf(user.id)) ?? "free";
+  const tier = await resolveTier(user.id);
   const check = await consumeUsage(user.id, tier, "analysis", analysisUsageKey(analysis, point));
   return { check, tier };
 }
@@ -170,7 +170,7 @@ export default async function AnalyzeResultPage({
         // the building somebody typed rather than of a city centre.
         propertyPoint={point}
         liveComps={liveComps}
-        quota={check ? { ...check, tier: tier ?? "free" } : null}
+        quota={check ? { ...check, tier: tier ?? DEFAULT_TIER } : null}
         searchedAddress={{
           market,
           milesAway,
@@ -200,7 +200,7 @@ export default async function AnalyzeResultPage({
       analysis={analysis}
       marketCenter={center}
       liveComps={liveComps}
-      quota={check ? { ...check, tier: tier ?? "free" } : null}
+      quota={check ? { ...check, tier: tier ?? DEFAULT_TIER } : null}
     />
   );
 }

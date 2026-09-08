@@ -22,8 +22,24 @@ export async function GET(request: Request) {
     // redirect here would let a crafted confirmation link bounce
     // someone to another host with their session freshly minted.
     if (!error) {
-      const safe = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+      const safe =
+        next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
+          ? next
+          : "/dashboard";
       return NextResponse.redirect(`${origin}${safe}`);
+    }
+    /**
+     * The link was opened in a different browser than the one that
+     * registered — the phone, for the email a laptop signed up with —
+     * so the code verifier that browser holds is not here. The address
+     * IS confirmed by this point (the auth server did that before
+     * redirecting); only the sign-in could not complete on this device.
+     * Telling this person the link "expired" sends them to re-register
+     * and resend into a loop that never mails anything. They need one
+     * sentence: you are confirmed, sign in.
+     */
+    if (error.code === "pkce_code_verifier_not_found") {
+      return NextResponse.redirect(`${origin}/login?notice=confirmed`);
     }
   }
 

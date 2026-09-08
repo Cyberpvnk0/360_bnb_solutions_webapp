@@ -114,20 +114,37 @@ export function CompsStreetMap({
    *  has actually rendered. Named rather than counted: a blank map
    *  should say whose tiles didn't arrive. */
   const [tileError, setTileError] = React.useState<string | null>(null);
+  /** Increments when a map instance is created, so the pin effect runs
+   *  against the new instance rather than a removed one. */
+  const [mapEpoch, setMapEpoch] = React.useState(0);
 
   const placed = React.useMemo(
-    () => placeComps(subject, comps),
-    [subject, comps]
+    () => placeComps({ lat: subject.lat, lon: subject.lon }, comps),
+    [subject.lat, subject.lon, comps]
   );
   const active = activeId ? placed.find((c) => c.id === activeId) : null;
 
-  // Keep the latest handler reachable from marker listeners without
-  // rebuilding the map.
+  // Keep the latest handler and label reachable from marker listeners
+  // without rebuilding the map.
   const onHoverRef = React.useRef(onHover);
   React.useEffect(() => {
     onHoverRef.current = onHover;
   }, [onHover]);
+  const subjectLabelRef = React.useRef(subjectLabel);
+  React.useEffect(() => {
+    subjectLabelRef.current = subjectLabel;
+  }, [subjectLabel]);
 
+  /**
+   * THE MAP IS BUILT ONCE PER ANCHOR, and the anchor is two numbers.
+   *
+   * An earlier version keyed this effect on the placed comps and the
+   * subject object, so anything that produced a new array or a new
+   * object — a parent re-render on hover was enough — destroyed the map
+   * and created it again: a grey flash, then tiles, on every mouse
+   * move. Creating a MapLibre instance is the expensive, visible thing;
+   * pins are cheap and get their own effect below.
+   */
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -137,7 +154,9 @@ export function CompsStreetMap({
       center: [subject.lon, subject.lat],
       zoom: 12,
       attributionControl: { compact: true },
-      cooperativeGestures: true,
+      // Scroll zooms when the pointer is over the map, as on every
+      // property site. The Alt-to-zoom gesture read as a broken map.
+      cooperativeGestures: false,
     });
     mapRef.current = map;
     map.addControl(
@@ -156,10 +175,11 @@ export function CompsStreetMap({
     map.on("sourcedata", (event) => {
       if (event.tile && event.isSourceLoaded) setTileError(null);
     });
+    map.on("click", () => setActiveId(null));
 
     // Subject pin — brand red diamond in a gold ring.
     const subjectEl = document.createElement("div");
-    subjectEl.setAttribute("aria-label", subjectLabel);
+    subjectEl.setAttribute("aria-label", subjectLabelRef.current);
     subjectEl.className =
       "flex size-7 items-center justify-center rounded-full border border-gold bg-surface/90";
     const diamond = document.createElement("span");
@@ -169,8 +189,25 @@ export function CompsStreetMap({
       .setLngLat([subject.lon, subject.lat])
       .addTo(map);
 
-    // Comp pins — nightly-rate price pills. Tagged with data-comp-id so the
-    // highlight effect can find them without sharing mutable refs.
+    // Bump so the marker effect below runs against THIS map instance.
+    setMapEpoch((n) => n + 1);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [subject.lat, subject.lon]);
+
+  /**
+   * Comp pins — nightly-rate price pills — placed on whatever map is
+   * current, and replaced (not the map) when the comp set changes.
+   * Tagged with data-comp-id so the highlight effect can find them
+   * without sharing mutable refs.
+   */
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const markers: maplibregl.Marker[] = [];
     for (const comp of placed) {
       const el = document.createElement("button");
       el.type = "button";
@@ -189,9 +226,11 @@ export function CompsStreetMap({
         ev.stopPropagation();
         setActiveId((prev) => (prev === comp.id ? null : comp.id));
       });
-      new maplibregl.Marker({ element: el })
-        .setLngLat([comp.lon, comp.lat])
-        .addTo(map);
+      markers.push(
+        new maplibregl.Marker({ element: el })
+          .setLngLat([comp.lon, comp.lat])
+          .addTo(map)
+      );
     }
 
     // Frame every pin with breathing room.
@@ -202,13 +241,10 @@ export function CompsStreetMap({
     for (const c of placed) bounds.extend([c.lon, c.lat]);
     map.fitBounds(bounds, { padding: 56, maxZoom: 13.5, duration: 0 });
 
-    map.on("click", () => setActiveId(null));
-
     return () => {
-      map.remove();
-      mapRef.current = null;
+      for (const m of markers) m.remove();
     };
-  }, [placed, subject.lat, subject.lon, subjectLabel]);
+  }, [placed, subject.lat, subject.lon, mapEpoch]);
 
   // Table hover → pin highlight (map hover feeds back through onHover).
   React.useEffect(() => {

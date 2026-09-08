@@ -38,7 +38,7 @@ export function PricingSection() {
 
       <p className="mt-8 text-center text-xs text-muted-foreground">
         Annual is two months free. The calculator is never metered, on any
-        plan, including Free.
+        plan.
       </p>
 
       {/* The packs, under the plans and never in their place: every pack

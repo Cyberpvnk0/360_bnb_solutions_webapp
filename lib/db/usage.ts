@@ -26,7 +26,7 @@
  * platform's own daily breaker will still bound. Never silently.
  */
 
-import { CREDIT_PACKS, TIERS, type PackId, type TierId } from "@/config/app";
+import { CREDIT_PACKS, DEFAULT_TIER, TIERS, type PackId, type TierId } from "@/config/app";
 
 /**
  * Whether the demo checkout may fulfil.
@@ -64,7 +64,9 @@ export interface UsageCheck {
 
 export { currentPeriod } from "./usage-period";
 
-/** The plan's cap for one meter. */
+/** The plan's cap for one meter. A tier this code does not know — a
+ *  value nothing here wrote — gets the smallest plan, never the default:
+ *  a missing profile is a new account, a corrupt one is not. */
 export function capFor(tier: TierId, kind: Kind): number {
   const t = TIERS[tier] ?? TIERS.free;
   return kind === "analysis" ? t.pullLimit : t.marketLimit;
@@ -145,13 +147,26 @@ export async function consumeUsage(
   }
 }
 
+/** What the profiles table said about an account's plan. */
+export type TierRead =
+  /** A plan this code knows. */
+  | { kind: "tier"; tier: TierId }
+  /** No profile row at all: a brand-new account, or one whose trigger
+   *  never ran. */
+  | { kind: "none" }
+  /** A row whose tier is a string nothing here wrote — 'banned',
+   *  'suspended', a typo. Somebody meant something by it. */
+  | { kind: "unknown"; value: string }
+  /** The store could not be read: no config, an error, a timeout. */
+  | { kind: "unreachable"; detail: string };
+
 /**
  * The account's tier, read with the secret key so a caller cannot
- * present a tier it does not hold. Null when there is no profile.
+ * present a tier it does not hold.
  */
-export async function tierOf(userId: string): Promise<TierId | null> {
+export async function readTier(userId: string): Promise<TierRead> {
   const cfg = config();
-  if (!cfg) return null;
+  if (!cfg) return { kind: "unreachable", detail: "no store configured" };
   try {
     const res = await fetch(
       `${cfg.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=tier`,
@@ -161,13 +176,52 @@ export async function tierOf(userId: string): Promise<TierId | null> {
         cache: "no-store",
       }
     );
-    if (!res.ok) return null;
-    const rows = (await res.json()) as { tier?: string }[];
-    const tier = rows?.[0]?.tier;
-    return tier && tier in TIERS ? (tier as TierId) : null;
+    if (!res.ok) return { kind: "unreachable", detail: `HTTP ${res.status}` };
+    const rows = (await res.json()) as { tier?: unknown }[];
+    if (!rows?.length) return { kind: "none" };
+    const tier = rows[0]?.tier;
+    if (typeof tier === "string" && tier in TIERS) return { kind: "tier", tier: tier as TierId };
+    return { kind: "unknown", value: String(tier) };
   } catch {
-    return null;
+    return { kind: "unreachable", detail: "unreachable or timed out" };
   }
+}
+
+/**
+ * The plan every server-side check runs against — ONE policy, so the
+ * meters, the paid gates and the analyzer cannot disagree.
+ *
+ *  - A known tier is that tier.
+ *  - No row is a new account, and a new account is on DEFAULT_TIER.
+ *  - An UNKNOWN value is the smallest plan, never the default. Nothing
+ *    in this codebase writes 'banned' or 'suspended'; an operator did,
+ *    and the one thing they cannot have meant is "the largest plan".
+ *    The old version collapsed this to null and every caller read null
+ *    as "new account".
+ *  - Unreachable falls to DEFAULT_TIER, for the same reason the meter
+ *    fails open: an account refused what it is owed because a database
+ *    blinked is the worse outcome, and the vendors' daily breakers still
+ *    bound the day.
+ */
+export async function resolveTier(userId: string): Promise<TierId> {
+  const read = await readTier(userId);
+  switch (read.kind) {
+    case "tier":
+      return read.tier;
+    case "unknown":
+      return "free";
+    case "none":
+    case "unreachable":
+      return DEFAULT_TIER;
+  }
+}
+
+/** The account's tier when the row carries one this code knows, else
+ *  null. Kept for callers that report rather than decide; anything
+ *  that spends money goes through resolveTier. */
+export async function tierOf(userId: string): Promise<TierId | null> {
+  const read = await readTier(userId);
+  return read.kind === "tier" ? read.tier : null;
 }
 
 /* ------------------------------------------------------------------ */

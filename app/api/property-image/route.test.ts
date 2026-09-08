@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The handlers gate on the signed-in account. These tests are about
 // what the route does once it is allowed to, so the gate says yes.
 vi.mock("@/lib/auth/gate", () => ({
-  requireAdmin: vi.fn(async () => ({ ok: true, user: { id: "u-test", email: "staff@example.com" } })),
+  requireStaff: vi.fn(async () => ({ ok: true, user: { id: "u-test", email: "staff@example.com" } })),
+  requireOperator: vi.fn(async () => ({ ok: true, user: { id: "u-test", email: "staff@example.com" } })),
   requirePaid: vi.fn(async () => ({ ok: true, user: { id: "u-test", email: "staff@example.com" }, tier: "pro" })),
   requireSignedIn: vi.fn(async () => ({ ok: true, user: { id: "u-test", email: "staff@example.com" } })),
 }));

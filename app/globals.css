@@ -325,3 +325,43 @@
     color: inherit;
   }
 }
+
+/* Deal Finder price pins — Zillow's shape: a red pill with the price and
+   a short tail pointing at the address. The tail is a border triangle
+   on ::after so it takes the pill's colour, including the darker hot
+   state (hovered card, selected listing). */
+.rental-pin {
+  --pin: #d7263d;
+  --pin-ink: #fff;
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  border: 1.5px solid #fff;
+  border-radius: 9999px;
+  background: var(--pin);
+  color: var(--pin-ink);
+  padding: 2px 8px 3px;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+.rental-pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--pin);
+}
+.rental-pin:hover,
+.rental-pin.is-hot {
+  --pin: #8f1020;
+  transform: scale(1.08);
+}

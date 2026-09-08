@@ -163,6 +163,19 @@ export const TIERS: Record<TierId, Tier> = {
 
 export const TIER_ORDER: TierId[] = ["free", "starter", "pro", "scale"];
 
+/**
+ * The plan an account is on until something changes it.
+ *
+ * SCALE, FOR THE BETA. Every account that registers and confirms its
+ * email gets the whole product — every feature, the largest caps — and
+ * the caps still meter: Scale is a real plan with real limits, not an
+ * off switch. This is also what the database gives a new profile
+ * (`profiles.tier default 'scale'`, in supabase/auth-schema.sql) and
+ * what the server assumes when a profile cannot be read. Change both
+ * together when the beta ends and Free becomes the door again.
+ */
+export const DEFAULT_TIER: TierId = "scale";
+
 /* ------------------------------------------------------------------ */
 /* Top-up packs                                                        */
 /* ------------------------------------------------------------------ */
