@@ -78,12 +78,19 @@ export function UpgradeModal() {
           } deals. Move up to keep building your pipeline.`
         : "The calculator stays unlimited on every plan. Paid plans add property analyses, more markets, and pipeline capacity.";
 
-  const handleSelect = (tierId: TierId) => {
+  const [switching, setSwitching] = React.useState<TierId | null>(null);
+
+  const handleSelect = async (tierId: TierId) => {
     const completesPull = upgrade.reason === "pulls" && Boolean(analysis);
-    // Tier switch and the promised pull spend happen in one atomic update —
-    // a deferred consumePull() would close over the pre-upgrade user and
-    // silently skip the spend.
-    upgradeTo(tierId, { consumePull: completesPull });
+    setSwitching(tierId);
+    // The tier is written server-side first; the toast reports what
+    // actually happened rather than what was hoped for.
+    const result = await upgradeTo(tierId, { consumePull: completesPull });
+    setSwitching(null);
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
+    }
     toast.success(`You're on ${TIERS[tierId].name} now`, {
       description:
         billing === "annual" ? "Billed annually. Two months free." : "Billed monthly.",
@@ -157,7 +164,8 @@ export function UpgradeModal() {
             paidOnly
             compact
             currentTierId={user?.tier}
-            onSelect={handleSelect}
+            onSelect={(id) => void handleSelect(id)}
+            ctaLabel={(t) => (switching === t.id ? "Switching…" : `Choose ${t.name}`)}
             className="mt-6"
           />
 

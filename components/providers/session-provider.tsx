@@ -118,10 +118,16 @@ interface SessionContextValue {
   isSaved: (listingId: string) => boolean;
 
   /** Demo-only: preview the product as another tier. */
+  /** Switch plan. Signed in, this writes the tier through the server
+   *  (the demo checkout, until a processor's webhook is the writer);
+   *  signed out, it previews the seeded world as another tier. */
   setTier: (tier: TierId) => void;
   /** Mock checkout: switch tier (clamping usage into the new limit) and
    *  optionally spend one pull in the same atomic update. */
-  upgradeTo: (tier: TierId, opts?: { consumePull?: boolean }) => void;
+  upgradeTo: (
+    tier: TierId,
+    opts?: { consumePull?: boolean }
+  ) => Promise<{ ok: true } | { error: string }>;
 
   upgrade: UpgradeState;
   openUpgrade: (opts?: { reason?: UpgradeReason; analysis?: Analysis }) => void;
@@ -624,33 +630,90 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [lists]
   );
 
-  const setTier = React.useCallback((tierId: TierId) => {
-    setUser((prev) => {
-      if (!prev) return prev;
-      const limit = TIERS[tierId].pullLimit;
-      return {
-        ...prev,
-        tier: tierId,
-        pullsUsed: Math.min(prev.pullsUsed, limit),
-        marketsUsed: Math.min(prev.marketsUsed, TIERS[tierId].marketLimit),
-      };
-    });
-  }, []);
 
+  /**
+   * Switch plan — through the server, never around it.
+   *
+   * The old version flipped the tier in browser memory and let the UI
+   * say "you're on Pro now" while the database still said free and
+   * every server-side meter refused. The header follows the database
+   * now: persist first, then mirror. The route answers 501 until a
+   * deployment says it is a demo (MOCK_CHECKOUT=1) or a processor's
+   * webhook is the thing writing tiers, and the caller gets a message
+   * it can show rather than a toast that lies.
+   */
   const upgradeTo = React.useCallback(
-    (tierId: TierId, opts?: { consumePull?: boolean }) => {
+    async (
+      tierId: TierId,
+      opts?: { consumePull?: boolean }
+    ): Promise<{ ok: true } | { error: string }> => {
+      if (!user) return { error: "Sign in to choose a plan." };
+      try {
+        const res = await fetch("/api/plan/select", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tier: tierId }),
+        });
+        const body = (await res.json().catch(() => null)) as
+          | { ok: true; tier: TierId }
+          | { ok: false; reason?: string }
+          | null;
+        if (!body?.ok) {
+          const reason = body && "reason" in body ? body.reason : undefined;
+          return {
+            error:
+              reason === "checkout-not-connected"
+                ? "Checkout isn't connected yet — plans go live with billing."
+                : "That plan change didn't go through.",
+          };
+        }
+      } catch {
+        return { error: "That plan change didn't go through." };
+      }
       setUser((prev) => {
         if (!prev) return prev;
         const limit = TIERS[tierId].pullLimit;
-        // Atomic: switch tier, clamp usage into the new limit, and spend the
-        // promised pull in the same update so no stale closure can skip it.
+        // Clamp usage into the new limit, and spend the promised pull in
+        // the same update so no stale closure can skip it. The server
+        // settles the true count on the next page; this keeps the header
+        // honest in the meantime.
         const clamped = Math.min(prev.pullsUsed, limit);
         const pullsUsed =
           opts?.consumePull && limit - clamped > 0 ? clamped + 1 : clamped;
-        return { ...prev, tier: tierId, pullsUsed };
+        return {
+          ...prev,
+          tier: tierId,
+          pullsUsed,
+          marketsUsed: Math.min(prev.marketsUsed, TIERS[tierId].marketLimit),
+        };
+      });
+      return { ok: true };
+    },
+    [user]
+  );
+
+  /**
+   * The user-menu switcher. Signed in it is a real plan change and goes
+   * through upgradeTo; signed out it previews the seeded demo world as
+   * another tier, which is all it ever was.
+   */
+  const setTier = React.useCallback(
+    (tierId: TierId) => {
+      if (userId) {
+        void upgradeTo(tierId);
+        return;
+      }
+      setUser((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tier: tierId,
+          pullsUsed: Math.min(prev.pullsUsed, TIERS[tierId].pullLimit),
+          marketsUsed: Math.min(prev.marketsUsed, TIERS[tierId].marketLimit),
+        };
       });
     },
-    []
+    [userId, upgradeTo]
   );
 
   const openUpgrade = React.useCallback(

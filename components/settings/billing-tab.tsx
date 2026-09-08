@@ -95,8 +95,12 @@ export function BillingTab() {
   const usedFraction = pullLimit > 0 ? Math.min(1, pullsUsed / pullLimit) : 0;
   const exhausted = pullLimit > 0 && pullsUsed >= pullLimit;
 
-  const handleSelect = (tierId: TierId) => {
-    upgradeTo(tierId);
+  const handleSelect = async (tierId: TierId) => {
+    const result = await upgradeTo(tierId);
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
+    }
     toast.success(`Plan changed to ${TIERS[tierId].name}`);
   };
 

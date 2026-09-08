@@ -4,11 +4,10 @@
  *   POST /api/credits/purchase   { pack: "p25" }
  *
  * THIS IS THE FULFILMENT STEP, NOT THE PAYMENT. Nothing in this product
- * takes a card yet — the subscription "checkout" is a client-side mock
- * that switches a tier in memory — and a route that hands out pack
- * credits for free would be the first thing here that gives away real
- * money. So it fulfils only when CREDITS_MOCK_CHECKOUT=1 says this is a
- * demo, and answers 501 otherwise.
+ * takes a card yet, and a route that hands out pack credits for free
+ * would be giving away real money. So it fulfils only when
+ * MOCK_CHECKOUT=1 says this deployment is a demo, and answers 501
+ * otherwise — the same gate the plan route stands behind.
  *
  * When a processor lands, its webhook calls the same grantPack with the
  * processor's payment id as the reference, and this route either goes
@@ -24,7 +23,7 @@
 import { NextResponse } from "next/server";
 import { CREDIT_PACKS, TIERS, type PackId } from "@/config/app";
 import { currentUser } from "@/lib/supabase/server";
-import { grantPack, tierOf } from "@/lib/db/usage";
+import { grantPack, mockCheckoutEnabled, tierOf } from "@/lib/db/usage";
 
 export async function POST(request: Request) {
   const user = await currentUser();
@@ -44,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, reason: "plan-required", tier }, { status: 403 });
   }
 
-  if (process.env.CREDITS_MOCK_CHECKOUT !== "1") {
+  if (!mockCheckoutEnabled()) {
     return NextResponse.json(
       { ok: false, reason: "checkout-not-connected" },
       { status: 501 }

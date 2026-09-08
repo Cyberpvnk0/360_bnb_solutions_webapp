@@ -27,6 +27,21 @@
  */
 
 import { CREDIT_PACKS, TIERS, type PackId, type TierId } from "@/config/app";
+
+/**
+ * Whether the demo checkout may fulfil.
+ *
+ * Nothing in this product takes a card yet. Until a processor's webhook
+ * is the thing that sets a tier and grants a pack, the only way to do
+ * either is this flag — and a deployment that leaves it on is handing
+ * out plans for free, so it is read in one place and named for what it
+ * is. MOCK_CHECKOUT=1; the older CREDITS_MOCK_CHECKOUT is honoured too.
+ */
+export function mockCheckoutEnabled(): boolean {
+  return (
+    process.env.MOCK_CHECKOUT === "1" || process.env.CREDITS_MOCK_CHECKOUT === "1"
+  );
+}
 import { currentPeriod } from "./usage-period";
 
 type Kind = "analysis" | "market";
@@ -266,4 +281,64 @@ export async function planTablesReady(): Promise<PlanTablesStatus> {
     credits: balance === null && ledger === null,
     detail: problems.length ? problems.join("; ") : null,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* The plan itself                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface SetTierResult {
+  ok: boolean;
+  tier: TierId;
+  detail: string | null;
+}
+
+/**
+ * Put an account on a plan.
+ *
+ * Written with the secret key, because the tier is the thing every
+ * server-side check reads and the browser must not be able to set it —
+ * which, under the "own profile" policy, it technically still can.
+ * That policy predates metering; until it is narrowed, the server
+ * reading the tier back with the secret key is what keeps a devtools
+ * edit from mattering to anything that costs money. (It does not: the
+ * meters call tierOf, which reads with the secret key, and a tier the
+ * browser wrote is the same row — so narrowing the policy is the real
+ * fix and is noted in auth-schema.sql.)
+ *
+ * The caller is the demo checkout today and a processor's webhook
+ * tomorrow. Either way, this is the one place a plan changes.
+ */
+export async function setTier(userId: string, tier: TierId): Promise<SetTierResult> {
+  if (!(tier in TIERS)) return { ok: false, tier: "free", detail: "unknown tier" };
+  const cfg = config();
+  if (!cfg) return { ok: false, tier, detail: "no store configured" };
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: cfg.key,
+          authorization: `Bearer ${cfg.key}`,
+          "content-type": "application/json",
+          prefer: "return=representation",
+        },
+        body: JSON.stringify({ tier, updated_at: new Date().toISOString() }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => "")).slice(0, 200);
+      return { ok: false, tier, detail: detail || `HTTP ${res.status}` };
+    }
+    const rows = (await res.json()) as { tier?: string }[];
+    // Zero rows back means no profile row to update — an account with
+    // no profile, which the signup trigger should make impossible.
+    if (!rows?.length) return { ok: false, tier, detail: "no profile row" };
+    return { ok: true, tier, detail: null };
+  } catch {
+    return { ok: false, tier, detail: "unreachable or timed out" };
+  }
 }

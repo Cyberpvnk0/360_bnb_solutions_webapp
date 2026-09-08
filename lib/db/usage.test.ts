@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { capFor, consumeUsage, currentPeriod, grantPack } from "./usage";
+import { capFor, consumeUsage, currentPeriod, grantPack, mockCheckoutEnabled, setTier } from "./usage";
 import { TIERS } from "@/config/app";
 
 describe("the plan month", () => {
@@ -153,5 +153,64 @@ describe("granting a pack", () => {
     const r = await grantPack("u1", "p999" as never, "pay_1");
     expect(r.ok).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("putting an account on a plan", () => {
+  const ENV = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SECRET_KEY: "sb_secret_t" };
+  beforeEach(() => {
+    for (const [k, v] of Object.entries(ENV)) vi.stubEnv(k, v);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("writes the tier to the profile with the secret key", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ tier: "pro" }]), { status: 200 })
+    );
+    const r = await setTier("u1", "pro");
+    expect(r).toEqual({ ok: true, tier: "pro", detail: null });
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toContain("/rest/v1/profiles?id=eq.u1");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body)).tier).toBe("pro");
+    expect((init?.headers as Record<string, string>).apikey).toBe("sb_secret_t");
+  });
+
+  it("refuses a tier it does not know, without a round trip", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const r = await setTier("u1", "platinum" as never);
+    expect(r.ok).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports an account with no profile row rather than pretending", async () => {
+    // The signup trigger should make this impossible; if it happens
+    // anyway, a silent success would leave the header saying Pro and
+    // every meter saying free.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("[]", { status: 200 }));
+    const r = await setTier("u1", "pro");
+    expect(r.ok).toBe(false);
+    expect(r.detail).toMatch(/no profile/);
+  });
+});
+
+describe("the demo checkout gate", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("is off unless a flag says this deployment is a demo", () => {
+    vi.stubEnv("MOCK_CHECKOUT", "");
+    vi.stubEnv("CREDITS_MOCK_CHECKOUT", "");
+    expect(mockCheckoutEnabled()).toBe(false);
+    vi.stubEnv("MOCK_CHECKOUT", "1");
+    expect(mockCheckoutEnabled()).toBe(true);
+  });
+
+  it("still honours the older flag name", () => {
+    vi.stubEnv("MOCK_CHECKOUT", "");
+    vi.stubEnv("CREDITS_MOCK_CHECKOUT", "1");
+    expect(mockCheckoutEnabled()).toBe(true);
   });
 });
