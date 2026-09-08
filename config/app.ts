@@ -61,10 +61,15 @@ export const TIERS: Record<TierId, Tier> = {
   /**
    * THE CAPS ARE UNIT ECONOMICS, NOT ROUND NUMBERS. Each paid tier
    * clears its own cost in the worst case — every analysis a fresh
-   * vendor purchase at $0.18, every market a lone re-buy — with a
-   * gross margin above fifty percent: Starter 61%, Pro 59%, Scale 51%.
-   * The free tier is bounded so that an account paying nothing cannot
+   * vendor purchase at $0.18 plus its contacts and images, every market
+   * bought once for this account alone — with a gross margin above
+   * forty percent: Starter 61%, Pro 52%, Scale 45%. Realistic margins,
+   * with half the cap used and the cache shared, run above eighty. The
+   * free tier is bounded so that an account paying nothing cannot
    * become a cost centre, which unlimited browsing quietly allowed.
+   *
+   * The ladder is a volume discount by design: about eighty cents an
+   * analysis on Starter, sixty-three on Pro, fifty-five on Scale.
    */
   free: {
     id: "free",
@@ -88,18 +93,18 @@ export const TIERS: Record<TierId, Tier> = {
   starter: {
     id: "starter",
     name: "Starter",
-    priceMonthly: 9,
-    priceAnnual: 90,
-    pullLimit: 10,
-    marketLimit: 10,
+    priceMonthly: 19.97,
+    priceAnnual: 199.7,
+    pullLimit: 25,
+    marketLimit: 15,
     savedDealLimit: 25,
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
     blurb: "For your first market and your first few landlord calls.",
     features: [
-      "10 property analyses / month",
-      "10 markets / month",
+      "25 property analyses / month",
+      "15 markets / month",
       "Unlimited calculator",
       "25 saved deals",
     ],
@@ -109,7 +114,7 @@ export const TIERS: Record<TierId, Tier> = {
     name: "Pro",
     priceMonthly: 47,
     priceAnnual: 470,
-    pullLimit: 60,
+    pullLimit: 75,
     marketLimit: 40,
     savedDealLimit: Infinity,
     pdfExport: true,
@@ -118,7 +123,7 @@ export const TIERS: Record<TierId, Tier> = {
     recommended: true,
     blurb: "For operators underwriting deals every week.",
     features: [
-      "60 property analyses / month",
+      "75 property analyses / month",
       "40 markets / month",
       "Unlimited calculator",
       "Unlimited saved deals",
@@ -130,7 +135,7 @@ export const TIERS: Record<TierId, Tier> = {
     name: "Scale",
     priceMonthly: 97,
     priceAnnual: 970,
-    pullLimit: 150,
+    pullLimit: 175,
     marketLimit: 100,
     savedDealLimit: Infinity,
     pdfExport: true,
@@ -138,7 +143,7 @@ export const TIERS: Record<TierId, Tier> = {
     prioritySupport: true,
     blurb: "For teams running a portfolio across markets.",
     features: [
-      "150 property analyses / month",
+      "175 property analyses / month",
       "100 markets / month",
       "Unlimited calculator",
       "Unlimited saved deals",
@@ -152,7 +157,7 @@ export const TIERS: Record<TierId, Tier> = {
 export const TIER_ORDER: TierId[] = ["free", "starter", "pro", "scale"];
 
 /** Effective monthly price when billed annually (two months free).
- *  Rounded to the cent: $90/yr → $7.50, $470 → $39.17, $970 → $80.83. */
+ *  Rounded to the cent: $199.70/yr → $16.64, $470 → $39.17, $970 → $80.83. */
 export function annualEffectiveMonthly(tier: Tier): number {
   return Math.round((tier.priceAnnual / 12) * 100) / 100;
 }

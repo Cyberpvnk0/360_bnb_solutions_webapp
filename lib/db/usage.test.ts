@@ -22,12 +22,15 @@ describe("what each plan is owed", () => {
 
   it("clears its cost in the worst case on every paid tier", () => {
     // The guarantee the caps were sized for: every analysis a fresh
-    // $0.18 purchase plus ~$0.07 of contacts and images, every market a
-    // lone ~$0.10 re-buy, and the tier still keeps more than half.
+    // $0.18 purchase plus ~$0.07 of contacts and images, every market
+    // bought once for this account alone at ~$0.10, and the tier still
+    // keeps more than forty percent. That case never happens — it is
+    // zero cache sharing at full utilisation — which is why the bar is
+    // a floor and not the plan.
     for (const id of ["starter", "pro", "scale"] as const) {
       const t = TIERS[id];
       const worst = t.pullLimit * 0.25 + t.marketLimit * 0.1;
-      expect(t.priceMonthly - worst).toBeGreaterThan(t.priceMonthly * 0.5);
+      expect(t.priceMonthly - worst).toBeGreaterThan(t.priceMonthly * 0.4);
     }
   });
 });

@@ -69,7 +69,7 @@ export async function GET() {
       left: airroi.left,
       note:
         "Per-instance and per-day, so the fleet total is this times however many instances are warm — a brake, not a lock. " +
-        "Measured price is $0.18 a call, so this cap is about $9 of exposure per instance per day. AIRROI_DAILY_CALLS overrides it. " +
+        "Measured price is $0.18 a call, so the default of 500 is about $90 of exposure per instance per day. This is the circuit breaker behind the per-account plan meter, not the limit; AIRROI_DAILY_CALLS overrides it, and it should rise with the subscriber base. " +
         "A cached analysis costs nothing and never reaches this counter, which is why callsToday staying flat while analyses are viewed is the cache working, not the meter breaking.",
     },
     /**
