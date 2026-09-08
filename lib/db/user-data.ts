@@ -178,6 +178,20 @@ export async function loadUsage(
   return { analysesUsed: len(row.analysis_keys), marketsUsed: len(row.market_slugs) };
 }
 
+/** Pack analyses on the account, read under "own balance". The browser
+ *  may see it; it is written only by grant_credits and consume_usage. */
+export async function loadCredits(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<number> {
+  const { data } = await supabase
+    .from("credit_balance")
+    .select("balance")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return num((data as Row | null)?.balance);
+}
+
 /* ------------------------------------------------------------------ */
 /* Writes                                                              */
 /* ------------------------------------------------------------------ */

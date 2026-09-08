@@ -17,6 +17,7 @@ import {
   type BillingCycle,
 } from "@/components/pricing/pricing-cards";
 import { useSession } from "@/components/providers/session-provider";
+import { PackPicker } from "@/components/upgrade/pack-picker";
 import {
   DataTable,
   type DataTableColumn,
@@ -58,7 +59,7 @@ const INVOICE_COLUMNS: DataTableColumn<Invoice>[] = [
 ];
 
 export function BillingTab() {
-  const { ready, user, tier, pullsUsed, pullLimit, upgradeTo, openUpgrade } =
+  const { ready, user, tier, pullsUsed, pullLimit, credits, upgradeTo, openUpgrade } =
     useSession();
   const [billing, setBilling] = React.useState<BillingCycle>("annual");
   const [invoices, setInvoices] = React.useState<Invoice[] | null>(null);
@@ -144,9 +145,16 @@ export function BillingTab() {
                 />
               </div>
               <p className="mt-3 text-xs text-muted-foreground tabular">
-                {fmtNum(pullsUsed)} of {fmtNum(pullLimit)} used
+                {fmtNum(Math.min(pullsUsed, pullLimit))} of {fmtNum(pullLimit)} used
                 {user.periodEnd ? <> · resets {fmtDate(user.periodEnd)}</> : null}
+                {credits > 0 ? (
+                  <>
+                    {" "}· <span className="text-gold">{fmtNum(credits)} pack</span>{" "}
+                    {credits === 1 ? "analysis" : "analyses"} on your account, never expire
+                  </>
+                ) : null}
               </p>
+              <PackPicker className="mt-5 border-t border-border pt-5" />
             </>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-4">

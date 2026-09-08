@@ -17,6 +17,7 @@ export const SESSION_USER: SessionUser = {
   tier: "pro",
   pullsUsed: 37,
   marketsUsed: 6,
+  credits: 12,
   periodEnd: "2026-09-05",
   joinedAt: "2026-02-14",
   watchedMarketSlugs: [

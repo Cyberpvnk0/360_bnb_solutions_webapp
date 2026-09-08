@@ -17,6 +17,7 @@ import { breakevenOccupancy } from "@/lib/calc/arbitrage";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtPct } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
+import { PackPicker } from "./pack-picker";
 import { BreakevenGauge } from "@/components/primitives/breakeven-gauge";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import {
@@ -155,6 +156,21 @@ export function UpgradeModal() {
             onSelect={handleSelect}
             className="mt-6"
           />
+
+          {/* A paid plan that has run dry can top up instead. Free
+              cannot: a pack is for the month a plan runs out, and
+              selling Free analyses by the dozen would undercut Starter. */}
+          {upgrade.reason === "pulls" && tier.pullLimit > 0 ? (
+            <PackPicker
+              className="mt-6 border-t border-border pt-6"
+              onBought={() => {
+                closeUpgrade();
+                if (analysis) {
+                  setTimeout(() => router.push(`/analyze/${analysis.id}`), 150);
+                }
+              }}
+            />
+          ) : null}
 
           <p className="mt-6 text-center text-[11px] text-muted-foreground">
             Prices in USD. Change or cancel any time. Market browsing and the

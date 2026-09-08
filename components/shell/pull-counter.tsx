@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * the tier limit. Free tier reads "0 of 0" and opens the upgrade modal.
  */
 export function PullCounter({ className }: { className?: string }) {
-  const { ready, tier, pullsUsed, pullLimit, openUpgrade } = useSession();
+  const { ready, tier, pullsUsed, pullLimit, credits, openUpgrade } = useSession();
 
   if (!ready) {
     return <Skeleton className={cn("h-6 w-28", className)} />;
@@ -21,7 +21,9 @@ export function PullCounter({ className }: { className?: string }) {
   const r = 7;
   const circumference = 2 * Math.PI * r;
   const isFree = tier.pullLimit === 0;
-  const exhausted = !isFree && pullsUsed >= pullLimit;
+  // Out only when the plan AND the packs are: a pack analysis is still
+  // an analysis, and a red ring beside twelve of them reads as a bug.
+  const exhausted = !isFree && pullsUsed >= pullLimit && credits <= 0;
 
   const ring = (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden className="shrink-0">
@@ -52,9 +54,14 @@ export function PullCounter({ className }: { className?: string }) {
         {exhausted ? (
           <TriangleAlert aria-hidden className="size-3" strokeWidth={2.5} />
         ) : null}
-        {pullsUsed} of {pullLimit}
+        {Math.min(pullsUsed, pullLimit)} of {pullLimit}
       </span>{" "}
       <span className="hidden md:inline">analyses</span>
+      {credits > 0 ? (
+        <span className="ml-1 text-gold tabular" title="Pack analyses on your account">
+          +{credits}
+        </span>
+      ) : null}
     </span>
   );
 

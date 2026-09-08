@@ -10,7 +10,7 @@
  */
 
 import * as React from "react";
-import { TIERS, type Tier, type TierId } from "@/config/app";
+import { CREDIT_PACKS, TIERS, type PackId, type Tier, type TierId } from "@/config/app";
 import { currentPeriod } from "@/lib/db/usage-period";
 import {
   breakevenOccupancy,
@@ -21,6 +21,7 @@ import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { authConfigured } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
+  loadCredits,
   loadUsage,
   loadUserData,
   persistActivity,
@@ -78,9 +79,14 @@ interface SessionContextValue {
   canPull: boolean;
   marketsUsed: number;
   marketLimit: number;
+  /** Pack analyses on the account, spent after the month's plan. */
+  credits: number;
   /** Re-read the plan meter from the account. The server settles the
    *  count when a page spends one, so a page that just did asks once. */
   refreshUsage: () => Promise<void>;
+  /** Buy a top-up pack. Resolves to the new balance, or null with a
+   *  reason when the purchase could not go through. */
+  buyPack: (pack: PackId) => Promise<{ balance: number } | { error: string }>;
   deals: Deal[];
   landlords: Landlord[];
   activity: ActivityEvent[];
@@ -195,11 +201,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // A real account: their rows, and nothing seeded. An empty
         // pipeline for a new user is the truth, and dressing it with
         // sample deals they never saved would be worse than empty.
-        const [data, usage] = await Promise.all([
+        const [data, usage, credits] = await Promise.all([
           loadUserData(supabase, id),
           // THIS period's meter, from the table the browser cannot
           // write — not profiles.pulls_used, which it could.
           loadUsage(supabase, id, currentPeriod()),
+          loadCredits(supabase, id),
         ]);
         if (cancelled) return;
         const joined = auth?.data.user?.created_at ?? new Date().toISOString();
@@ -210,6 +217,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           tier: (data.profile?.tier ?? "free") as TierId,
           pullsUsed: usage.analysesUsed,
           marketsUsed: usage.marketsUsed,
+          credits,
           watchedMarketSlugs: data.watchedMarketSlugs,
           joinedAt: joined,
           // No billing yet. A period end invented here would show a
@@ -258,19 +266,67 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const pullsUsed = user?.pullsUsed ?? 0;
   const pullLimit = tier.pullLimit;
   const pullsRemaining = Math.max(0, pullLimit - pullsUsed);
-  const canPull = pullsRemaining > 0;
+  const credits = user?.credits ?? 0;
+  // The plan, then the packs: an account is out only when both are.
+  const canPull = pullsRemaining > 0 || credits > 0;
   const marketsUsed = user?.marketsUsed ?? 0;
   const marketLimit = tier.marketLimit;
 
   const refreshUsage = React.useCallback(async () => {
     if (!supabase || !userId) return;
-    const usage = await loadUsage(supabase, userId, currentPeriod());
+    const [usage, balance] = await Promise.all([
+      loadUsage(supabase, userId, currentPeriod()),
+      loadCredits(supabase, userId),
+    ]);
     setUser((prev) =>
       prev
-        ? { ...prev, pullsUsed: usage.analysesUsed, marketsUsed: usage.marketsUsed }
+        ? {
+            ...prev,
+            pullsUsed: usage.analysesUsed,
+            marketsUsed: usage.marketsUsed,
+            credits: balance,
+          }
         : prev
     );
   }, [supabase, userId]);
+
+  /**
+   * Buy a pack. The server fulfils (or, until a processor is wired,
+   * refuses with a reason), and the balance on screen is whatever it
+   * says afterwards — never a number this side made up.
+   */
+  const buyPack = React.useCallback(
+    async (pack: PackId): Promise<{ balance: number } | { error: string }> => {
+      if (!user) return { error: "Sign in to buy a pack." };
+      try {
+        const res = await fetch("/api/credits/purchase", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pack }),
+        });
+        const body = (await res.json().catch(() => null)) as
+          | { ok: true; balance: number }
+          | { ok: false; reason?: string }
+          | null;
+        if (!body?.ok) {
+          const reason = body && "reason" in body ? body.reason : undefined;
+          return {
+            error:
+              reason === "checkout-not-connected"
+                ? "Checkout isn't connected yet — packs go live with billing."
+                : reason === "plan-required"
+                  ? "Packs top up a paid plan. Pick a plan first."
+                  : "That purchase didn't go through.",
+          };
+        }
+        setUser((prev) => (prev ? { ...prev, credits: body.balance } : prev));
+        return { balance: body.balance };
+      } catch {
+        return { error: "That purchase didn't go through." };
+      }
+    },
+    [user]
+  );
 
   /**
    * Write through to the account, when there is one.
@@ -323,8 +379,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
    */
   const consumePull = React.useCallback((): boolean => {
     if (!user) return false;
-    if (TIERS[user.tier].pullLimit - user.pullsUsed <= 0) return false;
-    setUser((prev) => (prev ? { ...prev, pullsUsed: prev.pullsUsed + 1 } : prev));
+    const planLeft = TIERS[user.tier].pullLimit - user.pullsUsed > 0;
+    if (!planLeft && user.credits <= 0) return false;
+    // Mirror the server's order of spend: plan first, then a pack.
+    setUser((prev) =>
+      prev
+        ? planLeft
+          ? { ...prev, pullsUsed: prev.pullsUsed + 1 }
+          : { ...prev, pullsUsed: prev.pullsUsed + 1, credits: prev.credits - 1 }
+        : prev
+    );
     return true;
   }, [user]);
 
@@ -611,7 +675,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     pullsUsed,
     marketsUsed,
     marketLimit,
+    credits,
     refreshUsage,
+    buyPack,
     pullLimit,
     pullsRemaining,
     canPull,

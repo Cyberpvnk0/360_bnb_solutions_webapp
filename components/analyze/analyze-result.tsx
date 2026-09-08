@@ -574,8 +574,9 @@ export function AnalyzeResult({
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               The read below is modelled from the market, not measured from
-              live comps around this address. Upgrade to unlock the measured
-              version — it will not count against you twice.
+              live comps around this address. Upgrade, or top up with a pack
+              from $5, to unlock the measured version — it will not count
+              against you twice.
             </p>
           </div>
           <Button
@@ -583,7 +584,7 @@ export function AnalyzeResult({
             onClick={() => openUpgrade({ reason: "pulls", analysis })}
             className="shrink-0"
           >
-            See plans
+            Plans &amp; packs
           </Button>
         </div>
       ) : null}

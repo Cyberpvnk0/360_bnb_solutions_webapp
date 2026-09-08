@@ -48,6 +48,7 @@ const USERS: AdminUserRow[] = Array.from({ length: 16 }, (_, i) => {
     tier,
     pullsUsed: limit === 0 ? 0 : rng.int(0, limit),
     marketsUsed: rng.int(0, TIERS[tier].marketLimit),
+    credits: rng.chance(0.15) ? rng.pick([5, 12, 35]) : 0,
     joinedAt: daysAgo(rng.int(5, 400)),
   };
 });

@@ -156,6 +156,60 @@ export const TIERS: Record<TierId, Tier> = {
 
 export const TIER_ORDER: TierId[] = ["free", "starter", "pro", "scale"];
 
+/* ------------------------------------------------------------------ */
+/* Top-up packs                                                        */
+/* ------------------------------------------------------------------ */
+
+export type PackId = "p5" | "p10" | "p25" | "p50" | "p100";
+
+export interface CreditPack {
+  id: PackId;
+  /** One-time price, dollars. */
+  price: number;
+  /** Property analyses the pack adds to the account's balance. */
+  analyses: number;
+  /** Shown on the pick list. */
+  label: string;
+  /** Marks the pack the pick list leads with. */
+  recommended?: boolean;
+}
+
+/**
+ * Extra analyses, bought outright, for the month a plan runs dry.
+ *
+ * PRICED ABOVE THE PLAN, ON PURPOSE. Every pack's per-analysis price
+ * sits above the plan rate at its size — a dollar on the smallest pack
+ * against sixty-eight cents on Starter, fifty-nine on the largest
+ * against fifty-five on Scale — so a subscriber who keeps buying packs
+ * is always better off one tier up, and the packs sell the upgrade
+ * rather than replacing it. Within the ladder there is a volume
+ * discount, so a bigger pack is never a worse deal than two smaller
+ * ones.
+ *
+ * The worst case for one analysis is about twenty-five cents (a fresh
+ * comp purchase plus contacts and images), so the thinnest pack keeps
+ * three-quarters and the thickest keeps well over half.
+ *
+ * Pack analyses do not expire and are spent only once the month's plan
+ * allowance is gone — the plan is the cheaper credit, so it goes first.
+ * They do not cover markets; a market cap is a browsing limit, not a
+ * cost, and a pack is for the thing that costs money.
+ */
+export const CREDIT_PACKS: Record<PackId, CreditPack> = {
+  p5:   { id: "p5",   price: 5,   analyses: 5,   label: "5 analyses" },
+  p10:  { id: "p10",  price: 10,  analyses: 12,  label: "12 analyses" },
+  p25:  { id: "p25",  price: 25,  analyses: 35,  label: "35 analyses", recommended: true },
+  p50:  { id: "p50",  price: 50,  analyses: 75,  label: "75 analyses" },
+  p100: { id: "p100", price: 100, analyses: 170, label: "170 analyses" },
+};
+
+export const PACK_ORDER: PackId[] = ["p5", "p10", "p25", "p50", "p100"];
+
+/** Dollars per analysis, for the "you'd save" line on the pick list. */
+export function packUnitPrice(pack: CreditPack): number {
+  return Math.round((pack.price / pack.analyses) * 100) / 100;
+}
+
 /** Effective monthly price when billed annually (two months free).
  *  Rounded to the cent: $170/yr → $14.17, $470 → $39.17, $970 → $80.83. */
 export function annualEffectiveMonthly(tier: Tier): number {

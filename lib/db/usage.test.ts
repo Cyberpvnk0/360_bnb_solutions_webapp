@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { capFor, consumeUsage, currentPeriod } from "./usage";
+import { capFor, consumeUsage, currentPeriod, grantPack } from "./usage";
 import { TIERS } from "@/config/app";
 
 describe("the plan month", () => {
@@ -45,13 +45,38 @@ describe("claiming against the plan", () => {
     vi.restoreAllMocks();
   });
 
-  it("refuses outright when the plan carries none, without a round trip", async () => {
-    // Free has no analyses. There is nothing to ask the store.
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const r = await consumeUsage("u1", "free", "analysis", "k");
+  it("meters a market on Free against its small cap, never a pack", async () => {
+    // Free browses a handful of markets a month. The store answers with
+    // the plan's verdict and nothing else: a market never draws on a
+    // pack, whatever the balance.
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ allowed: false, used: 3, cap: 3, source: "none", balance: 40 }]), { status: 200 })
+    );
+    const r = await consumeUsage("u1", "free", "market", "market:tampa");
+    expect(r.cap).toBe(TIERS.free.marketLimit);
     expect(r.allowed).toBe(false);
-    expect(r.cap).toBe(0);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(r.source).toBe("none");
+    const body = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+    expect(body.p_cap).toBe(TIERS.free.marketLimit);
+  });
+
+  it("still asks the store for an analysis on a plan with none, because a pack may cover it", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ allowed: true, used: 1, cap: 0, source: "pack", balance: 4 }]), { status: 200 })
+    );
+    const r = await consumeUsage("u1", "free", "analysis", "k");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ allowed: true, source: "pack", balance: 4 });
+  });
+
+  it("reports which pot paid and what is left", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ allowed: true, used: 11, cap: 10, source: "pack", balance: 34 }]), { status: 200 })
+    );
+    const r = await consumeUsage("u1", "starter", "analysis", "k");
+    expect(r.source).toBe("pack");
+    expect(r.balance).toBe(34);
+    expect(r.used).toBe(11);
   });
 
   it("passes the plan's cap to the store and returns its verdict", async () => {
@@ -89,5 +114,45 @@ describe("claiming against the plan", () => {
     const r = await consumeUsage("u1", "pro", "analysis", "k");
     expect(r.allowed).toBe(true);
     expect(r.unmetered).toMatch(/no store/);
+  });
+});
+
+describe("granting a pack", () => {
+  const ENV = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SECRET_KEY: "sb_secret_t" };
+  beforeEach(() => {
+    for (const [k, v] of Object.entries(ENV)) vi.stubEnv(k, v);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("sends the pack's analyses under the payment reference", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ balance: 35, granted: true }]), { status: 200 })
+    );
+    const r = await grantPack("u1", "p25", "pay_123");
+    expect(r).toEqual({ ok: true, balance: 35, granted: true, detail: null });
+    const body = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+    expect(body).toEqual({ p_user: "u1", p_amount: 35, p_reason: "pack:p25", p_ref: "pay_123" });
+  });
+
+  it("treats a repeated reference as fulfilled, not failed", async () => {
+    // The processor retried its webhook. The store granted nothing the
+    // second time and said so; the purchase is complete either way.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ balance: 35, granted: false }]), { status: 200 })
+    );
+    const r = await grantPack("u1", "p25", "pay_123");
+    expect(r.ok).toBe(true);
+    expect(r.granted).toBe(false);
+    expect(r.balance).toBe(35);
+  });
+
+  it("refuses a pack it does not know", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const r = await grantPack("u1", "p999" as never, "pay_1");
+    expect(r.ok).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

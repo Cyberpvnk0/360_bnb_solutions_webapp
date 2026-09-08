@@ -225,6 +225,118 @@ grant select, insert, update, delete on public.usage to service_role;
    Returns the count AFTER the call and whether the key got in. A key
    already in the set is always allowed and never counted twice — a
    reload is not a second purchase. */
+/* ------------------------------------------------------------------ */
+/* Top-up credits: analyses bought outright, spent after the plan      */
+/* ------------------------------------------------------------------ */
+
+/* A BALANCE THE ACCOUNT CAN SEE AND NEVER TOUCH. Same posture as
+   usage: readable under RLS so the header can show it, written only
+   through the functions below with the secret key. Pack credits do not
+   expire, so this is per account rather than per period. */
+create table if not exists public.credit_balance (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  balance     integer not null default 0 check (balance >= 0),
+  updated_at  timestamptz not null default now()
+);
+
+/* Every change to a balance, with what caused it. A grant carries the
+   payment reference; a spend carries the analysis key. This is the
+   audit trail a "where did my credits go" email is answered from. */
+create table if not exists public.credit_ledger (
+  id          bigserial primary key,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  delta       integer not null,
+  reason      text not null,          -- 'pack:p25' | 'spend' | 'refund' | 'adjust'
+  ref         text,                   -- payment id, analysis key, note
+  created_at  timestamptz not null default now()
+);
+create index if not exists credit_ledger_user_idx on public.credit_ledger (user_id, created_at desc);
+/* A payment reference grants once. A webhook retried by the processor
+   must not hand out the pack twice. */
+create unique index if not exists credit_ledger_grant_ref_idx
+  on public.credit_ledger (ref) where reason like 'pack:%';
+
+alter table public.credit_balance enable row level security;
+alter table public.credit_ledger  enable row level security;
+
+drop policy if exists "own balance" on public.credit_balance;
+create policy "own balance" on public.credit_balance
+  for select using (auth.uid() = user_id);
+drop policy if exists "own ledger" on public.credit_ledger;
+create policy "own ledger" on public.credit_ledger
+  for select using (auth.uid() = user_id);
+
+grant select on public.credit_balance, public.credit_ledger to authenticated;
+revoke insert, update, delete on public.credit_balance, public.credit_ledger from authenticated, anon;
+grant select, insert, update, delete on public.credit_balance, public.credit_ledger to service_role;
+
+/* Add credits from a purchase. Idempotent on the payment reference:
+   the second call with the same ref returns the balance and grants
+   nothing. Server only. */
+create or replace function public.grant_credits(
+  p_user   uuid,
+  p_amount integer,
+  p_reason text,
+  p_ref    text
+)
+returns table (balance integer, granted boolean)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_balance integer;
+begin
+  if p_amount <= 0 then
+    raise exception 'grant_credits: amount must be positive';
+  end if;
+
+  insert into public.credit_balance (user_id) values (p_user)
+  on conflict (user_id) do nothing;
+
+  -- The partial unique index refuses a repeated grant ref; catch it and
+  -- report the balance unchanged rather than failing the caller.
+  begin
+    insert into public.credit_ledger (user_id, delta, reason, ref)
+    values (p_user, p_amount, p_reason, p_ref);
+  exception when unique_violation then
+    select b.balance into v_balance from public.credit_balance b where b.user_id = p_user;
+    return query select v_balance, false;
+    return;
+  end;
+
+  update public.credit_balance
+     set balance = credit_balance.balance + p_amount, updated_at = now()
+   where user_id = p_user
+  returning credit_balance.balance into v_balance;
+
+  return query select v_balance, true;
+end;
+$$;
+
+revoke execute on function public.grant_credits(uuid, integer, text, text)
+  from public, anon, authenticated;
+grant execute on function public.grant_credits(uuid, integer, text, text)
+  to service_role;
+
+/* Atomically claim one key against a cap — and, for analyses, against
+   the account's pack balance once the cap is spent.
+
+   One statement, one row lock, so two tabs firing "Run the numbers" at
+   the same instant cannot both squeeze in as the eleventh of ten. The
+   cap is a PARAMETER rather than a column: the plan's limits live in
+   the app's config beside its prices, and this function only ever runs
+   with the secret key, so a caller cannot pass a cap it is not owed.
+
+   ORDER OF SPEND: the plan first, then packs. The plan is the credit
+   already paid for; a pack is the dearer one and goes second. A key
+   already in the set is always allowed and never charged again — a
+   reload is not a second purchase, from either pot.
+
+   Returns where the account stands after the call: whether the key got
+   in, how many distinct keys this period, the cap, which pot paid
+   ('plan', 'pack', 'cached', or 'none'), and the pack balance left. */
+drop function if exists public.consume_usage(uuid, text, text, text, integer);
 create or replace function public.consume_usage(
   p_user   uuid,
   p_period text,
@@ -232,13 +344,14 @@ create or replace function public.consume_usage(
   p_key    text,
   p_cap    integer
 )
-returns table (allowed boolean, used integer, cap integer)
+returns table (allowed boolean, used integer, cap integer, source text, balance integer)
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_keys text[];
+  v_keys    text[];
+  v_balance integer := 0;
 begin
   if p_kind not in ('analysis', 'market') then
     raise exception 'consume_usage: unknown kind %', p_kind;
@@ -248,36 +361,55 @@ begin
   values (p_user, p_period)
   on conflict (user_id, period) do nothing;
 
-  -- Lock the row for the rest of this transaction.
+  -- Lock the usage row for the rest of this transaction.
   select case when p_kind = 'analysis' then analysis_keys else market_slugs end
     into v_keys
     from public.usage
    where user_id = p_user and period = p_period
    for update;
 
-  if p_key = any (v_keys) then
-    return query select true, cardinality(v_keys), p_cap;
-    return;
-  end if;
-
-  if cardinality(v_keys) >= p_cap then
-    return query select false, cardinality(v_keys), p_cap;
-    return;
-  end if;
-
-  v_keys := array_append(v_keys, p_key);
-
   if p_kind = 'analysis' then
-    update public.usage
-       set analysis_keys = v_keys, updated_at = now()
-     where user_id = p_user and period = p_period;
-  else
-    update public.usage
-       set market_slugs = v_keys, updated_at = now()
-     where user_id = p_user and period = p_period;
+    select coalesce(b.balance, 0) into v_balance
+      from public.credit_balance b where b.user_id = p_user;
   end if;
 
-  return query select true, cardinality(v_keys), p_cap;
+  if p_key = any (v_keys) then
+    return query select true, cardinality(v_keys), p_cap, 'cached'::text, v_balance;
+    return;
+  end if;
+
+  if cardinality(v_keys) < p_cap then
+    v_keys := array_append(v_keys, p_key);
+    if p_kind = 'analysis' then
+      update public.usage set analysis_keys = v_keys, updated_at = now()
+       where user_id = p_user and period = p_period;
+    else
+      update public.usage set market_slugs = v_keys, updated_at = now()
+       where user_id = p_user and period = p_period;
+    end if;
+    return query select true, cardinality(v_keys), p_cap, 'plan'::text, v_balance;
+    return;
+  end if;
+
+  -- The plan is spent. An analysis may draw on a pack; a market may not.
+  if p_kind = 'analysis' and v_balance > 0 then
+    -- Lock and spend the balance; the check constraint refuses negative.
+    update public.credit_balance
+       set balance = credit_balance.balance - 1, updated_at = now()
+     where user_id = p_user and credit_balance.balance > 0
+    returning credit_balance.balance into v_balance;
+    if found then
+      insert into public.credit_ledger (user_id, delta, reason, ref)
+      values (p_user, -1, 'spend', p_key);
+      v_keys := array_append(v_keys, p_key);
+      update public.usage set analysis_keys = v_keys, updated_at = now()
+       where user_id = p_user and period = p_period;
+      return query select true, cardinality(v_keys), p_cap, 'pack'::text, v_balance;
+      return;
+    end if;
+  end if;
+
+  return query select false, cardinality(v_keys), p_cap, 'none'::text, v_balance;
 end;
 $$;
 

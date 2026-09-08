@@ -372,6 +372,8 @@ export interface SessionUser {
   pullsUsed: number;
   /** Distinct markets opened this month, from the same meter. */
   marketsUsed: number;
+  /** Pack analyses bought outright and not yet spent. Never expire. */
+  credits: number;
   /** ISO date the current billing period resets. */
   /**
    * When the current billing period ends.
