@@ -239,7 +239,14 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           onClick={(e) => e.stopPropagation()}
         >
           <AddToListMenu listing={l} />
-          <Button variant="outline" size="sm" asChild>
+          {/* Outlined on a white card, the button vanished into it. A
+              soft shadow hugging the border lifts it just enough. */}
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className="shadow-[0_1px_2px_rgba(16,16,18,0.08),0_2px_6px_rgba(16,16,18,0.08)] transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(16,16,18,0.1),0_4px_10px_rgba(16,16,18,0.1)]"
+          >
             <Link href={analyzeHref(l)}>
               Run the numbers
               <ArrowRight aria-hidden className="size-3.5" />

@@ -213,6 +213,26 @@ export function RentalsMap({
       el.textContent = fmtMoneyShort(l.rentMonthly);
       el.addEventListener("mouseenter", () => onHoverRef.current(l.id));
       el.addEventListener("mouseleave", () => onHoverRef.current(null));
+      // The press is a real motion, not just :active — a quick click
+      // never holds the button long enough for :active to be seen, so
+      // the pin sinks on pointerdown and springs back on release with
+      // an overshoot, the way a physical key does.
+      el.addEventListener("pointerdown", () => el.classList.add("is-pressed"));
+      const release = () => {
+        if (!el.classList.contains("is-pressed")) return;
+        el.classList.remove("is-pressed");
+        el.animate(
+          [
+            { transform: "scale(0.94) translateY(1px)" },
+            { transform: "scale(1.18)", offset: 0.6 },
+            { transform: "" },
+          ],
+          { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+        );
+      };
+      el.addEventListener("pointerup", release);
+      el.addEventListener("pointerleave", release);
+      el.addEventListener("pointercancel", release);
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
         onSelectRef.current(l.id);
@@ -273,10 +293,12 @@ export function RentalsMap({
   // through onHover, so both directions stay in sync).
   React.useEffect(() => {
     for (const [id, el] of markerElsRef.current) {
-      const hot = id === hoveredId || id === selectedId;
+      const selected = id === selectedId;
+      const hot = id === hoveredId && !selected;
       el.classList.toggle("is-hot", hot);
+      el.classList.toggle("is-selected", selected);
       // The button IS the marker element, so stacking lives on it.
-      el.style.setProperty("z-index", hot ? "30" : "10");
+      el.style.setProperty("z-index", selected ? "40" : hot ? "30" : "10");
     }
   }, [hoveredId, selectedId, listings]);
 

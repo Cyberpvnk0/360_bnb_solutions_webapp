@@ -336,11 +336,17 @@
 
 /* Deal Finder price pins — Zillow's shape: a red pill with the price and
    a short tail pointing at the address. The tail is a border triangle
-   on ::after so it takes the pill's colour, including the darker hot
-   state (hovered card, selected listing). */
+   on ::after so it takes the pill's colour in every state.
+
+   THREE STATES, ONE MOTION LANGUAGE. Hover lifts (grows from the tip,
+   since that is what is planted on the map); press sinks — smaller, a
+   touch lower, an inset shadow, so the pill reads as pushed into the
+   map; selected stays lifted with a ring so the card it opened can be
+   found again on the map. Everything eases on the same curve. */
 .rental-pin {
   --pin: #d7263d;
   --pin-ink: #fff;
+  --pin-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   position: relative;
   display: inline-block;
   cursor: pointer;
@@ -355,8 +361,13 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
   white-space: nowrap;
+  transform-origin: 50% calc(100% + 6px);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  transition: transform 120ms ease, background-color 120ms ease;
+  transition:
+    transform 180ms var(--pin-ease),
+    box-shadow 180ms var(--pin-ease),
+    background-color 180ms var(--pin-ease);
+  -webkit-tap-highlight-color: transparent;
 }
 .rental-pin::after {
   content: "";
@@ -367,9 +378,37 @@
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-top: 6px solid var(--pin);
+  transition: border-top-color 180ms var(--pin-ease);
 }
 .rental-pin:hover,
 .rental-pin.is-hot {
+  --pin: #b81c31;
+  transform: scale(1.14);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+.rental-pin:active,
+.rental-pin.is-pressed {
   --pin: #8f1020;
-  transform: scale(1.08);
+  transform: scale(0.94) translateY(1px);
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.35),
+    0 0 0 rgba(0, 0, 0, 0);
+  transition-duration: 90ms;
+}
+.rental-pin.is-selected {
+  --pin: #8f1020;
+  transform: scale(1.1);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--pin),
+    0 4px 10px rgba(0, 0, 0, 0.3);
+}
+.rental-pin.is-selected:hover {
+  transform: scale(1.16);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rental-pin,
+  .rental-pin::after {
+    transition: none;
+  }
 }
