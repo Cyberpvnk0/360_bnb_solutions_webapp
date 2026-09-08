@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import * as React from "react";
 import { TIER_ORDER, TIERS } from "@/config/app";
@@ -52,8 +51,11 @@ export function ThemeToggle() {
 }
 
 export function UserMenu() {
-  const router = useRouter();
   const { ready, user, tier, setTier } = useSession();
+  // Sign-out is a POST to the route that clears the session server-side
+  // and 303s to the sign-in page. A hidden form, submitted from the menu
+  // item, so the browser follows the redirect as a real navigation.
+  const signOutForm = React.useRef<HTMLFormElement>(null);
 
   if (!ready || !user) {
     return <Skeleton className="size-8 rounded-full" />;
@@ -114,10 +116,21 @@ export function UserMenu() {
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/")}>
-          Log out
+        {/* "Log out" used to router.push("/") — a navigation, not a
+            sign-out. The session cookie survived it, so every door led
+            straight back to the dashboard and the sign-in and sign-up
+            screens were unreachable from inside the app. */}
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            signOutForm.current?.requestSubmit();
+          }}
+        >
+          <LogOut aria-hidden className="size-4" />
+          Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <form ref={signOutForm} action="/auth/signout" method="post" hidden />
     </DropdownMenu>
   );
 }
