@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { APP_NAME } from "@/config/app";
 
 /**
  * The signed-out shell.
@@ -19,7 +20,7 @@ export default function AuthLayout({
           href="/"
           className="font-display text-lg font-medium tracking-tight text-foreground"
         >
-          ArbiCore
+          {APP_NAME}
         </Link>
       </header>
       <main className="flex flex-1 items-start justify-center px-4 pb-16 pt-4 md:items-center md:pb-24 md:pt-0">

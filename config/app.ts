@@ -6,9 +6,9 @@
  * hardcodes the product name.
  */
 
-export const APP_NAME = "ArbiCore";
+export const APP_NAME = "AirCore";
 export const APP_TAGLINE = "Know your breakeven before you sign the lease.";
-export const APP_DOMAIN = "arbicore.example.com";
+export const APP_DOMAIN = "aircore.example.com";
 
 /** Company line used in the footer and legal boilerplate. */
 export const APP_COMPANY = `${APP_NAME}, Inc.`;

@@ -1,4 +1,4 @@
--- ArbiCore shared cache. Run in the Supabase SQL editor.
+-- AirCore shared cache. Run in the Supabase SQL editor.
 --
 -- IDEMPOTENT: safe to re-run any time. Every statement is create-if-
 -- not-exists, add-column-if-not-exists, or a grant that can be issued

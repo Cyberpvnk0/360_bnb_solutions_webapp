@@ -1,4 +1,4 @@
--- ArbiCore user data.
+-- AirCore user data.
 --
 -- Everything a student saves lived in localStorage: lose the browser,
 -- lose the work; open a phone, be a different person. These tables give

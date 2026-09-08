@@ -1,4 +1,4 @@
-# ArbiCore
+# AirCore
 
 A short-term rental arbitrage analysis platform. One question drives every
 screen: **does the nightly revenue beat the lease?** The hero metric
