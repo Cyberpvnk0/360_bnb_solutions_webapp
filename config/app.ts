@@ -63,12 +63,12 @@ export const TIERS: Record<TierId, Tier> = {
    * clears its own cost in the worst case — every analysis a fresh
    * vendor purchase at $0.18 plus its contacts and images, every market
    * bought once for this account alone — with a gross margin above
-   * forty percent: Starter 61%, Pro 52%, Scale 45%. Realistic margins,
+   * forty percent: Starter 54%, Pro 52%, Scale 45%. Realistic margins,
    * with half the cap used and the cache shared, run above eighty. The
    * free tier is bounded so that an account paying nothing cannot
    * become a cost centre, which unlimited browsing quietly allowed.
    *
-   * The ladder is a volume discount by design: about eighty cents an
+   * The ladder is a volume discount by design: sixty-eight cents an
    * analysis on Starter, sixty-three on Pro, fifty-five on Scale.
    */
   free: {
@@ -93,8 +93,8 @@ export const TIERS: Record<TierId, Tier> = {
   starter: {
     id: "starter",
     name: "Starter",
-    priceMonthly: 19.97,
-    priceAnnual: 199.7,
+    priceMonthly: 17,
+    priceAnnual: 170,
     pullLimit: 25,
     marketLimit: 15,
     savedDealLimit: 25,
@@ -157,7 +157,7 @@ export const TIERS: Record<TierId, Tier> = {
 export const TIER_ORDER: TierId[] = ["free", "starter", "pro", "scale"];
 
 /** Effective monthly price when billed annually (two months free).
- *  Rounded to the cent: $199.70/yr → $16.64, $470 → $39.17, $970 → $80.83. */
+ *  Rounded to the cent: $170/yr → $14.17, $470 → $39.17, $970 → $80.83. */
 export function annualEffectiveMonthly(tier: Tier): number {
   return Math.round((tier.priceAnnual / 12) * 100) / 100;
 }

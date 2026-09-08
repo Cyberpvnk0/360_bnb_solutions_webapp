@@ -197,7 +197,7 @@ function joinAfterResponse(
  * It is not a cost meter — a market is shared and cached, so the
  * hundredth student to open Jacksonville costs nothing — it is what
  * keeps a lone account in a market nobody else looks at from re-buying
- * that market's feed every day on a twenty-dollar plan. Counted by slug,
+ * that market's feed every day on a seventeen-dollar plan. Counted by slug,
  * so opening the same market twice is one against the plan.
  *
  * Signed out counts as free. Fails open when the meter is unreachable,
