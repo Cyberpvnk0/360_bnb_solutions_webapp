@@ -213,18 +213,6 @@ grant select on public.usage to authenticated;
 revoke insert, update, delete on public.usage from authenticated, anon;
 grant select, insert, update, delete on public.usage to service_role;
 
-/* Atomically claim one key against a cap, and report where that leaves
-   the account.
-
-   One statement, one row lock, so two tabs firing "Run the numbers" at
-   the same instant cannot both squeeze in as the eleventh of ten. The
-   cap is a PARAMETER rather than a column: the plan's limits live in
-   the app's config beside its prices, and this function only ever runs
-   with the secret key, so a caller cannot pass a cap it is not owed.
-
-   Returns the count AFTER the call and whether the key got in. A key
-   already in the set is always allowed and never counted twice — a
-   reload is not a second purchase. */
 /* ------------------------------------------------------------------ */
 /* Top-up credits: analyses bought outright, spent after the plan      */
 /* ------------------------------------------------------------------ */

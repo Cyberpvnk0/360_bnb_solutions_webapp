@@ -7,6 +7,7 @@ import {
   PricingTiers,
   type BillingCycle,
 } from "@/components/pricing/pricing-cards";
+import { PackCards } from "@/components/pricing/pack-cards";
 
 /**
  * The landing page's pricing band. Client component: the billing toggle
@@ -23,8 +24,8 @@ export function PricingSection() {
           Pricing that doesn&apos;t eat the spread
         </h2>
         <p className="mt-3 max-w-md text-sm text-muted-foreground">
-          Every plan browses every market. You pay for address pulls, not for
-          looking around.
+          You pay for property analyses — the live comps behind a breakeven
+          read — not for looking around.
         </p>
         <BillingToggle billing={billing} onChange={setBilling} className="mt-10" />
       </div>
@@ -36,8 +37,30 @@ export function PricingSection() {
       />
 
       <p className="mt-8 text-center text-xs text-muted-foreground">
-        Annual is two months free. Unlimited means unlimited — market browsing
-        and the calculator are never metered, on any plan, including Free.
+        Annual is two months free. The calculator is never metered, on any
+        plan, including Free.
+      </p>
+
+      {/* The packs, under the plans and never in their place: every pack
+          is priced above the plan rate at its size, so the row reads as
+          "for the month you run short", which is what it is. */}
+      <div className="mt-16 flex flex-col items-center text-center">
+        <h3 className="font-display text-2xl font-medium tracking-tight text-foreground">
+          Run short mid-month? Top up.
+        </h3>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+          One-time packs of analyses for any paid plan. They never expire and
+          are spent only after your plan&apos;s monthly allowance.
+        </p>
+      </div>
+      <PackCards
+        className="mt-8"
+        ctaLabel="Get started"
+        onSelect={() => router.push("/settings?tab=billing")}
+      />
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Buying packs every month? A bigger plan is cheaper per analysis, every
+        time.
       </p>
     </div>
   );
