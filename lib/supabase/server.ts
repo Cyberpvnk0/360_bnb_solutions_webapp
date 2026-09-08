@@ -10,7 +10,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { authConfigured, SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 
 export async function supabaseServer() {
   const store = await cookies();
@@ -37,6 +37,10 @@ export async function supabaseServer() {
  *  because only getUser revalidates the token with the auth server —
  *  getSession trusts a cookie the browser could have edited. */
 export async function currentUser() {
+  // Unconfigured is "nobody is signed in", not an outage. The proxy
+  // and the sign-in page already degrade for it; without this line the
+  // client constructor threw and every page under the shell was a 500.
+  if (!authConfigured()) return null;
   const supabase = await supabaseServer();
   const { data, error } = await supabase.auth.getUser();
   return error ? null : data.user;

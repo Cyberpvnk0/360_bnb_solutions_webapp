@@ -24,14 +24,27 @@ import { MetricLabel } from "@/components/primitives/metric-label";
  *  someone has already typed a password they liked. */
 const MIN_PASSWORD = 6;
 
-/** A `next` we will follow: a path on this site, nothing that a browser
- *  would read as another host (`//host`, `/\host`, `https://host`). */
+/**
+ * A `next` we will follow: a path on this site, and nothing a browser
+ * would read as another host.
+ *
+ * Checked by PARSING, not by prefix. The URL parser strips ASCII tab,
+ * CR and LF before it looks at anything, so a value that starts with a
+ * single slash followed by a tab and another slash becomes "//host" by
+ * the time the router resolves it, and a prefix test waves it through.
+ * Resolving the candidate against a fixed dummy origin, exactly as the
+ * router will against the real one, and refusing anything that leaves
+ * that origin closes every spelling at once. SSR-safe: no window.
+ */
 function safeNext(raw: string | null): string {
-  if (!raw) return "/deals";
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+  if (!raw || !raw.startsWith("/")) return "/deals";
+  try {
+    const u = new URL(raw, "http://n");
+    if (u.origin !== "http://n") return "/deals";
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
     return "/deals";
   }
-  return raw;
 }
 
 export function AuthForm({

@@ -10,6 +10,22 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 
+/**
+ * A path on this site or the default. Parsed rather than prefix-tested:
+ * the URL parser strips tab, CR and LF first, so a slash-tab-slash-host
+ * value reads as "//host" to a browser while starting with one slash to
+ * a string check.
+ */
+function samePath(candidate: string): string {
+  if (!candidate.startsWith("/")) return "/deals";
+  try {
+    const u = new URL(candidate, "http://n");
+    return u.origin === "http://n" ? `${u.pathname}${u.search}${u.hash}` : "/deals";
+  } catch {
+    return "/deals";
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -22,11 +38,7 @@ export async function GET(request: Request) {
     // redirect here would let a crafted confirmation link bounce
     // someone to another host with their session freshly minted.
     if (!error) {
-      const safe =
-        next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
-          ? next
-          : "/deals";
-      return NextResponse.redirect(`${origin}${safe}`);
+      return NextResponse.redirect(`${origin}${samePath(next)}`);
     }
     /**
      * The link was opened in a different browser than the one that

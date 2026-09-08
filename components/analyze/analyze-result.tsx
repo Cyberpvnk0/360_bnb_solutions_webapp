@@ -151,7 +151,7 @@ export function AnalyzeResult({
     rentSource: "listing" | "market";
   } | null;
 }) {
-  const { saveDeal, isAnalysisSaved, openUpgrade, tier, refreshUsage, recordPull } =
+  const { saveDeal, isAnalysisSaved, openUpgrade, tier, refreshUsage, recordPull, user } =
     useSession();
 
   // The server settled the plan count while rendering this page; the
@@ -176,6 +176,10 @@ export function AnalyzeResult({
   // and the way back to the property is what the record is for.
   const recorded = React.useRef<string | null>(null);
   React.useEffect(() => {
+    // Not until the provider knows who this is: before that a write is
+    // silently dropped, and marking the pull recorded would mean it is
+    // never written at all.
+    if (!user) return;
     if (!quota?.allowed) return;
     if (quota.source !== "plan" && quota.source !== "pack") return;
     if (recorded.current === analysis.id) return;
@@ -183,7 +187,7 @@ export function AnalyzeResult({
     recordPull(analysis, hereHref());
     // hereHref reads window at call time and needs no dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quota, analysis, recordPull]);
+  }, [user, quota, analysis, recordPull]);
   /**
    * Does this address exist?
    *
