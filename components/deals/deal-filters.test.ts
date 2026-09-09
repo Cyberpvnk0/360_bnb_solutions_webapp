@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countSummary, marketMatchesQuery, normalizeKeyword } from "./deal-filters";
+import { countSummary, marketMatchesQuery } from "./deal-filters";
 import { MARKETS } from "@/lib/mock/markets";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 
@@ -28,14 +28,6 @@ describe("marketMatchesQuery", () => {
   it("treats an empty query as match-all", () => {
     expect(marketMatchesQuery(JAX, "")).toBe(true);
     expect(marketMatchesQuery(JAX, " , ")).toBe(true);
-  });
-});
-
-describe("normalizeKeyword", () => {
-  it("is punctuation- and case-blind on both sides", () => {
-    expect(normalizeKeyword("Water Front")).toBe("waterfront");
-    expect(normalizeKeyword("washer & dryer")).toBe("washerdryer");
-    expect(normalizeKeyword("PET-FRIENDLY")).toBe("petfriendly");
   });
 });
 

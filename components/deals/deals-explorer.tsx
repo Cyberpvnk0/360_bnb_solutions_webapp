@@ -59,7 +59,6 @@ import {
   DEFAULT_DEAL_FILTERS,
   isDefaultDealFilters,
   marketMatchesQuery,
-  normalizeKeyword,
   TYPE_LABEL,
   type DealFilters,
 } from "./deal-filters";
@@ -111,10 +110,6 @@ interface Row {
   deal: DealRead;
   /** Lowercased market-name/state haystack for the Location search. */
   haystack: string;
-  /** Punctuation-blind haystack for the Keywords filter: the listing's
-   *  DESCRIPTION plus its features, address, market and home type — the
-   *  same surface Zillow's keyword search reads. */
-  keywordHaystack: string;
 }
 
 const SORTERS: Record<SortKey, (a: Row, b: Row) => number> = {
@@ -158,10 +153,6 @@ export function matchesFilters(row: Row, f: DealFilters): boolean {
     !l.features.includes("Furnished")
   ) {
     return false;
-  }
-  // Every keyword must land somewhere in the listing (Zillow semantics).
-  for (const kw of f.keywords) {
-    if (!row.keywordHaystack.includes(normalizeKeyword(kw))) return false;
   }
   return true;
 }
@@ -459,17 +450,6 @@ export function DealsExplorer({
           listing,
           deal: estimateDeal(listing, market),
           haystack: marketSearchText(market),
-          keywordHaystack: normalizeKeyword(
-            [
-              listing.address,
-              market.name,
-              market.state,
-              market.stateCode,
-              TYPE_LABEL[listing.propertyType],
-              ...listing.features,
-              listing.description ?? "",
-            ].join(" ")
-          ),
         },
       ];
     });

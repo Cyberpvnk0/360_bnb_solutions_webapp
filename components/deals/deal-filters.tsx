@@ -9,10 +9,8 @@
  */
 
 import * as React from "react";
-import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronDown, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -63,8 +61,6 @@ export interface DealFilters {
   /** The deal-maker: only listings tagged Furnished (their furnishing
    *  budget can start at $0). First-class, not a keyword. */
   furnishedOnly: boolean;
-  /** Zillow-style keyword terms — a listing must match every one. */
-  keywords: string[];
 }
 
 export const DEFAULT_DEAL_FILTERS: DealFilters = {
@@ -75,7 +71,6 @@ export const DEFAULT_DEAL_FILTERS: DealFilters = {
   baths: [],
   types: TYPE_OPTIONS.map((t) => t.value),
   furnishedOnly: false,
-  keywords: [],
 };
 
 export function isDefaultDealFilters(f: DealFilters): boolean {
@@ -86,17 +81,8 @@ export function isDefaultDealFilters(f: DealFilters): boolean {
     f.beds.length === 0 &&
     f.baths.length === 0 &&
     f.types.length === TYPE_OPTIONS.length &&
-    !f.furnishedOnly &&
-    f.keywords.length === 0
+    !f.furnishedOnly
   );
-}
-
-/**
- * Loose, punctuation-blind matching: "water front" finds "Waterfront",
- * "washer dryer" finds "Washer & dryer". Both sides normalize the same way.
- */
-export function normalizeKeyword(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 /**
@@ -154,8 +140,8 @@ function FilterChip({
   active: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Leading glyph, for the catch-all chip that has no one meaning. */
-  icon?: typeof SlidersHorizontal;
+  /** Leading glyph, for a chip whose label alone does not say enough. */
+  icon?: LucideIcon;
   children: React.ReactNode;
 }) {
   return (
@@ -483,115 +469,6 @@ function HomeTypePanel({
   );
 }
 
-/** Common tags for the keyword panel. Furnished isn't here — it has its
- *  own chip in the row (typing it as a keyword still works). */
-const KEYWORD_SUGGESTIONS = [
-  "Pet friendly",
-  "Waterfront",
-  "Private pool",
-  "Mountain view",
-  "Hot tub",
-  "Renovated",
-  "Garage",
-  "Washer & dryer",
-];
-
-function KeywordsPanel({
-  applied,
-  onApply,
-  onClose,
-}: {
-  applied: DealFilters;
-  onApply: (patch: Partial<DealFilters>) => void;
-  onClose: () => void;
-}) {
-  const [text, setText] = React.useState(applied.keywords.join(", "));
-
-  const terms = React.useMemo(
-    () =>
-      text
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-    [text]
-  );
-
-  const hasTerm = (kw: string) =>
-    terms.some((t) => normalizeKeyword(t) === normalizeKeyword(kw));
-
-  const toggleTerm = (kw: string) => {
-    const next = hasTerm(kw)
-      ? terms.filter((t) => normalizeKeyword(t) !== normalizeKeyword(kw))
-      : [...terms, kw];
-    setText(next.join(", "));
-  };
-
-  const apply = () => {
-    // Dedupe on the normalized form; keep the user's own spelling.
-    const seen = new Set<string>();
-    const keywords = terms.filter((t) => {
-      const n = normalizeKeyword(t);
-      if (!n || seen.has(n)) return false;
-      seen.add(n);
-      return true;
-    });
-    onApply({ keywords });
-    onClose();
-  };
-
-  return (
-    <>
-      <PanelBody>
-        <div>
-          <Label htmlFor="df-keywords" className="text-xs text-muted-foreground">
-            Keywords — comma-separated
-          </Label>
-          <Input
-            id="df-keywords"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") apply();
-            }}
-            placeholder="furnished, waterfront…"
-            className="mt-1.5 h-8"
-          />
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Searches each listing&apos;s description and tags. Every keyword
-            must match, and spelling is forgiving — &ldquo;water
-            front&rdquo; finds Waterfront.
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Common tags</p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {KEYWORD_SUGGESTIONS.map((kw) => {
-              const on = hasTerm(kw);
-              return (
-                <button
-                  key={kw}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleTerm(kw)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-xs transition-colors duration-150",
-                    on
-                      ? "border-select/50 bg-select/10 font-medium text-select"
-                      : "border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  )}
-                >
-                  {kw}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </PanelBody>
-      <PanelFooter onReset={() => setText("")} onApply={apply} />
-    </>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* The chip row                                                        */
 /* ------------------------------------------------------------------ */
@@ -720,23 +597,11 @@ export function DealFilterChips({
         <HomeTypePanel applied={filters} onApply={onChange} onClose={close} />
       </FilterChip>
 
-      {/* The catch-all, last, like every portal's. Keywords is what
-          lives here today; anything narrower than a first-class chip
-          belongs here as it arrives. */}
-      <FilterChip
-        label="Filters"
-        icon={SlidersHorizontal}
-        active={filters.keywords.length > 0}
-        summary={
-          filters.keywords.length > 1
-            ? `${filters.keywords[0]} +${filters.keywords.length - 1}`
-            : filters.keywords[0]
-        }
-        {...chip("more")}
-      >
-        <KeywordsPanel applied={filters} onApply={onChange} onClose={close} />
-      </FilterChip>
-
+      {/* No keyword chip. The feeds this product reads carry no listing
+          descriptions and no amenity lists beyond Furnished, so a
+          keyword search over live inventory had nothing to search and
+          answered every term with an empty page. A filter that cannot
+          be answered is not offered. */}
     </>
   );
 }

@@ -33,7 +33,6 @@ function row(bedrooms: number, bathrooms: number) {
     listing,
     deal: { cushionPts: 0, netCashFlow: 0, nightlyRate: 0, breakeven: 0 },
     haystack: "tampa florida fl",
-    keywordHaystack: "",
   };
 }
 
