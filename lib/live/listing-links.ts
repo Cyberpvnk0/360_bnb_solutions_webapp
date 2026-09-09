@@ -217,10 +217,29 @@ export function listingSearchHref(place: Addressed): string | null {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
-/** Which of the two destinations a link goes to, so the label can say
- *  so. A search finds the listing; it does not open it, and copy that
- *  claims otherwise spends the reader's click on a surprise. */
-export type PhotosLinkKind = "listing" | "search";
+/**
+ * The finder page for an address whose listing page is still being
+ * looked up: /go/listing opens at once, asks the listing site, and
+ * lands on the listing when the answer comes — or on the search when
+ * there is no page. A click during the lookup lands where the link
+ * would have, rather than on a search because it came early.
+ */
+export function findingHref(place: Addressed): string | null {
+  const p = parts(place);
+  if (!p) return null;
+  const query = new URLSearchParams({
+    address: p.street,
+    city: p.city,
+    state: p.state,
+  });
+  return `/go/listing?${query}`;
+}
+
+/** Which destination a link goes to, so the label can say so. A
+ *  search finds the listing; it does not open it, and copy that
+ *  claims otherwise spends the reader's click on a surprise. "finding"
+ *  is the listing, by way of the finder page. */
+export type PhotosLinkKind = "listing" | "search" | "finding";
 
 export interface PhotosDestination {
   href: string;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findingHref,
   hasOwnListingPage,
   photosHref,
   photosLink,
@@ -174,5 +175,21 @@ describe("usableListingPage", () => {
     expect(usableListingPage("https://notredfin.com/a")).toBeNull();
     expect(usableListingPage("javascript:alert(1)")).toBeNull();
     expect(usableListingPage("not a url")).toBeNull();
+  });
+});
+
+describe("the finder page, for a click while the page is being found", () => {
+  it("carries the address to /go/listing", () => {
+    const href = findingHref({ ...TAMPA, address: "1804 East Sitka Street" })!;
+    const url = new URL(href, "https://app.example");
+    expect(url.pathname).toBe("/go/listing");
+    expect(url.searchParams.get("address")).toBe("1804 East Sitka Street");
+    expect(url.searchParams.get("city")).toBe("Tampa");
+    expect(url.searchParams.get("state")).toBe("FL");
+  });
+
+  it("has nothing for half an address, like the search", () => {
+    expect(findingHref({ ...TAMPA, city: "" })).toBeNull();
+    expect(findingHref({ ...TAMPA, address: "//" })).toBeNull();
   });
 });

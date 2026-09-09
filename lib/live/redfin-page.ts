@@ -156,6 +156,12 @@ export interface PageLookup {
   detail: string | null;
 }
 
+/** Lookups under way in this process, by store key: the analyzer's
+ *  link, its finder page and the contact panel can all ask about one
+ *  address inside the same half-minute, and each is a billed request
+ *  if it goes out on its own. */
+const inFlight = new Map<string, Promise<PageLookup>>();
+
 export async function resolveListingPage(place: {
   address: string;
   city: string;
@@ -165,6 +171,17 @@ export async function resolveListingPage(place: {
   const key = storeKey(place);
   if (!key) return { url: null, answered: true, detail: "address could not be keyed" };
 
+  const running = inFlight.get(key);
+  if (running) return running;
+  const lookup = lookupOnce(place, key).finally(() => inFlight.delete(key));
+  inFlight.set(key, lookup);
+  return lookup;
+}
+
+async function lookupOnce(
+  place: { address: string; city: string; stateCode: string; zip?: string },
+  key: string
+): Promise<PageLookup> {
   const stored = await readKeyedBlob(key).catch(() => null);
   if (stored) {
     const url = (stored.value as { url?: unknown }).url;

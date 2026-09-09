@@ -32,10 +32,12 @@
  * part in words, since they cannot see the arrow.
  */
 
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
 import {
+  findingHref,
   hasOwnListingPage,
   photosLink,
+  type PhotosDestination,
   type Addressed,
 } from "@/lib/live/listing-links";
 import { cn } from "@/lib/utils";
@@ -48,16 +50,23 @@ export function PhotosLink({
   /**
    * True on a surface that shows ONE property: a row without a page
    * asks the listing site for it by address, and the link becomes the
-   * listing when the answer lands (a search until then). Never on a
-   * grid — the lookup is a billed request per address.
+   * listing when the answer lands. Never on a grid — the lookup is a
+   * billed request per address.
    */
   find = false,
+  /**
+   * True while something else on the surface is finding the page (the
+   * detail panel's contact lookup does): the link waits for it the
+   * same way, without asking a second time.
+   */
+  pending = false,
   className,
   variant = "button",
 }: {
   place: Addressed;
   real: boolean;
   find?: boolean;
+  pending?: boolean;
   className?: string;
   /**
    * "button" for an action row, "pill" for an overlay on an image,
@@ -66,14 +75,23 @@ export function PhotosLink({
   variant?: "button" | "pill" | "chip";
 }) {
   const looked = useListingPage(place, find && real && !hasOwnListingPage(place));
-  const dest = real
+  let dest: PhotosDestination | null = real
     ? photosLink(
         looked.page ? { ...place, sourceUrl: looked.page } : place
       )
     : null;
+  // While the page is being found, a click goes through the finder
+  // page — which opens at once and lands on the listing when the
+  // answer comes — rather than to a search because it came early. A
+  // lookup that answered "no page" is a search, honestly.
+  if (dest?.kind === "search" && (looked.status === "looking" || pending)) {
+    const finding = findingHref(place);
+    if (finding) dest = { href: finding, kind: "finding" };
+  }
   if (!dest) return null;
 
   const onListing = dest.kind === "listing";
+  const finding = dest.kind === "finding";
 
   return (
     <a
@@ -83,8 +101,8 @@ export function PhotosLink({
       title={
         onListing
           ? "Opens this property's listing page"
-          : looked.status === "looking"
-            ? "Finding this property's listing page… until then, searches the listing sites for it"
+          : finding
+            ? "Opens this property's listing page — finding it now"
             : "Searches the listing sites for this exact address"
       }
       // Cards open a detail panel on click; this must not do both.
@@ -101,7 +119,11 @@ export function PhotosLink({
       )}
     >
       View photos
-      <ArrowUpRight aria-hidden className="size-3.5" />
+      {finding ? (
+        <Loader2 aria-hidden className="size-3.5 animate-spin" />
+      ) : (
+        <ArrowUpRight aria-hidden className="size-3.5" />
+      )}
       {/* The same words a sighted reader gets. A screen reader saying
           something the button does not say is a second label, not a
           better one. */}

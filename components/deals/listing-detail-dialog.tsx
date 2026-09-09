@@ -360,6 +360,9 @@ export function ListingDetailDialog({
                 <PhotosLink
                   place={{ ...listing, sourceUrl: listing.sourceUrl ?? pageFound }}
                   real={isLive}
+                  // The contact lookup above is finding the page for a
+                  // row that has none; a click meanwhile waits for it.
+                  pending={looked.status === "loading"}
                 />
               </div>
             </Panel>

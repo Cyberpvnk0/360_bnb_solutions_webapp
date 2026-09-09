@@ -183,6 +183,30 @@ describe("resolving a page from an address", () => {
     );
   });
 
+  it("asks once for two callers in the same moment", async () => {
+    // The analyzer's link, its finder page and the contact panel can
+    // all ask about one address inside the same half-minute; each
+    // would be its own billed request.
+    let release: (v: unknown) => void = () => {};
+    lookup.mockReturnValue(
+      new Promise((r) => {
+        release = r;
+      }) as never
+    );
+    const first = resolveListingPage(TAMPA);
+    const second = resolveListingPage(TAMPA);
+    await Promise.resolve();
+    release({
+      attempt: { tier: "premium", status: 200, text: "" },
+      body: PAYLOAD,
+      tried: ["premium"],
+    });
+    const [a, b] = await Promise.all([first, second]);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(a.url).toBe(b.url);
+    expect(a.url).toMatch(/47311661$/);
+  });
+
   it("serves a remembered answer without asking again", async () => {
     stored.mockResolvedValue({
       value: { url: null },
