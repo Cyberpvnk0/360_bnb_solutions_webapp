@@ -652,7 +652,7 @@ interface Attempt {
 
 /** Climb the tiers until one returns something that parses. Returns the
  *  last attempt when none do, so the caller can report what happened. */
-async function fetchAutocomplete(
+export async function fetchAutocomplete(
   target: string,
   key: string
 ): Promise<{ attempt: Attempt; body: unknown; tried: string[] }> {
@@ -688,8 +688,14 @@ async function fetchAutocomplete(
 }
 
 function autocompleteFor(market: Market): string {
+  return autocompleteUrlFor(`${market.name}, ${market.stateCode}`);
+}
+
+/** The portal's own location lookup for any typed line — a city for
+ *  the id above, a street address for its page (lib/live/redfin-page). */
+export function autocompleteUrlFor(location: string): string {
   return `${AUTOCOMPLETE}?${new URLSearchParams({
-    location: `${market.name}, ${market.stateCode}`,
+    location,
     start: "0",
     count: "10",
     v: "2",

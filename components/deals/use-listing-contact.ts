@@ -25,64 +25,98 @@
 import * as React from "react";
 import type { ListingContact, RentalListing } from "@/lib/mock/types";
 
-export type ContactStatus = "idle" | "loading" | "found" | "none" | "unreadable";
+export type ContactStatus =
+  | "idle"
+  | "loading"
+  | "found"
+  | "none"
+  | "unreadable"
+  /** The portal does not know this address, so there is no page to read. */
+  | "no-page";
 
 export interface ContactLookup {
   status: ContactStatus;
   contact: ListingContact | null;
+  /** The listing page, when this lookup had to find it from the
+   *  address — so the panel can link to it too. */
+  page: string | null;
 }
 
-/** Session cache: one settled answer per listing page. */
+/** Session cache: one settled answer per listing page or address. */
 const answers = new Map<string, ContactLookup>();
 /** In-flight, so two panels opening the same row share one request. */
 const pending = new Map<string, Promise<ContactLookup>>();
 
-async function lookup(url: string): Promise<ContactLookup> {
-  const cached = answers.get(url);
+/** What to ask for: a page we hold, or the address to find one by. */
+interface Target {
+  key: string;
+  query: URLSearchParams;
+}
+
+function targetFor(listing: RentalListing): Target | null {
+  if (listing.sourceUrl) {
+    return { key: listing.sourceUrl, query: new URLSearchParams({ url: listing.sourceUrl }) };
+  }
+  // A live row without a page on file: find the page by address. A
+  // preview row has a made-up address and nothing to find.
+  if (!listing.id.startsWith("live--")) return null;
+  return {
+    key: `addr:${listing.id}`,
+    query: new URLSearchParams({
+      address: listing.address,
+      city: listing.city,
+      state: listing.stateCode,
+    }),
+  };
+}
+
+async function lookup(target: Target): Promise<ContactLookup> {
+  const cached = answers.get(target.key);
   if (cached) return cached;
-  const running = pending.get(url);
+  const running = pending.get(target.key);
   if (running) return running;
 
   const request = (async (): Promise<ContactLookup> => {
     try {
-      const res = await fetch(
-        `/api/listing-contact?url=${encodeURIComponent(url)}`
-      );
+      const res = await fetch(`/api/listing-contact?${target.query}`);
       const body: unknown = await res.json().catch(() => null);
       const data = body as {
         ok?: boolean;
         contact?: ListingContact | null;
         blocked?: boolean;
+        page?: string | null;
       } | null;
-      if (!res.ok || !data?.ok) return { status: "unreadable", contact: null };
-      if (data.contact) return { status: "found", contact: data.contact };
-      // The page loaded and published nothing, versus we never saw it.
-      return {
-        status: data.blocked ? "unreadable" : "none",
-        contact: null,
-      };
+      if (!res.ok || !data?.ok) return { status: "unreadable", contact: null, page: null };
+      const page = typeof data.page === "string" ? data.page : null;
+      if (data.contact) return { status: "found", contact: data.contact, page };
+      // Found by address and the portal had no page: different from a
+      // page that loaded and published nothing, and from one we never
+      // got to see.
+      if (!target.query.has("url") && data.page === null) {
+        return { status: "no-page", contact: null, page: null };
+      }
+      return { status: data.blocked ? "unreadable" : "none", contact: null, page };
     } catch {
-      return { status: "unreadable", contact: null };
+      return { status: "unreadable", contact: null, page: null };
     }
   })();
-
-  pending.set(url, request);
+  pending.set(target.key, request);
   const settled = await request;
-  pending.delete(url);
-  answers.set(url, settled);
+  pending.delete(target.key);
+  answers.set(target.key, settled);
   return settled;
 }
 
-const IDLE: ContactLookup = { status: "idle", contact: null };
-const LOADING: ContactLookup = { status: "loading", contact: null };
+const IDLE: ContactLookup = { status: "idle", contact: null, page: null };
+const LOADING: ContactLookup = { status: "loading", contact: null, page: null };
 
 /**
  * Look up `listing`, or nothing at all.
  *
  * Pass `enabled` false while the panel is closed — the lookup costs
  * money and a property nobody opened must not spend any. A row that
- * already carries a contact from its feed, or has no listing page to
- * read, stays idle.
+ * already carries a contact from its feed stays idle; a live row with
+ * no listing page on file is looked up by its address.
  *
  * THE ANSWER IS DERIVED, NOT STORED. What this returns is read out of
  * the session cache during render; the effect exists only to start a
@@ -95,29 +129,28 @@ export function useListingContact(
   listing: RentalListing | null,
   enabled: boolean
 ): ContactLookup {
-  const url =
-    enabled && listing && !listing.contact && listing.sourceUrl
-      ? listing.sourceUrl
-      : null;
-
+  const target = enabled && listing && !listing.contact ? targetFor(listing) : null;
+  const key = target?.key ?? null;
   const [, settled] = React.useReducer((n: number) => n + 1, 0);
 
   React.useEffect(() => {
-    if (!url || answers.has(url)) return;
+    if (!target || answers.has(target.key)) return;
     let live = true;
-    void lookup(url).then(() => {
+    void lookup(target).then(() => {
       // The panel may have moved on to another property by now; the
       // answer is in the cache either way, and the render below reads
-      // whichever URL is current rather than this one.
+      // whichever key is current rather than this one.
       if (live) settled();
     });
     return () => {
       live = false;
     };
-  }, [url]);
+    // The target is rebuilt each render; its key is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
-  if (!url) return IDLE;
-  return answers.get(url) ?? LOADING;
+  if (!key) return IDLE;
+  return answers.get(key) ?? LOADING;
 }
 
 /** Tests only. */

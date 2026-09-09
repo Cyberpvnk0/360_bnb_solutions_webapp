@@ -24,6 +24,7 @@
 import { NextResponse } from "next/server";
 import { requirePaid } from "@/lib/auth/gate";
 import { fetchRedfinContact, isListingPageUrl } from "@/lib/live/redfin-contact";
+import { resolveListingPage } from "@/lib/live/redfin-page";
 import { reserveContact } from "@/lib/live/quota";
 import { ScraperApiError } from "@/lib/live/scraperapi";
 
@@ -39,7 +40,25 @@ export async function GET(request: Request) {
   if (!paid.ok) return paid.response;
 
   const { searchParams } = new URL(request.url);
-  const url = searchParams.get("url");
+  // Either the listing's page, or the address to find it by: a row the
+  // market join never matched has no page on file, and its contact was
+  // simply never looked up. See lib/live/redfin-page.
+  let url = searchParams.get("url");
+  let page: string | null = null;
+  if (!url) {
+    const address = (searchParams.get("address") ?? "").trim();
+    const city = (searchParams.get("city") ?? "").trim();
+    const state = (searchParams.get("state") ?? "").trim().toUpperCase();
+    if (address.length >= 4 && city.length >= 2 && /^[A-Z]{2}$/.test(state)) {
+      page = await resolveListingPage({ address, city, stateCode: state });
+      if (!page) {
+        // The portal does not know this address: nothing to read, and
+        // nothing was spent on a page.
+        return NextResponse.json({ ok: true, contact: null, blocked: false, page: null });
+      }
+      url = page;
+    }
+  }
   // Counts only — which strategies fired, never what the page said.
   // An empty extraction has half a dozen causes needing opposite fixes,
   // and this tells them apart in one billed read instead of six.
@@ -73,6 +92,9 @@ export async function GET(request: Request) {
       // Null with `blocked` true means we never got to see the page.
       contact,
       blocked,
+      // The page, when this call had to find it — the panel's "View
+      // photos" can open it from now on.
+      page,
       credits,
       ...(signals ? { signals } : {}),
       remaining: budget.remaining,

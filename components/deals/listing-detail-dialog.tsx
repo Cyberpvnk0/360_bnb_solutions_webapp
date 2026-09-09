@@ -228,6 +228,9 @@ export function ListingDetailDialog({
   // nobody looked at must not spend any.
   const looked = useListingContact(listing, open);
   const contact = listing?.contact ?? looked.contact;
+  // The page the contact lookup found, when the row arrived without
+  // one — so "View photos" opens the property too.
+  const pageFound = looked.page ?? undefined;
   const locality = listing
     ? localityLine(
         listing.address,
@@ -354,7 +357,10 @@ export function ListingDetailDialog({
                     <ArrowRight aria-hidden className="size-3.5" />
                   </Link>
                 </Button>
-                <PhotosLink place={listing} real={isLive} />
+                <PhotosLink
+                  place={{ ...listing, sourceUrl: listing.sourceUrl ?? pageFound }}
+                  real={isLive}
+                />
               </div>
             </Panel>
 
@@ -500,11 +506,16 @@ export function ListingDetailDialog({
                       same. "Couldn't read it" is not "there is none",
                       and sending somebody away from a number that
                       exists is the failure that matters here. */}
-                  {looked.status === "unreadable"
-                    ? "Couldn't read this listing's page just now."
-                    : "No contact details published for this listing."}
-                  {hasOwnListingPage(listing)
-                    ? " The listing page behind View photos has them."
+                  {!isLive
+                    ? "Preview inventory carries no contact details."
+                    : looked.status === "unreadable"
+                      ? "Couldn't read this listing's page just now."
+                      : looked.status === "no-page"
+                        ? "This property isn't on the listing site contacts are read from."
+                        : "This listing's page publishes no contact details."}
+                  {hasOwnListingPage({ ...listing, sourceUrl: listing.sourceUrl ?? pageFound }) &&
+                  looked.status !== "none"
+                    ? " The listing page behind View photos may have them."
                     : ""}
                 </p>
               )}
