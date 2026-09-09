@@ -444,3 +444,110 @@
 .comp-row.is-selected:hover {
   background-color: #b81c31;
 }
+
+/* ------------------------------------------------------------------ */
+/* "Analyzing" — the result page while the numbers run                  */
+/* (components/analyze/analyzing-screen). An arc sweeping a ring, a     */
+/* glow breathing behind it, one line of copy crossfading through what  */
+/* the page is doing. Indeterminate on purpose: there is no measured    */
+/* progress to draw. Static under reduced motion.                       */
+.analyzing-ring {
+  animation: analyzing-rotate 1.6s linear infinite;
+}
+.analyzing-ring .track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 3.5;
+}
+.analyzing-ring .arc {
+  fill: none;
+  stroke: var(--select);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  /* 2π·20 ≈ 125.7: the whole circle, so the offset below is the gap. */
+  stroke-dasharray: 126;
+  stroke-dashoffset: 100;
+  transform-origin: 50% 50%;
+  animation: analyzing-dash 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes analyzing-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes analyzing-dash {
+  0% {
+    stroke-dashoffset: 118;
+    transform: rotate(0deg);
+  }
+  50% {
+    stroke-dashoffset: 40;
+    transform: rotate(120deg);
+  }
+  100% {
+    stroke-dashoffset: 118;
+    transform: rotate(360deg);
+  }
+}
+.analyzing-glow {
+  animation: analyzing-breathe 2.6s ease-in-out infinite;
+}
+@keyframes analyzing-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.1);
+  }
+}
+/* Three phrases, 1.8s each, one cycle of 5.4s. Each starts hidden and
+   joins the cycle one slot later than the last (fill-mode "both" holds
+   the first keyframe until its delay is up). */
+.analyzing-phrase {
+  opacity: 0;
+  animation: analyzing-cycle 5.4s cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+  animation-delay: calc(var(--i) * 1.8s);
+}
+@keyframes analyzing-cycle {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  6% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  28% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  33.3% {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .analyzing-ring,
+  .analyzing-ring .arc,
+  .analyzing-glow,
+  .analyzing-phrase {
+    animation: none;
+  }
+  .analyzing-glow {
+    opacity: 0.5;
+  }
+  .analyzing-phrase {
+    display: none;
+  }
+  .analyzing-phrase:first-child {
+    display: block;
+    opacity: 1;
+  }
+}
