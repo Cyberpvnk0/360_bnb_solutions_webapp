@@ -290,7 +290,7 @@ export function AnalyzeResult({
                 href={`/deals?market=${analysis.marketSlug}`}
                 className="inline-flex items-center gap-0.5 text-gold transition-colors duration-150 hover:text-gold-bright"
               >
-                Rentals here
+                View market rentals
                 <ArrowUpRight aria-hidden className="size-3" />
               </Link>
             </p>

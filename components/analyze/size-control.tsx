@@ -68,7 +68,7 @@ export function SizeControl({
           className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:border-gold/50 hover:text-foreground"
         >
           <Pencil aria-hidden className="size-3" />
-          {assumed ? "Not right? Set the size" : "Change size"}
+          {assumed ? "Assumed · Edit" : "Edit"}
         </button>
       </div>
     );

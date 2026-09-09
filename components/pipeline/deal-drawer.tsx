@@ -182,7 +182,7 @@ function DealDrawerBody({ deal }: { deal: Deal }) {
             href={`/deals?market=${deal.marketSlug}`}
             className="inline-flex items-center gap-0.5 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
-            Rentals here
+            View market rentals
             <ArrowUpRight aria-hidden className="size-3" />
           </Link>
         </div>
