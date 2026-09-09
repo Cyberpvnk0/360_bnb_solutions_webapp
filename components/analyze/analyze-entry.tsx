@@ -171,7 +171,7 @@ export function AnalyzeEntry({
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 md:px-10">
         <MetricLabel>Running pull</MetricLabel>
-        <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight md:text-3xl">
+        <h1 className="mt-1.5 font-display text-2xl font-semibold tracking-tight md:text-3xl">
           {place.address}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

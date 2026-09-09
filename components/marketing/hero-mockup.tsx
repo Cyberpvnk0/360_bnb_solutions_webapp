@@ -29,7 +29,7 @@ export function HeroMockup({ className }: { className?: string }) {
         <div className="flex flex-col items-center px-6 pb-7 pt-8">
           <BreakevenGauge breakeven={0.46} marketOccupancy={0.63} size={200} strokeWidth={5}>
             <MetricLabel className="text-[9px] leading-3">Breakeven</MetricLabel>
-            <div className="mt-0.5 font-display text-5xl font-medium leading-none tracking-tight text-foreground tabular">
+            <div className="mt-0.5 font-display text-5xl font-semibold leading-none tracking-tight text-foreground tabular">
               46%
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">

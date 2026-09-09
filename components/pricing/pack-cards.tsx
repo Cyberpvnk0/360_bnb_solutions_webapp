@@ -54,7 +54,7 @@ export function PackCards({
                 Best value
               </StatusChip>
             ) : null}
-            <span className="font-display text-2xl font-medium leading-none tabular">
+            <span className="font-display text-2xl font-semibold leading-none tabular">
               {fmtMoney(pack.price)}
             </span>
             <span className="mt-2 text-sm font-medium text-foreground">

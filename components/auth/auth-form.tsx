@@ -128,7 +128,7 @@ export function AuthForm({
     return (
       <div className="rounded-sm border border-border bg-card p-6">
         <MetricLabel>Setup needed</MetricLabel>
-        <h1 className="mt-1.5 font-display text-xl font-medium tracking-tight text-foreground">
+        <h1 className="mt-1.5 font-display text-xl font-semibold tracking-tight text-foreground">
           Sign-in isn&apos;t switched on yet
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
@@ -186,7 +186,7 @@ export function AuthForm({
     return (
       <div className="rounded-sm border border-border bg-card p-6">
         <MetricLabel>Almost there</MetricLabel>
-        <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight text-foreground">
+        <h1 className="mt-1.5 font-display text-2xl font-semibold tracking-tight text-foreground">
           Check your email
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -244,7 +244,7 @@ export function AuthForm({
       noValidate
     >
       <MetricLabel>{signingUp ? "Create account" : "Welcome back"}</MetricLabel>
-      <h1 className="mt-1.5 font-display text-2xl font-medium tracking-tight text-foreground">
+      <h1 className="mt-1.5 font-display text-2xl font-semibold tracking-tight text-foreground">
         {signingUp ? "Start analyzing deals" : "Sign in"}
       </h1>
 

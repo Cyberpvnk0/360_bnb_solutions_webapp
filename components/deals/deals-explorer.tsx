@@ -1003,7 +1003,7 @@ export function DealsExplorer({
               >
                 <Search className="size-5" />
               </span>
-              <h2 className="mt-4 font-display text-xl font-medium tracking-tight text-foreground">
+              <h2 className="mt-4 font-display text-xl font-semibold tracking-tight text-foreground">
                 Where are you hunting?
               </h2>
               <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">

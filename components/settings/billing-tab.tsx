@@ -72,7 +72,7 @@ export function BillingTab() {
           ) : null}
         </div>
         <div className="p-6">
-          <div className="font-display text-3xl font-medium tracking-tight text-foreground">
+          <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
             {tier.name}
           </div>
           <p className="mt-1 text-sm text-muted-foreground tabular">

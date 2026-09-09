@@ -70,7 +70,7 @@ export function FurnishedSearching({ market }: { market: string }) {
     >
       <SweepRing />
       <p className="metric-label mt-2">Furnished search</p>
-      <h2 className="mt-1 font-display text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+      <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
         Finding furnished rentals in {market}
       </h2>
       <div className="working-phrases relative mt-2 h-5 w-full max-w-sm text-sm text-muted-foreground">

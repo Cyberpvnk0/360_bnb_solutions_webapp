@@ -127,7 +127,7 @@ export function UpgradeModal() {
                 size={150}
                 strokeWidth={4}
               >
-                <span className="font-display text-4xl font-medium tabular">
+                <span className="font-display text-4xl font-semibold tabular">
                   {fmtPct(preview.breakeven)}
                 </span>
               </BreakevenGauge>
@@ -155,7 +155,7 @@ export function UpgradeModal() {
 
         <div className="p-7">
           <DialogHeader className="text-left">
-            <DialogTitle className="font-display text-2xl font-medium tracking-tight">
+            <DialogTitle className="font-display text-2xl font-semibold tracking-tight">
               {heading}
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">

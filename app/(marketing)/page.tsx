@@ -48,7 +48,7 @@ export default function LandingPage() {
       <section className="py-20 md:py-28">
         <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <div>
-            <h1 className="font-display text-5xl font-medium leading-[1.04] tracking-tight text-foreground md:text-6xl">
+            <h1 className="font-display text-5xl font-semibold leading-[1.04] tracking-tight text-foreground md:text-6xl">
               Know your breakeven occupancy before you sign the lease.
             </h1>
             <p className="mt-6 max-w-xl text-base text-muted-foreground md:text-lg">
@@ -89,7 +89,7 @@ export default function LandingPage() {
       <section className="py-20 md:py-28">
         <div className="mx-auto max-w-6xl px-4 md:px-8">
           <MetricLabel>How it works</MetricLabel>
-          <h2 className="mt-3 max-w-xl font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+          <h2 className="mt-3 max-w-xl font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
             From address to decision.
           </h2>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -113,7 +113,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-2">
           <div>
             <MetricLabel>Market explorer</MetricLabel>
-            <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
               Start where the spread is widest.
             </h2>
             <p className="mt-4 max-w-md text-base text-muted-foreground">
@@ -133,7 +133,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-2">
           <div className="lg:order-2 lg:justify-self-end">
             <MetricLabel>Evidence-first comps</MetricLabel>
-            <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
               You never see an estimate without the comps that made it.
             </h2>
             <p className="mt-4 max-w-md text-base text-muted-foreground">
@@ -151,7 +151,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 md:px-8 lg:grid-cols-2">
           <div>
             <MetricLabel>Pipeline &amp; landlord book</MetricLabel>
-            <h2 className="mt-3 font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
               Your landlord book is yours.
             </h2>
             <p className="mt-4 max-w-md text-base text-muted-foreground">
@@ -172,7 +172,7 @@ export default function LandingPage() {
       {/* 6 — Closing */}
       <section className="py-20 md:py-28">
         <div className="mx-auto flex max-w-6xl flex-col items-center px-4 text-center md:px-8">
-          <p className="max-w-2xl font-display text-3xl font-medium tracking-tight text-foreground md:text-5xl">
+          <p className="max-w-2xl font-display text-3xl font-semibold tracking-tight text-foreground md:text-5xl">
             The numbers first. Then the keys.
           </p>
           <Button asChild size="lg" className="mt-8">

@@ -5,7 +5,7 @@ export default function NotFound() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-4 text-center">
       <p className="metric-label">{APP_NAME}</p>
-      <h1 className="mt-3 font-display text-5xl font-medium tracking-tight text-foreground">
+      <h1 className="mt-3 font-display text-5xl font-semibold tracking-tight text-foreground">
         No such page
       </h1>
       <p className="mt-3 max-w-sm text-sm text-muted-foreground">

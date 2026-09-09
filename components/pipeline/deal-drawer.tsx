@@ -116,7 +116,7 @@ function DealDrawerBody({ deal }: { deal: Deal }) {
   return (
     <>
       <SheetHeader className="border-b border-border pr-12">
-        <SheetTitle className="font-display text-xl font-medium leading-snug tracking-tight">
+        <SheetTitle className="font-display text-xl font-semibold leading-snug tracking-tight">
           {deal.address}
         </SheetTitle>
         <SheetDescription>

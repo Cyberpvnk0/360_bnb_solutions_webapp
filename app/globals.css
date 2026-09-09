@@ -165,11 +165,13 @@
   --color-gold-bright: var(--gold-bright);
   --color-gold-fill: var(--gold-fill);
 
-  /* Typography: tight grotesk for chrome, high-contrast serif display. */
+  /* Typography: one tight grotesk for everything. Headings and big
+     figures are the same family at a heavier weight — a modern, flat
+     read, the way the revenue figure already set — rather than the
+     high-contrast serif that used to sit on top of it. */
   --font-sans: "Inter Tight Variable", "Inter Tight", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman",
-    serif;
+  --font-display: var(--font-sans);
 
   /* Rounded, friendly corners — cards sit at 12–16px. */
   --radius-xs: 6px;

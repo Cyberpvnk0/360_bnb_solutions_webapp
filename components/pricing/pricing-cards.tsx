@@ -61,7 +61,7 @@ function TierPrice({ tier, billing }: { tier: Tier; billing: BillingCycle }) {
   if (tier.priceMonthly === 0) {
     return (
       <div className="flex items-baseline gap-1">
-        <span className="font-display text-4xl font-medium tracking-tight tabular">
+        <span className="font-display text-4xl font-semibold tracking-tight tabular">
           $0
         </span>
         <span className="text-sm text-muted-foreground">forever</span>
@@ -76,7 +76,7 @@ function TierPrice({ tier, billing }: { tier: Tier; billing: BillingCycle }) {
         <AnimatedNumber
           value={effective}
           format={fmtMoneyCents}
-          className="font-display text-4xl font-medium tracking-tight"
+          className="font-display text-4xl font-semibold tracking-tight"
         />
         <span className="text-sm text-muted-foreground">/mo</span>
       </div>

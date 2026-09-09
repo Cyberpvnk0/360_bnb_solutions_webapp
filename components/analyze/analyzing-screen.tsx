@@ -81,7 +81,7 @@ function AnalyzingHero({
       <AnalyzingRing />
       <div className="min-w-0 flex-1">
         <p className="metric-label">Analyzing</p>
-        <h1 className="mt-1 truncate font-display text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+        <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
           {address ?? "This property"}
         </h1>
         {place ? (

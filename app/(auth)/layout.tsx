@@ -18,7 +18,7 @@ export default function AuthLayout({
       <header className="px-4 py-6 md:px-8">
         <Link
           href="/"
-          className="font-display text-lg font-medium tracking-tight text-foreground"
+          className="font-display text-lg font-semibold tracking-tight text-foreground"
         >
           {APP_NAME}
         </Link>

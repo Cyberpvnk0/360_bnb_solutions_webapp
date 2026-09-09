@@ -22,7 +22,7 @@ export function Wordmark({
         aria-hidden
         className="block size-2.5 rotate-45 border border-gold bg-gold-fill/20"
       />
-      <span className="font-display text-lg font-medium tracking-tight">
+      <span className="font-display text-lg font-semibold tracking-tight">
         {APP_NAME}
       </span>
     </Link>

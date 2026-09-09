@@ -114,7 +114,7 @@ function SheetBody({ landlord }: { landlord: Landlord }) {
     <div className="flex min-h-full flex-col">
       {/* Identity */}
       <div className="border-b border-border px-5 pt-5 pb-5">
-        <SheetTitle className="pr-8 font-display text-xl font-medium tracking-tight text-foreground">
+        <SheetTitle className="pr-8 font-display text-xl font-semibold tracking-tight text-foreground">
           {landlord.name}
         </SheetTitle>
         <SheetDescription className="mt-0.5 text-sm text-muted-foreground">

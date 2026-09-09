@@ -20,7 +20,7 @@ export function PricingSection() {
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-8">
       <div className="flex flex-col items-center text-center">
-        <h2 className="font-display text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+        <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
           Pricing that doesn&apos;t eat the spread
         </h2>
         <p className="mt-3 max-w-md text-sm text-muted-foreground">
@@ -45,7 +45,7 @@ export function PricingSection() {
           is priced above the plan rate at its size, so the row reads as
           "for the month you run short", which is what it is. */}
       <div className="mt-16 flex flex-col items-center text-center">
-        <h3 className="font-display text-2xl font-medium tracking-tight text-foreground">
+        <h3 className="font-display text-2xl font-semibold tracking-tight text-foreground">
           Run short mid-month? Top up.
         </h3>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">

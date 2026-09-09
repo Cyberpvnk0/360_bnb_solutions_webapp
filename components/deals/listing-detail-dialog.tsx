@@ -281,7 +281,7 @@ export function ListingDetailDialog({
                         </StatusChip>
                       ) : null}
 
-                      <DialogTitle className="font-display text-lg font-medium leading-tight tracking-tight text-foreground sm:text-2xl">
+                      <DialogTitle className="font-display text-lg font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
                         {listing.address}
                       </DialogTitle>
 
@@ -388,7 +388,7 @@ export function ListingDetailDialog({
                   <MetricLabel>Cushion</MetricLabel>
                   <p
                     className={cn(
-                      "mt-1 font-display text-3xl font-medium tracking-tight tabular sm:text-4xl",
+                      "mt-1 font-display text-3xl font-semibold tracking-tight tabular sm:text-4xl",
                       short ? "text-neg" : "text-gold"
                     )}
                   >

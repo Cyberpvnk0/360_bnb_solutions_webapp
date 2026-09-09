@@ -20,7 +20,7 @@ export function StatCard({ label, value, sub, serif, className }: StatCardProps)
       <div
         className={cn(
           "mt-2 truncate text-[1.75rem] leading-tight tracking-tight text-foreground tabular",
-          serif ? "font-display font-medium" : "font-semibold"
+          serif ? "font-display font-bold" : "font-semibold"
         )}
       >
         {value}

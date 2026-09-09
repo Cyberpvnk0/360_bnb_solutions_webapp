@@ -271,7 +271,7 @@ export function AnalyzeResult({
             className="h-28 w-full max-w-44 shrink-0 md:h-[104px] md:w-[152px]"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="mt-1 truncate font-display text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+            <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
               {analysis.address}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">

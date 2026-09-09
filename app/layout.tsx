@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/inter-tight";
-import "@fontsource-variable/fraunces";
 import "./globals.css";
 
 import { APP_NAME, APP_TAGLINE } from "@/config/app";
