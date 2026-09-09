@@ -274,8 +274,18 @@ export function AnalyzeResult({
             <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
               {analysis.address}
             </h1>
+            {/* One line of context, not three paragraphs: the town, the
+                market the rules come from when that is somewhere else,
+                and the way to its rentals. */}
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {analysis.city}, {analysis.stateCode} ·{" "}
+              {analysis.city}, {analysis.stateCode}
+              {distantMarket ? (
+                <>
+                  {" "}· {searchedAddress!.market.name} market,{" "}
+                  <span className="tabular">{searchedAddress!.milesAway}</span> mi away
+                </>
+              ) : null}{" "}
+              ·{" "}
               <Link
                 href={`/deals?market=${analysis.marketSlug}`}
                 className="inline-flex items-center gap-0.5 text-gold transition-colors duration-150 hover:text-gold-bright"
@@ -292,49 +302,19 @@ export function AnalyzeResult({
             <div className="mt-2">
               <PhotosLink place={analysis} real={realAddress} variant="chip" />
             </div>
-            {/* Regulation and the median lease come from the market, not
-                the address. Near its centre that is a fair swap; far
-                out it is a real assumption and gets said. */}
-            {searchedAddress?.assumedSize ? (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                Sized as a {analysis.bedrooms} bed, {analysis.bathrooms} bath
-                because nothing said otherwise — every figure below moves
-                with it, so set it if that is wrong.
-              </p>
-            ) : null}
-            {/* The single number every figure below stands on. Saying
-                where it came from is not a caveat on the modelled case
-                only — the measured case has to be recognisable too, or
-                nobody learns to tell them apart. */}
+            {/* The one fact worth a line: whether the rent every figure
+                stands on is this unit's own or an estimate. Measured and
+                modelled must stay tellable apart; the rest of the old
+                explanation (what to do about it) is the calculator's
+                job. The assumed size says so on its own chip. */}
             {searchedAddress ? (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                {searchedAddress.rentSource === "listing" ? (
-                  <>
-                    Starting from this unit&apos;s asking rent of{" "}
-                    <span className="tabular text-foreground">
-                      {fmtMoney(analysis.defaults.monthlyRent)}
-                    </span>
-                    /mo. Change it below to test a negotiation.
-                  </>
-                ) : (
-                  <>
-                    No asking rent for this address, so the calculator starts
-                    at{" "}
-                    <span className="tabular text-foreground">
-                      {fmtMoney(analysis.defaults.monthlyRent)}
-                    </span>
-                    /mo — the median of the comparable leases below, not this
-                    unit&apos;s own. Set the real one to make the rest exact.
-                  </>
-                )}
-              </p>
-            ) : null}
-            {distantMarket ? (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                Nearest covered market is {searchedAddress!.market.name},{" "}
-                <span className="tabular">{searchedAddress!.milesAway}</span> miles
-                away — local rules come from there. Comps below are drawn
-                around this address.
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {searchedAddress.rentSource === "listing" ? "Asking rent " : "Rent estimated at "}
+                <span className="tabular text-foreground">
+                  {fmtMoney(analysis.defaults.monthlyRent)}
+                </span>
+                /mo
+                {searchedAddress.rentSource === "listing" ? "" : " from nearby leases"}
               </p>
             ) : null}
             <div className="mt-2.5 flex flex-wrap gap-1.5">
