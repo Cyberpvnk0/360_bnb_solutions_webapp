@@ -32,3 +32,14 @@ describe("where a comp can be opened", () => {
     expect(compListingUrl({ id: "sc-7" })).toBeNull();
   });
 });
+
+describe("a comp the feed marked as no longer listed", () => {
+  it("has no link, whatever link it was stored with", () => {
+    expect(
+      compListingUrl({ id: "sc-live-36549812", listingUrl: "https://www.airbnb.com/rooms/36549812", active: false })
+    ).toBeNull();
+    expect(compListingUrl({ id: "sc-live-36549812", active: true })).toBe(
+      "https://www.airbnb.com/rooms/36549812"
+    );
+  });
+});

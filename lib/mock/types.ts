@@ -111,6 +111,10 @@ export interface StrComp {
   /** The listing's own page on its platform, when known — a comp is a
    *  real listing somebody can open. */
   listingUrl?: string;
+  /** Whether the feed says the listing is still up. False means it
+   *  said no — the comp still counts as evidence, but its page would
+   *  be an error and nothing links to it. Absent when it did not say. */
+  active?: boolean;
   /** The listing's cover photo, when the feed carries one. Linked, not
    *  copied: the image is served by its platform, never stored here. */
   photoUrl?: string;

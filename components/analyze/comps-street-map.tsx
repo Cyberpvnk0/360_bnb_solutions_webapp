@@ -333,15 +333,20 @@ export function CompsStreetMap({
                 {(() => {
                   const page = compListingUrl(active);
                   return (
-                    <a
-                      href={page ?? airbnbAreaUrl(active.lat, active.lon)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-select transition-colors duration-150 hover:underline"
-                    >
-                      {page ? "View listing on Airbnb" : "Open this area on Airbnb"}
-                      <ArrowUpRight aria-hidden className="size-3" />
-                    </a>
+                    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                      {active.active === false ? (
+                        <span className="text-muted-foreground">No longer listed</span>
+                      ) : null}
+                      <a
+                        href={page ?? airbnbAreaUrl(active.lat, active.lon)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-select transition-colors duration-150 hover:underline"
+                      >
+                        {page ? "View listing on Airbnb" : "Open this area on Airbnb"}
+                        <ArrowUpRight aria-hidden className="size-3" />
+                      </a>
+                    </span>
                   );
                 })()}
 

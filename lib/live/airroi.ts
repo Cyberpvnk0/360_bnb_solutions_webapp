@@ -357,6 +357,58 @@ export function platformOf(row: Row, info: Row | null): "airbnb" | "vrbo" | "oth
  * from. A comp the feed marks as some third platform gets no link
  * rather than a wrong one.
  */
+/* ------------------------------------------------------------------ */
+/* Whether a comp is still listed                                      */
+/* ------------------------------------------------------------------ */
+
+/** Keys that say a listing is live (true) or not (false). */
+const LIVE_KEYS = ["is_active", "active", "isActive", "is_listed", "listed", "is_live", "live"];
+/** Keys that say a listing is gone when TRUE. */
+const GONE_KEYS = ["inactive", "is_inactive", "unlisted", "is_unlisted", "deleted", "is_deleted", "removed", "is_removed"];
+/** Keys holding a status word. */
+const STATUS_KEYS = ["status", "listing_status", "listingStatus", "availability_status", "state"];
+const LIVE_WORDS = /^(active|live|listed|available|online|published)$/i;
+const GONE_WORDS = /^(inactive|unlisted|delisted|deleted|removed|suspended|paused|snoozed|offline|unavailable|closed)$/i;
+
+/**
+ * Whether the feed says this comp is still listed, and which field
+ * said so. Null when it says nothing either way.
+ *
+ * A comp set is trailing-twelve-month evidence: a listing that earned
+ * in the year is a comp whether or not it is still up today, and some
+ * are not. A room link for one of those opens the platform's
+ * "something went wrong" page — which is what the links that failed
+ * on an ordinary eight-digit id were. Only a signal the feed actually
+ * carries is read; nothing is inferred from dates or silence.
+ */
+export function activityOf(
+  row: Row,
+  info: Row | null
+): { active: boolean | null; key: string | null } {
+  const scopes: Array<[string, Row]> = info ? [["listing_info", info], ["", row]] : [["", row]];
+  for (const [scope, src] of scopes) {
+    const at = (k: string) => (scope ? `${scope}.${k}` : k);
+    for (const k of LIVE_KEYS) {
+      const v = src[k];
+      if (typeof v === "boolean") return { active: v, key: at(k) };
+      if (typeof v === "number" && (v === 0 || v === 1)) return { active: v === 1, key: at(k) };
+    }
+    for (const k of GONE_KEYS) {
+      const v = src[k];
+      if (typeof v === "boolean") return { active: !v, key: at(k) };
+      if (typeof v === "number" && (v === 0 || v === 1)) return { active: v === 0, key: at(k) };
+    }
+    for (const k of STATUS_KEYS) {
+      const v = src[k];
+      if (typeof v !== "string") continue;
+      const word = v.trim();
+      if (LIVE_WORDS.test(word)) return { active: true, key: at(k) };
+      if (GONE_WORDS.test(word)) return { active: false, key: at(k) };
+    }
+  }
+  return { active: null, key: null };
+}
+
 export function listingPageUrl(row: Row, info: Row | null, id: string): string | null {
   const given = (info ? pickHttpsUrl(info, URL_KEYS) : null) ?? pickHttpsUrl(row, URL_KEYS);
   if (given) return given;
@@ -412,6 +464,10 @@ export function rememberCompShape(rows: unknown[]): void {
   // the difference between a fallback and a fix. "exact" here means it
   // survived as an integer that is not the printed form of a double.
   shape.$id = idShapeOf(first as Row);
+  // Which field, if any, says whether a comp is still listed — the
+  // one fact that decides whether its room link can be trusted.
+  const activity = activityOf(first as Row, group(first as Row, "listing_info"));
+  shape.$active = [activity.key ?? "no field says whether a comp is still listed"];
   lastCompShape = shape;
   // Names only, never values; a failed write is a missing diagnostic,
   // not a missing feature.
@@ -477,9 +533,12 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   const name =
     (info ? pickString(info, NAME_KEYS) : null) ?? pickString(row, NAME_KEYS);
   // The listing's own page: the feed's link when it gives one, else the
-  // page its id names. Its cover photo likewise, from wherever the
-  // payload keeps it — never from the description, which is prose.
-  const listingUrl = listingPageUrl(row, info, id);
+  // page its id names — and neither for a listing the feed says is no
+  // longer up, whose page would be an error. Its cover photo likewise,
+  // from wherever the payload keeps it — never from the description,
+  // which is prose.
+  const { active } = activityOf(row, info);
+  const listingUrl = active === false ? null : listingPageUrl(row, info, id);
   const photoUrl =
     (info ? pickHttpsUrl(info, PHOTO_KEYS) ?? pickFirstPhoto(info) : null) ??
     pickHttpsUrl(row, PHOTO_KEYS) ??
@@ -517,6 +576,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     name: name ?? `${Math.max(1, Math.round(bedrooms))} BR nearby rental`,
     ...(listingUrl ? { listingUrl } : {}),
     ...(photoUrl ? { photoUrl } : {}),
+    ...(active === null ? {} : { active }),
     bedrooms: Math.max(0, Math.round(bedrooms)),
     bathrooms: Math.max(0.5, bathrooms),
     adr: Math.round(adr),

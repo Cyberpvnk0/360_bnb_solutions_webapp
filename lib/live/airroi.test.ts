@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, toFraction } from "./airroi";
+import { activityOf, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -291,5 +291,35 @@ describe("a room link is never built from a rounded id", () => {
     // rather than a room page that does not exist.
     const c = mapComp(realComp({ listing_info: { listing_id: Number(EXACT), listing_name: "Loft" } }), 0);
     expect(c?.listingUrl).toBeUndefined();
+  });
+});
+
+describe("a comp the feed says is no longer listed", () => {
+  it("keeps its numbers and loses its link", () => {
+    // Trailing-twelve-month evidence counts whether or not the listing
+    // is still up; the page of one that is not is an error.
+    const c = mapComp(realComp({ listing_info: { listing_id: 36549812, listing_name: "Gone", is_active: false } }), 0);
+    expect(c?.adr).toBeGreaterThan(0);
+    expect(c?.active).toBe(false);
+    expect(c?.listingUrl).toBeUndefined();
+  });
+
+  it("links as before when the feed says it is live, or says nothing", () => {
+    const live = mapComp(realComp({ listing_info: { listing_id: 36549812, listing_name: "Up", status: "active" } }), 0);
+    expect(live?.active).toBe(true);
+    expect(live?.listingUrl).toBe("https://www.airbnb.com/rooms/36549812");
+    const silent = mapComp(realComp({ listing_info: { listing_id: 36549812, listing_name: "Unknown" } }), 0);
+    expect(silent?.active).toBeUndefined();
+    expect(silent?.listingUrl).toBe("https://www.airbnb.com/rooms/36549812");
+  });
+
+  it("reads the signal in the shapes feeds use, and names the field", () => {
+    expect(activityOf({ is_active: true }, null)).toEqual({ active: true, key: "is_active" });
+    expect(activityOf({ unlisted: true }, null)).toEqual({ active: false, key: "unlisted" });
+    expect(activityOf({ active: 0 }, null)).toEqual({ active: false, key: "active" });
+    expect(activityOf({}, { status: "Inactive" })).toEqual({ active: false, key: "listing_info.status" });
+    expect(activityOf({ status: "live" }, null)).toEqual({ active: true, key: "status" });
+    expect(activityOf({ status: "something else" }, null)).toEqual({ active: null, key: null });
+    expect(activityOf({}, null)).toEqual({ active: null, key: null });
   });
 });

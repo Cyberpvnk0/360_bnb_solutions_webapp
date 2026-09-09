@@ -18,7 +18,11 @@
 import type { StrComp } from "@/lib/mock/types";
 import { looksRoundedId, urlIdLooksRounded } from "./listing-id";
 
-export function compListingUrl(comp: Pick<StrComp, "id" | "listingUrl">): string | null {
+export function compListingUrl(
+  comp: Pick<StrComp, "id" | "listingUrl" | "active">
+): string | null {
+  // The feed said this one is no longer up: its page is an error.
+  if (comp.active === false) return null;
   if (comp.listingUrl) {
     return urlIdLooksRounded(comp.listingUrl) ? null : comp.listingUrl;
   }
