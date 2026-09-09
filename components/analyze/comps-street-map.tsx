@@ -287,16 +287,17 @@ export function CompsStreetMap({
 
   return (
     <figure className={cn("min-w-0", className)}>
-      {/* As tall as the viewport allows beside the table (it is sticky
-          there), within sane bounds; a fixed height when it sits above
-          the table on narrower screens. MapLibre re-reads the container
+      {/* Tall enough to read a neighbourhood beside the table (it is
+          sticky there) and no taller — a map that filled the viewport
+          was more map than the comps needed; a fixed height when it
+          sits above the table on narrower screens. MapLibre re-reads the container
           on window resize, which is the only time this height changes.
 
           overflow-clip, not hidden: both round the corners, but hidden
           makes this box a scroll container and a sticky child sticks to
           it instead of the page. The docked card below has to stick to
           the page. */}
-      <div className="relative flex h-[480px] flex-col justify-end overflow-clip rounded-lg border border-border bg-secondary/60 xl:h-[clamp(560px,calc(100vh-8rem),840px)]">
+      <div className="relative flex h-[480px] flex-col justify-end overflow-clip rounded-lg border border-border bg-secondary/60 xl:h-[clamp(480px,calc(100vh-14rem),660px)]">
         <div className="absolute inset-0">
           <div ref={containerRef} className="h-full w-full" />
         </div>

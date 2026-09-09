@@ -152,7 +152,7 @@ export function AnalyzingScreen() {
           <Skeleton className="h-12 w-full" />
           <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,42%)]">
             <Skeleton className="h-96" />
-            <Skeleton className="h-[480px] w-full xl:h-[560px]" />
+            <Skeleton className="h-[480px] w-full xl:h-[640px]" />
           </div>
         </div>
         <Skeleton className="h-64 w-full" />
