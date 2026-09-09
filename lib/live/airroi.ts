@@ -108,17 +108,15 @@ export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
  * it for the day something bypasses the plan — a bug, a loop, a route
  * that forgot to ask — and it should trip only then.
  *
- * WHICH MEANS IT MUST SIT ABOVE WHAT PAYING USERS ARE OWED. It used to
- * be fifty, sized when nothing metered per user. Fifty is one Scale
- * subscriber's morning; at a thousand accounts the plans entitle the
- * platform to several hundred fresh purchases a day, and a breaker
- * below that silently hands paying users modelled comps after the
- * first hour, in a product whose whole promise is measured ones.
- *
- * Five hundred a day is about ninety dollars of exposure per instance
- * at the measured $0.18 a call. Raise it as the subscriber base grows:
- * roughly (accounts x average monthly entitlement) / 30, times two for
- * headroom, and /api/usage shows what the fleet is actually spending.
+ * OFF UNLESS AIRROI_DAILY_CALLS IS SET. It used to default to fifty,
+ * then five hundred, and any figure here is a limit that sits above
+ * paying users: a breaker below what the plans entitle silently hands
+ * students modelled comps after the first busy hour, in a product
+ * whose whole promise is measured ones. The plan meter is the limit;
+ * this exists for an operator who wants a hard brake on the vendor
+ * bill, and it holds only when they name the figure. For sizing one:
+ * the measured price is $0.18 a call, and roughly (accounts x average
+ * monthly entitlement) / 30, times two for headroom, is the floor.
  *
  * Per-instance and per-day, like the quota beside it. A serverless
  * fleet means the true figure is this times however many instances
@@ -127,7 +125,7 @@ export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
  */
 const DAILY_CALL_BUDGET = (() => {
   const raw = Number(process.env.AIRROI_DAILY_CALLS);
-  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 500;
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : Number.POSITIVE_INFINITY;
 })();
 
 let spentDay = "";

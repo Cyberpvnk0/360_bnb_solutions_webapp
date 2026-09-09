@@ -46,17 +46,19 @@ export const MAX_SUGGESTIONS = 5;
 export const MIN_QUERY = 3;
 
 /* ------------------------------------------------------------------ */
-/* Daily ceiling on the billed providers                               */
+/* Daily ceiling on the billed providers — off unless set              */
 /* ------------------------------------------------------------------ */
-
-export const DEFAULT_SUGGEST_DAILY_CAP = 20_000;
 
 let dayKey = "";
 let spent = 0;
 
+/** SUGGEST_DAILY_CAP, or no ceiling. The only limits a person meets
+ *  are the ones their plan sets; this is an operator's optional brake
+ *  on the geocoding bill, and past it suggestions fall back to the
+ *  free provider for the rest of the day. */
 function suggestCap(): number {
   const raw = Number(process.env.SUGGEST_DAILY_CAP);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_SUGGEST_DAILY_CAP;
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : Number.POSITIVE_INFINITY;
 }
 
 /** One billed request against today's ceiling. False when it is spent. */

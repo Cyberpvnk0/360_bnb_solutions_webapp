@@ -90,7 +90,7 @@ export async function GET() {
       left: airroi.left,
       note:
         "Per-instance and per-day, so the fleet total is this times however many instances are warm — a brake, not a lock. " +
-        "Measured price is $0.18 a call, so the default of 500 is about $90 of exposure per instance per day. This is the circuit breaker behind the per-account plan meter, not the limit; AIRROI_DAILY_CALLS overrides it, and it should rise with the subscriber base. " +
+        "No cap unless AIRROI_DAILY_CALLS is set (dailyCap null means none): each account's plan meter is the limit, and this is an optional breaker behind it. Measured price is $0.18 a call. " +
         "A cached analysis costs nothing and never reaches this counter, which is why callsToday staying flat while analyses are viewed is the cache working, not the meter breaking.",
     },
     /**
@@ -115,12 +115,11 @@ export async function GET() {
     rentcast: {
       monthlyPlan: rentcast.monthly,
       dailyCap: rentcast.cap,
-      usedToday: rentcast.cap - rentcast.remaining,
+      usedToday: rentcast.used,
       left: rentcast.remaining,
       note:
-        "Daily cap is the monthly allowance spread over 31 days, floor one. " +
-        "RENTCAST_MONTHLY_REQUESTS states the plan (default 50, the free tier); RENTCAST_DAILY_CAP overrides the arithmetic. " +
-        "On a paid plan, set the monthly figure or Deal Finder opens one new market a day.",
+        "No cap unless set (null means none): each student's plan is the only limit on markets. " +
+        "To hold the feed to a plan, RENTCAST_MONTHLY_REQUESTS states it and the daily cap is that spread over 31 days, floor one; RENTCAST_DAILY_CAP overrides the arithmetic.",
     },
     costModel: {
       pagesPerSearch: pages,

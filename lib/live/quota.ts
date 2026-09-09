@@ -1,7 +1,20 @@
 /**
- * Daily ceiling on distinct live searches — the spend guard for the
- * per-area vendors: the furnished search, the STR market pulls, the
- * comps behind an analysis.
+ * Daily ceilings on what the vendors are asked — ALL OFF UNLESS SET.
+ *
+ * The limits a person meets are the ones their plan sets, per account,
+ * in lib/db/usage: analyses a month, markets a month. Nothing app-wide
+ * refuses a paying student what their plan includes. Every ledger in
+ * this file is a brake an operator may choose to add with one
+ * environment variable — a vendor bill to hold, a runaway to stop —
+ * and with the variable unset the ledger counts and never refuses.
+ * The first live search of a second market used to fail with "daily
+ * limit reached" because the rentals feed's ceiling defaulted to one
+ * market a day, sized to a free tier nobody is on; that default is
+ * gone, and so are the others.
+ *
+ * This first ledger: distinct live searches for the per-area vendors —
+ * the furnished search, the STR market pulls, the comps behind an
+ * analysis.
  *
  * NOT THE RENTALS FEED. That one has its own ledger further down, and
  * the reason is a plan mismatch this ledger used to paper over: its
@@ -27,13 +40,20 @@
  * KV, Redis) if you ever need the cap to be exact.
  */
 
-export const DEFAULT_DAILY_LIVE_SEARCH_CAP = 50;
+/** No ceiling: every check passes and `remaining` is unbounded. */
+export const UNCAPPED = Number.POSITIVE_INFINITY;
+
+/** A ceiling from an environment variable, or none at all. A junk or
+ *  missing value is "no cap" rather than a cautious guess, because a
+ *  guess is a limit nobody chose and the first person to hit it is a
+ *  paying student. */
+function capFromEnv(name: string): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : UNCAPPED;
+}
 
 export function dailyCap(): number {
-  const raw = Number(process.env.LIVE_SEARCH_DAILY_CAP);
-  return Number.isFinite(raw) && raw > 0
-    ? Math.floor(raw)
-    : DEFAULT_DAILY_LIVE_SEARCH_CAP;
+  return capFromEnv("LIVE_SEARCH_DAILY_CAP");
 }
 
 interface Ledger {
@@ -100,20 +120,14 @@ export function resetLiveSearchLedger(): void {
  * still cost twenty-four reads. This counts the thing that actually
  * bills — properties read in a day.
  *
- * The default is deliberately cautious because the credits-per-property
- * number is unknown until measured: a protected page is ~11 credits on
- * the cheap path but several times that when it needs JS rendering, so
- * 200 properties is somewhere between ~2k and ~15k credits a day. Raise
- * SCRAPERAPI_DAILY_ENRICH_CAP once a probe run has told you which end of
- * that range you're actually on.
+ * Off unless SCRAPERAPI_DAILY_ENRICH_CAP names a figure. For sizing
+ * one: a protected page is ~11 credits on the cheap path but several
+ * times that when it needs JS rendering, so 200 properties is
+ * somewhere between ~2k and ~15k credits a day; a probe run tells you
+ * which end of that range you're actually on.
  */
-export const DEFAULT_DAILY_ENRICH_CAP = 200;
-
 export function enrichCap(): number {
-  const raw = Number(process.env.SCRAPERAPI_DAILY_ENRICH_CAP);
-  return Number.isFinite(raw) && raw > 0
-    ? Math.floor(raw)
-    : DEFAULT_DAILY_ENRICH_CAP;
+  return capFromEnv("SCRAPERAPI_DAILY_ENRICH_CAP");
 }
 
 let enriched: { day: string; count: number } = { day: "", count: 0 };
@@ -170,15 +184,11 @@ export function resetEnrichLedger(): void {
  * all afternoon spends its addresses once.
  *
  * Same scope caveat as the ledgers above: server memory, per instance,
- * so this is a guard rather than a lock. Google's quota is the lock.
+ * so this is a guard rather than a lock. Google's quota is the lock —
+ * and, with IMAGERY_DAILY_CAP unset, the only one.
  */
-export const DEFAULT_DAILY_IMAGERY_CAP = 1_000;
-
 export function imageryCap(): number {
-  const raw = Number(process.env.IMAGERY_DAILY_CAP);
-  return Number.isFinite(raw) && raw > 0
-    ? Math.floor(raw)
-    : DEFAULT_DAILY_IMAGERY_CAP;
+  return capFromEnv("IMAGERY_DAILY_CAP");
 }
 
 let pictured: Ledger = { day: "", keys: new Set() };
@@ -245,15 +255,11 @@ export function resetImageryLedger(): void {
  * costs nothing and must not consume budget either.
  *
  * Same scope caveat as the ledgers above: server memory, per instance,
- * so this is a guard rather than a lock.
+ * so this is a guard rather than a lock. Off unless CONTACT_DAILY_CAP
+ * is set.
  */
-export const DEFAULT_DAILY_CONTACT_CAP = 300;
-
 export function contactCap(): number {
-  const raw = Number(process.env.CONTACT_DAILY_CAP);
-  return Number.isFinite(raw) && raw > 0
-    ? Math.floor(raw)
-    : DEFAULT_DAILY_CONTACT_CAP;
+  return capFromEnv("CONTACT_DAILY_CAP");
 }
 
 let contacted: Ledger = { day: "", keys: new Set() };
@@ -301,13 +307,11 @@ export function resetContactLedger(): void {
  *
  * A market refused today is not broken: its rows still show, and its
  * cards still link out through the fallback search. It simply waits its
- * turn tomorrow. Slow is the correct failure mode for a migration.
+ * turn tomorrow. Slow is the correct failure mode for a migration. Off
+ * unless JOIN_DAILY_CAP is set.
  */
-export const DEFAULT_DAILY_JOIN_CAP = 25;
-
 export function joinCap(): number {
-  const raw = Number(process.env.JOIN_DAILY_CAP);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_DAILY_JOIN_CAP;
+  return capFromEnv("JOIN_DAILY_CAP");
 }
 
 let joined: Ledger = { day: "", keys: new Set() };
@@ -345,11 +349,14 @@ export function resetJoinLedger(): void {
  * assuming they were the same number, which is how one afternoon of
  * browsing could spend a month.
  *
- * So the feed gets its own ledger, and the DAILY cap is DERIVED: the
- * monthly allowance spread across the month, never under one. State the
- * plan you are on in RENTCAST_MONTHLY_REQUESTS and the daily figure
- * follows; RENTCAST_DAILY_CAP overrides it outright for the case where
- * you know better than the arithmetic.
+ * So the feed gets its own ledger, and when a plan is stated the DAILY
+ * cap is DERIVED: the monthly allowance spread across the month, never
+ * under one. State the plan in RENTCAST_MONTHLY_REQUESTS and the daily
+ * figure follows; RENTCAST_DAILY_CAP overrides it outright for the case
+ * where you know better than the arithmetic. State neither and the
+ * feed has no ceiling here at all — which is the default, because the
+ * old one (fifty a month, the free tier, so one market a day) refused
+ * the second market anybody opened.
  *
  * Under one is never right, so the floor is one: a cap of zero would
  * mean the feed never answers, which reads as an outage rather than a
@@ -358,23 +365,22 @@ export function resetJoinLedger(): void {
  * Same shape as the ledger above — check first, commit on success, so a
  * failed request costs nothing — and the same per-instance caveat.
  */
-export const DEFAULT_RENTCAST_MONTHLY_REQUESTS = 50;
 
 /** Days a month is budgeted over. Thirty-one, so the allowance holds
  *  in the longest month rather than running two days short in it. */
 const DAYS_PER_MONTH = 31;
 
 export function rentcastMonthlyCap(): number {
-  const raw = Number(process.env.RENTCAST_MONTHLY_REQUESTS);
-  return Number.isFinite(raw) && raw > 0
-    ? Math.floor(raw)
-    : DEFAULT_RENTCAST_MONTHLY_REQUESTS;
+  return capFromEnv("RENTCAST_MONTHLY_REQUESTS");
 }
 
 export function rentcastDailyCap(): number {
-  const explicit = Number(process.env.RENTCAST_DAILY_CAP);
-  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
-  return Math.max(1, Math.floor(rentcastMonthlyCap() / DAYS_PER_MONTH));
+  const explicit = capFromEnv("RENTCAST_DAILY_CAP");
+  if (explicit !== UNCAPPED) return explicit;
+  const monthly = rentcastMonthlyCap();
+  return monthly === UNCAPPED
+    ? UNCAPPED
+    : Math.max(1, Math.floor(monthly / DAYS_PER_MONTH));
 }
 
 let rentcast: Ledger = { day: "", keys: new Set() };
@@ -412,8 +418,12 @@ export function commitRentcastSearch(key: string, now = new Date()): QuotaCheck 
   };
 }
 
-/** What the feed has left today, without claiming any of it. */
-export function rentcastBudget(now = new Date()): QuotaCheck & { monthly: number } {
+/** What the feed has spent and has left today, without claiming any
+ *  of it. `used` is stated outright because cap minus remaining is not
+ *  a number when there is no cap. */
+export function rentcastBudget(
+  now = new Date()
+): QuotaCheck & { monthly: number; used: number } {
   const cap = rentcastDailyCap();
   const { keys } = currentRentcast(now);
   return {
@@ -422,6 +432,7 @@ export function rentcastBudget(now = new Date()): QuotaCheck & { monthly: number
     remaining: Math.max(0, cap - keys.size),
     cap,
     monthly: rentcastMonthlyCap(),
+    used: keys.size,
   };
 }
 
