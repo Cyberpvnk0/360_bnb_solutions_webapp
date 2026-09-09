@@ -70,7 +70,7 @@ function BoardColumn({
       ref={setNodeRef}
       aria-label={`${label} — ${deals.length} deals`}
       className={cn(
-        "flex min-w-[284px] flex-1 flex-col rounded-sm border border-border bg-secondary/40 p-3 transition-colors duration-150",
+        "flex min-w-[284px] flex-1 flex-col rounded-sm border border-border bg-secondary/40 p-3 elev-panel transition-colors duration-150",
         isOver && "border-gold/30"
       )}
     >

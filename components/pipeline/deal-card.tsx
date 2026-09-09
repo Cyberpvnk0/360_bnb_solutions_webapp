@@ -26,8 +26,10 @@ export function DealCardContent({
   return (
     <div
       className={cn(
-        "rounded-sm border border-border bg-card p-4 transition-colors duration-150",
-        overlay ? "border-gold bg-surface-2" : "hover:border-gold/40",
+        "rounded-sm border border-border bg-card p-4 transition-[border-color,box-shadow] duration-150",
+        overlay
+          ? "border-gold bg-surface-2 elev-raised"
+          : "elev-card hover:border-gold/40 hover:elev-raised",
         className
       )}
     >

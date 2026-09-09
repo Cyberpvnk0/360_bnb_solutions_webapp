@@ -73,6 +73,12 @@
      is tuned for cards on a full page; at 24px of blur, panels sitting
      12px apart pool their shadows into fog. */
   --elev-panel: 0 1px 2px rgb(18 20 28 / 0.04), 0 4px 12px -4px rgb(18 20 28 / 0.1);
+  /* A card that has to read as a card at rest — the pipeline's deals:
+     a hairline ring so every edge lifts, a close shadow, a soft one. */
+  --elev-card:
+    0 0 0 1px rgb(18 20 28 / 0.04),
+    0 2px 6px rgb(18 20 28 / 0.08),
+    0 12px 28px rgb(18 20 28 / 0.12);
 }
 
 .dark {
@@ -124,6 +130,7 @@
   --elev: 0 0 #0000;
   --elev-raised: 0 0 #0000;
   --elev-panel: 0 0 #0000;
+  --elev-card: 0 0 #0000;
 }
 
 /* ------------------------------------------------------------------ */
@@ -294,6 +301,11 @@
 /* Deeper shadow for hovered interactive cards (no-op in dark). */
 @utility elev-raised {
   box-shadow: var(--elev-raised);
+}
+
+/* A card lifted at rest, on every edge (no-op in dark). */
+@utility elev-card {
+  box-shadow: var(--elev-card);
 }
 
 /*
