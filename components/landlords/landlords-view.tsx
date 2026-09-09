@@ -223,7 +223,7 @@ export function LandlordsView({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {/* The book: toolbar header + table, one card */}
-      <div className="mt-6 overflow-hidden rounded-sm border border-border bg-card">
+      <div className="mt-6 overflow-hidden rounded-sm border border-border bg-card elev-card">
         {bookEmpty ? (
           <EmptyState
             icon={Contact}

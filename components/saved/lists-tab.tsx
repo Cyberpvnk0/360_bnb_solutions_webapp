@@ -87,7 +87,7 @@ function ListCard({ list }: { list: DealList }) {
   };
 
   return (
-    <section className="overflow-hidden rounded-sm border border-border bg-card">
+    <section className="overflow-hidden rounded-sm border border-border bg-card elev-card">
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
         {editing ? (
           <form
