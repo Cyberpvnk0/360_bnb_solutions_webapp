@@ -25,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Crosshair, Loader2, MapPin } from "lucide-react";
 import type { Analysis } from "@/lib/mock/types";
 import { fmtWhen } from "@/lib/format";
+import { analyzeSearchHref } from "@/lib/live/analyze-href";
 import { useSession } from "@/components/providers/session-provider";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
@@ -43,6 +44,11 @@ import {
 /** A geocoded place: what the geocoder calls it, and where it is. */
 interface AddressMatch {
   address: string;
+  /** The parts, when a suggestion carried them — the result prints
+   *  the street with the city under it rather than the line twice. */
+  street?: string;
+  city?: string;
+  state?: string;
   point: { lat: number; lon: number } | null;
 }
 
@@ -122,7 +128,13 @@ export function AnalyzeEntry({
     setLocating(true);
     const point = await resolveSuggestionPoint(match);
     setLocating(false);
-    setPlace({ address: match.address, point });
+    setPlace({
+      address: match.address,
+      street: match.street,
+      city: match.city,
+      state: match.state,
+      point,
+    });
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -159,12 +171,7 @@ export function AnalyzeEntry({
     // put three questions between a person and the answer they came
     // for — and the result page can offer the same correction against a
     // projection they can watch respond to it.
-    const params = new URLSearchParams({
-      a: place.address,
-      lat: String(place.point.lat),
-      lon: String(place.point.lon),
-    });
-    router.push(`/analyze/new?${params}`);
+    router.push(analyzeSearchHref({ ...place, point: place.point }));
   };
 
   if (pulling && place) {

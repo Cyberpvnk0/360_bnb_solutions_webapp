@@ -85,8 +85,15 @@ export async function resolveSuggestionPoint(
   s: AddressSuggestion
 ): Promise<{ lat: number; lon: number } | null> {
   if (s.point) return s.point;
+  return resolveAddressPoint(s.address);
+}
+
+/** Where a typed line is — one geocode, null when nothing matched. */
+export async function resolveAddressPoint(
+  address: string
+): Promise<{ lat: number; lon: number } | null> {
   try {
-    const res = await fetch(`/api/geocode?resolve=${encodeURIComponent(s.address)}`);
+    const res = await fetch(`/api/geocode?resolve=${encodeURIComponent(address)}`);
     const body = (await res.json().catch(() => null)) as
       | { point?: { lat: number; lon: number } | null }
       | null;

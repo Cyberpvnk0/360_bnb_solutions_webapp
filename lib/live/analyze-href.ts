@@ -67,3 +67,34 @@ export function analyzeHref(l: {
   if (page) params.set("u", page);
   return `/analyze/new?${params}`;
 }
+
+/**
+ * The analysis URL for an address somebody SEARCHED — top bar or entry
+ * form — as opposed to a listing. No size and no rent travel: nobody
+ * stated them, and the result says it assumed them.
+ *
+ * The street line is the address, with the city and state riding
+ * separately when the suggestion carried them, so the header prints
+ * one under the other rather than the whole postal line twice. A
+ * suggestion with no street line of its own sends the line it has.
+ */
+export function analyzeSearchHref(place: {
+  /** The full line as the suggestion printed it. */
+  address: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  point: { lat: number; lon: number };
+}): string {
+  const street = place.street?.trim();
+  const params = new URLSearchParams({
+    a: street || place.address.trim(),
+    lat: String(place.point.lat),
+    lon: String(place.point.lon),
+  });
+  // City and state only beside a street line; beside the full line
+  // they would say the same thing twice.
+  if (street && place.city?.trim()) params.set("c", place.city.trim());
+  if (street && place.state?.trim()) params.set("s", place.state.trim());
+  return `/analyze/new?${params}`;
+}

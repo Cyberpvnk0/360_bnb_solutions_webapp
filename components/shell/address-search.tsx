@@ -4,9 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { analyzeSearchHref } from "@/lib/live/analyze-href";
+import { useSession } from "@/components/providers/session-provider";
 import { AddressSuggestionList } from "./address-suggestion-list";
 import {
   MIN_QUERY_LENGTH,
+  resolveAddressPoint,
   resolveSuggestionPoint,
   useAddressSuggestions,
   type AddressSuggestion,
@@ -14,14 +17,22 @@ import {
 
 /**
  * The persistent top-bar address search — the product's primary flow.
- * Type an address, pick a suggestion, land on /analyze with it prefilled
- * and placed. "/" focuses it from anywhere.
+ * Type an address, pick a suggestion, and the numbers run: the pick
+ * goes straight to the result. It used to land on the entry form with
+ * the address filled in and a button still to press, which was the
+ * same question asked twice. "/" focuses it from anywhere.
+ *
+ * The plan is checked here, as the entry form checks it: an account
+ * with no analyses left gets the upgrade prompt and keeps its typing.
+ * An address that cannot be placed goes to the entry form, which can
+ * say so and take a second run at it.
  *
  * Suggestions arrive as you type — up to five, each with street, city,
  * state and ZIP — from lib/live/address-suggest through /api/geocode.
  */
 export function AddressSearch({ className }: { className?: string }) {
   const router = useRouter();
+  const { canPull, consumePull, openUpgrade } = useSession();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState("");
@@ -60,25 +71,61 @@ export function AddressSearch({ className }: { className?: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /** Run the numbers on a placed address, or say why not. */
+  const run = (place: {
+    address: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    point: { lat: number; lon: number } | null;
+  }) => {
+    setOpen(false);
+    inputRef.current?.blur();
+    if (!place.point) {
+      // Could not be placed: the entry form can say so and try again.
+      setQuery("");
+      router.push(`/analyze?${new URLSearchParams({ address: place.address })}`);
+      return;
+    }
+    if (!canPull) {
+      // The typing stays, so the address is still there after the
+      // upgrade rather than needing to be found again.
+      openUpgrade({ reason: "pulls" });
+      return;
+    }
+    consumePull();
+    setQuery("");
+    router.push(analyzeSearchHref({ ...place, point: place.point }));
+  };
+
   const choose = async (match: AddressSuggestion) => {
     setLocating(true);
-    // Carry the coordinates through. The entry form would otherwise
-    // have to geocode the same string a second time, and could resolve
-    // it differently than the row the user actually clicked.
+    // Carry the coordinates through: the row the person clicked is
+    // the place they meant, and geocoding its text again could land
+    // somewhere else.
     const point = await resolveSuggestionPoint(match);
     setLocating(false);
-    setOpen(false);
-    setQuery("");
-    inputRef.current?.blur();
-    const params = new URLSearchParams({ address: match.address });
-    if (point) {
-      params.set("lat", String(point.lat));
-      params.set("lon", String(point.lon));
-    }
-    router.push(`/analyze?${params}`);
+    run({ ...match, point });
+  };
+
+  /** Enter on a typed line with nothing picked: place the line as is. */
+  const submitTyped = async () => {
+    const address = query.trim();
+    if (address.length < MIN_QUERY_LENGTH) return;
+    setLocating(true);
+    const point = await resolveAddressPoint(address);
+    setLocating(false);
+    run({ address, point });
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const s = showList ? suggestions[highlighted] : undefined;
+      if (s) void choose(s);
+      else if (!locating) void submitTyped();
+      return;
+    }
     if (!showList) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -86,10 +133,6 @@ export function AddressSearch({ className }: { className?: string }) {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlighted((h) => Math.max(h - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const s = suggestions[highlighted];
-      if (s) void choose(s);
     } else if (e.key === "Escape") {
       setOpen(false);
     }
@@ -151,7 +194,7 @@ export function AddressSearch({ className }: { className?: string }) {
                   ? "Searching…"
                   : noMatch
                     ? "No address matches yet — keep typing, or add the city."
-                    : "Pick an address to start a projection"
+                    : "Pick an address to run the numbers"
             }
           />
         </div>

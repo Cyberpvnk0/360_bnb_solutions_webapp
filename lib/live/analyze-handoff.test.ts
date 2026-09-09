@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { analyzeHref } from "./analyze-href";
+import { analyzeHref, analyzeSearchHref } from "./analyze-href";
 import { buildAddressAnalysis } from "./address-analysis";
 import { analysisForListing } from "@/lib/mock/analyses";
 import { estimateRentFromComps } from "@/lib/calc/comps";
@@ -168,5 +168,43 @@ describe("a saved listing reopened later", () => {
     // This path never went through the URL at all, and had the rent in
     // hand the whole time — it just wasn't reading it.
     expect(analysisForListing(listing).defaults.monthlyRent).toBe(2150);
+  });
+});
+
+describe("the link out of an address search", () => {
+  const POINT = { lat: 30.33, lon: -81.66 };
+
+  it("sends the street with the city and state beside it", () => {
+    const p = paramsOf(
+      analyzeSearchHref({
+        address: "1535 Van Buren St, Jacksonville, FL 32206",
+        street: "1535 Van Buren St",
+        city: "Jacksonville",
+        state: "FL",
+        point: POINT,
+      })
+    );
+    expect(p.get("a")).toBe("1535 Van Buren St");
+    expect(p.get("c")).toBe("Jacksonville");
+    expect(p.get("s")).toBe("FL");
+    expect(Number(p.get("lat"))).toBeCloseTo(30.33, 6);
+    expect(Number(p.get("lon"))).toBeCloseTo(-81.66, 6);
+  });
+
+  it("sends the whole line alone when there is no street line to send", () => {
+    // A typed line placed as is: nothing to split, so nothing repeats.
+    const p = paramsOf(
+      analyzeSearchHref({ address: "1535 Van Buren St, Jacksonville, FL", point: POINT })
+    );
+    expect(p.get("a")).toBe("1535 Van Buren St, Jacksonville, FL");
+    expect(p.has("c")).toBe(false);
+    expect(p.has("s")).toBe(false);
+  });
+
+  it("states no size, type or rent — nobody did", () => {
+    // The result then says it assumed the size rather than presenting
+    // a guess as a reading.
+    const p = paramsOf(analyzeSearchHref({ address: "1 Main St", point: POINT }));
+    for (const k of ["bd", "ba", "t", "r"]) expect(p.has(k)).toBe(false);
   });
 });
