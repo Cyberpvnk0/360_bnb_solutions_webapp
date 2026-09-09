@@ -24,7 +24,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Crosshair, Loader2, MapPin } from "lucide-react";
 import type { Analysis } from "@/lib/mock/types";
-import { fmtDate } from "@/lib/format";
+import { fmtWhen } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
@@ -365,7 +365,7 @@ export function AnalyzeEntry({
                     {e.message.replace(/^Analyzed /, "")}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground tabular">
-                    {fmtDate(e.at)}
+                    {fmtWhen(e.at)}
                   </span>
                 </Link>
               </li>
