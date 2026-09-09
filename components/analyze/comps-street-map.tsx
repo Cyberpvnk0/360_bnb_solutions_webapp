@@ -287,16 +287,19 @@ export function CompsStreetMap({
 
   return (
     <figure className={cn("min-w-0", className)}>
-      <div className="relative overflow-hidden rounded-lg border border-border bg-secondary/60">
-        {/* As tall as the viewport allows beside the table (it is
-            sticky there), within sane bounds; a fixed height when it
-            sits above the table on narrower screens. MapLibre re-reads
-            the container on window resize, which is the only time this
-            height changes. */}
-        <div
-          ref={containerRef}
-          className="h-[480px] w-full xl:h-[clamp(560px,calc(100vh-8rem),840px)]"
-        />
+      {/* As tall as the viewport allows beside the table (it is sticky
+          there), within sane bounds; a fixed height when it sits above
+          the table on narrower screens. MapLibre re-reads the container
+          on window resize, which is the only time this height changes.
+
+          overflow-clip, not hidden: both round the corners, but hidden
+          makes this box a scroll container and a sticky child sticks to
+          it instead of the page. The docked card below has to stick to
+          the page. */}
+      <div className="relative flex h-[480px] flex-col justify-end overflow-clip rounded-lg border border-border bg-secondary/60 xl:h-[clamp(560px,calc(100vh-8rem),840px)]">
+        <div className="absolute inset-0">
+          <div ref={containerRef} className="h-full w-full" />
+        </div>
 
         {tileError ? (
           <p className="pointer-events-none absolute left-3 top-3 z-20 max-w-[min(28rem,90%)] rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -305,9 +308,14 @@ export function CompsStreetMap({
           </p>
         ) : null}
 
-        {/* Docked listing card for the selected comp */}
+        {/* Docked listing card for the selected comp. In flow at the
+            map's bottom and sticky to the viewport's: while the lower
+            part of the map is below the fold the card rides the bottom
+            edge of the screen, and it settles onto the map's own edge
+            once the whole map is in view. Pinned to the map's bottom
+            it was simply off-screen whenever the map was. */}
         {active ? (
-          <div className="absolute inset-x-3 bottom-3 z-20 flex gap-3 rounded-lg border border-border bg-card p-3">
+          <div className="sticky bottom-3 z-20 mx-3 mb-3 flex gap-3 rounded-lg border border-border bg-card p-3">
             <CompPhoto comp={active} />
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
