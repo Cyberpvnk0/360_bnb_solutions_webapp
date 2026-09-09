@@ -7,9 +7,10 @@
  * there, live, which takes half a minute — long enough that a grid of
  * grey placeholder cards read as a page that had hung. This takes the
  * results pane for that wait: the market named, a ring whose arc
- * sweeps, one line crossfading through what is happening, a clock
- * that visibly runs, and a plain note on why it takes as long as it
- * does and that it is saved after.
+ * sweeps, one line crossfading through what is happening, and a clock
+ * that visibly runs. Nothing explains the wait — the moving clock is
+ * the reassurance, and a paragraph on why it is slow is a paragraph
+ * about plumbing.
  *
  * THE CLOCK IS THE ONLY MEASURED THING HERE and the only one that
  * moves on its own; the bar sweeps rather than fills, because there is
@@ -86,11 +87,6 @@ export function FurnishedSearching({ market }: { market: string }) {
       <div className="working-bar mt-6 w-full max-w-xs" aria-hidden />
       <p className="mt-3 text-xs text-muted-foreground">
         <Elapsed /> elapsed
-      </p>
-      <p className="mt-6 max-w-sm text-xs leading-relaxed text-muted-foreground">
-        The first furnished search of a market reads all of its listings,
-        which takes about half a minute. It is saved after that, so the
-        next look is quick.
       </p>
     </div>
   );
