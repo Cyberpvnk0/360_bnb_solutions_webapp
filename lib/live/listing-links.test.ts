@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { hasOwnListingPage, photosHref, photosLink } from "./listing-links";
+import {
+  hasOwnListingPage,
+  photosHref,
+  photosLink,
+  usableListingPage,
+} from "./listing-links";
 
 const TAMPA = { address: "1234 Palm Ave", city: "Tampa", stateCode: "FL" };
 
@@ -139,5 +144,20 @@ describe("hasOwnListingPage", () => {
       false
     );
     expect(hasOwnListingPage({ ...TAMPA, sourceUrl: "not a url" })).toBe(false);
+  });
+});
+
+describe("usableListingPage", () => {
+  it("returns the page only when it is one the link would open", () => {
+    // Shared with the analyze link and the result page's query string,
+    // so a page survives the trip exactly when "View photos" would
+    // have opened it from the card.
+    const own = "https://www.redfin.com/FL/Tampa/1234-Palm-Ave-33602/home/123";
+    expect(usableListingPage(own)).toBe(own);
+    expect(usableListingPage(undefined)).toBeNull();
+    expect(usableListingPage("http://www.redfin.com/x")).toBeNull();
+    expect(usableListingPage("https://notredfin.com/a")).toBeNull();
+    expect(usableListingPage("javascript:alert(1)")).toBeNull();
+    expect(usableListingPage("not a url")).toBeNull();
   });
 });

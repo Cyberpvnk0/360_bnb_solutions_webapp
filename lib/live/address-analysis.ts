@@ -48,6 +48,11 @@ export interface AddressSpec {
    *  address and wrong for a listing in a suburb the market covers. */
   city?: string;
   stateCode?: string;
+  /** The listing's own page at its source, when the analysis was
+   *  opened from a listing that had one. "View photos" on the result
+   *  opens it; without it, the result can only search for the address
+   *  — which is the honest answer for a typed one. */
+  sourceUrl?: string;
 }
 
 const EARTH_RADIUS_MILES = 3958.8;
@@ -131,6 +136,7 @@ export function buildAddressAnalysis(
       bedrooms: spec.bedrooms,
       bathrooms: spec.bathrooms,
       propertyType: spec.propertyType,
+      ...(spec.sourceUrl ? { sourceUrl: spec.sourceUrl } : {}),
       /**
        * A bare YYYY-MM-DD, matching the seeded analyses.
        *

@@ -10,6 +10,7 @@ import {
   type AddressSpec,
 } from "@/lib/live/address-analysis";
 import { buildStrCompsFor } from "@/lib/mock/analyses";
+import { usableListingPage } from "@/lib/live/listing-links";
 import type { PropertyType } from "@/lib/mock/types";
 import { AnalyzeResult } from "@/components/analyze/analyze-result";
 
@@ -96,6 +97,10 @@ function specFrom(
     rentMonthly,
     city: one("c")?.trim() || undefined,
     stateCode: one("s")?.trim().slice(0, 2).toUpperCase() || undefined,
+    // The listing's own page, when one came along — and only a page on
+    // the listing site. This is a query parameter, which anyone can
+    // edit, and it becomes a link the result sends people to.
+    sourceUrl: usableListingPage(one("u")) ?? undefined,
     /** True when nobody told us the size and we picked one. The result
      *  page says so rather than presenting a guess as a reading. */
     assumedSize: bd === null || ba === null,

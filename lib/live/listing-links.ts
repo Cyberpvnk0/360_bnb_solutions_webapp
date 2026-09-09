@@ -96,8 +96,14 @@ function parts(
  * string was read off a vendor payload, and a payload is not a place to
  * take a navigation target from on trust. Anything else falls through
  * to the address search.
+ *
+ * Exported for the two places a listing's page crosses a trust
+ * boundary on its way to the analyzer: going INTO the analyze link, and
+ * coming back OUT of the query string, where anyone can have typed
+ * anything. Both apply exactly this rule, so the result page links
+ * where the card would have.
  */
-function usableSource(url: string | undefined): string | null {
+export function usableListingPage(url: string | undefined): string | null {
   if (!url) return null;
   try {
     const u = new URL(url);
@@ -116,7 +122,7 @@ function usableSource(url: string | undefined): string | null {
  * promises the lister must check this first.
  */
 export function hasOwnListingPage(place: Addressed): boolean {
-  return usableSource(place.sourceUrl) !== null;
+  return usableListingPage(place.sourceUrl) !== null;
 }
 
 /**
@@ -163,7 +169,7 @@ export interface PhotosDestination {
  * like a bug and wastes a click.
  */
 export function photosLink(place: Addressed): PhotosDestination | null {
-  const own = usableSource(place.sourceUrl);
+  const own = usableListingPage(place.sourceUrl);
   if (own) return { href: own, kind: "listing" };
 
   const search = listingSearchHref(place);

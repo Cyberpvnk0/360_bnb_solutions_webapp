@@ -57,6 +57,26 @@ describe("the link out of the Deal Finder", () => {
     }
   });
 
+  it("carries the listing's own page, so the result opens it rather than searching", () => {
+    // The analyzer cannot find the page for itself — no portal resolves
+    // an address to a listing — so a card with a direct link opened a
+    // result that could only search for the property.
+    const own = "https://www.redfin.com/FL/Neptune-Beach/1535-Van-Buren-St/home/1";
+    expect(paramsOf(analyzeHref({ ...SPEC, sourceUrl: own })).get("u")).toBe(own);
+  });
+
+  it("carries no page it would not link to", () => {
+    // The same rule "View photos" applies: https, on the listing site.
+    for (const sourceUrl of [
+      undefined,
+      "http://www.redfin.com/x",
+      "https://evil.example/redfin.com",
+      "javascript:alert(1)",
+    ]) {
+      expect(paramsOf(analyzeHref({ ...SPEC, sourceUrl })).has("u")).toBe(false);
+    }
+  });
+
   it("still carries everything it carried before", () => {
     const p = paramsOf(analyzeHref({ ...SPEC, rentMonthly: 2150 }));
     expect(p.get("a")).toBe("1535 Van Buren St");
@@ -114,6 +134,14 @@ describe("what the calculator opens on", () => {
     const { analysis, market } = buildAddressAnalysis(SPEC);
     expect(analysis.city).toBe(market.name);
     expect(analysis.stateCode).toBe(market.stateCode);
+  });
+
+  it("keeps the listing's page on the analysis it builds", () => {
+    // This is what the result's "View photos" reads. Absent for a typed
+    // address, which genuinely has no page behind it.
+    const own = "https://www.redfin.com/FL/x/home/1";
+    expect(buildAddressAnalysis({ ...SPEC, sourceUrl: own }).analysis.sourceUrl).toBe(own);
+    expect(buildAddressAnalysis(SPEC).analysis.sourceUrl).toBeUndefined();
   });
 });
 

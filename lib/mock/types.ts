@@ -174,6 +174,13 @@ export interface Analysis {
   bedrooms: number;
   bathrooms: number;
   propertyType: PropertyType;
+  /**
+   * The listing's own page at its source, carried over when the
+   * analysis was opened from a listing that had one. What "View
+   * photos" opens; absent, the result can only search for the address
+   * — and a typed address genuinely has no page behind it.
+   */
+  sourceUrl?: string;
   createdAt: string;
   /** The evidence behind the revenue projection. ADR and occupancy
    *  assumptions are derived from this set via lib/calc/comps. */
