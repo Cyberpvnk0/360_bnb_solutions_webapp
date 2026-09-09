@@ -65,6 +65,7 @@ import {
 } from "./deal-filters";
 import { MarketSearchBox } from "./market-search";
 import { ListingDetailDialog } from "./listing-detail-dialog";
+import { ListingDock } from "./listing-dock";
 import { ListingCard } from "./listing-card";
 import { inBounds, RentalsMap, type MapBounds, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
@@ -230,6 +231,9 @@ export function DealsExplorer({
   const [fitNonce, setFitNonce] = React.useState(0);
   const [mobilePane, setMobilePane] = React.useState<"list" | "map">("list");
   const [detailId, setDetailId] = React.useState<string | null>(null);
+  /** The listing whose card is docked on the map — set by a pin click,
+   *  cleared by its close button or a click on the map itself. */
+  const [dockId, setDockId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(initialList);
   const { ready, lists, openUpgrade, marketLimit, tier, recordExport } = useSession();
@@ -686,8 +690,11 @@ export function DealsExplorer({
   /** Pill click: select the listing, open its panel, and line the card
    *  up behind it so closing the panel lands you in the right place. */
   const selectFromMap = React.useCallback((id: string) => {
+    // A pin click docks the listing's card on the map — the way every
+    // property portal answers a pin — rather than opening the full
+    // panel over it. The panel is one button away on the card.
     setSelectedId(id);
-    setDetailId(id);
+    setDockId(id);
     requestAnimationFrame(() => {
       cardRefs.current
         .get(id)
@@ -703,6 +710,10 @@ export function DealsExplorer({
   const detailRow = React.useMemo(
     () => (detailId ? rows.find((r) => r.listing.id === detailId) : undefined),
     [detailId, rows]
+  );
+  const dockRow = React.useMemo(
+    () => (dockId ? rows.find((r) => r.listing.id === dockId) : undefined),
+    [dockId, rows]
   );
   const detailMarket = React.useMemo(
     () =>
@@ -975,6 +986,20 @@ export function DealsExplorer({
             listings={mapListings}
             focus={mapFocus}
             boundary={boundary}
+            dock={
+              dockRow ? (
+                <ListingDock
+                  listing={dockRow.listing}
+                  deal={dockRow.deal}
+                  onClose={() => setDockId(null)}
+                  onDetails={() => openDetail(dockRow.listing.id)}
+                />
+              ) : null
+            }
+            onClear={() => {
+              setDockId(null);
+              setSelectedId(null);
+            }}
             onViewportChange={handleViewportChange}
             viewFiltered={viewBounds !== null}
             onResetView={resetView}

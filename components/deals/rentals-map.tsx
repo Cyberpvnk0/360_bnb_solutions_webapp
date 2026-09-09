@@ -128,6 +128,10 @@ interface RentalsMapProps {
   focus: MapFocus | null;
   /** The searched ZIP's outline, drawn in the pins' red; null clears it. */
   boundary?: ZipBoundary | null;
+  /** A card docked at the map's bottom edge — the clicked pin's listing. */
+  dock?: React.ReactNode;
+  /** A click on the map itself, away from any pin: the dock is dismissed. */
+  onClear?: () => void;
   /** The viewport after each move the PERSON made; null when a search
    *  re-framed the map and the constraint should lift. */
   onViewportChange?: (bounds: MapBounds | null) => void;
@@ -151,6 +155,8 @@ export function RentalsMap({
   listings,
   focus,
   boundary = null,
+  dock = null,
+  onClear,
   onViewportChange,
   viewFiltered = false,
   onResetView,
@@ -186,11 +192,13 @@ export function RentalsMap({
   const onHoverRef = React.useRef(onHover);
   const onSelectRef = React.useRef(onSelect);
   const onViewportRef = React.useRef(onViewportChange);
+  const onClearRef = React.useRef(onClear);
   React.useEffect(() => {
     onHoverRef.current = onHover;
     onSelectRef.current = onSelect;
     onViewportRef.current = onViewportChange;
-  }, [onHover, onSelect, onViewportChange]);
+    onClearRef.current = onClear;
+  }, [onHover, onSelect, onViewportChange, onClear]);
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -224,6 +232,9 @@ export function RentalsMap({
     };
     map.on("style.load", ready);
     map.on("load", ready);
+    // A pin's click never reaches here (it stops at the pin), so this
+    // is the map itself: the docked card goes away.
+    map.on("click", () => onClearRef.current?.());
 
     // Tiles can't load in offline previews — pins still place to scale.
     // Report, never intervene. An earlier cut swapped in an empty
@@ -401,6 +412,7 @@ export function RentalsMap({
           scale.
         </p>
       ) : null}
+      {dock ? <div className="absolute inset-x-3 bottom-3 z-20">{dock}</div> : null}
     </div>
   );
 }
