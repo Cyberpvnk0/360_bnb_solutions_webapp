@@ -57,7 +57,7 @@ export const TIGERWEB_SERVICES = [
  * named for ZIP Code Tabulation Areas that is not its labels layer,
  * preferring the newest census where the list carries more than one.
  */
-export function zctaLayerIdFrom(meta: unknown): number | null {
+export function zctaLayerFrom(meta: unknown): { id: number; name: string } | null {
   const layers = (meta as { layers?: unknown })?.layers;
   if (!Array.isArray(layers)) return null;
   const candidates = layers
@@ -68,11 +68,17 @@ export function zctaLayerIdFrom(meta: unknown): number | null {
         typeof (l as { id?: unknown }).id === "number" &&
         typeof (l as { name?: unknown }).name === "string"
     )
-    .filter((l) => /zip\s*code\s*tabulation/i.test(l.name) && !/label/i.test(l.name));
+    .filter(
+      (l) => /zip\s*code\s*tabulation|\bzcta/i.test(l.name) && !/label/i.test(l.name)
+    );
   if (candidates.length === 0) return null;
   const year = (name: string) => Number(/\b(19|20)\d{2}\b/.exec(name)?.[0] ?? 0);
   candidates.sort((a, b) => year(b.name) - year(a.name));
-  return candidates[0].id;
+  return { id: candidates[0].id, name: candidates[0].name };
+}
+
+export function zctaLayerIdFrom(meta: unknown): number | null {
+  return zctaLayerFrom(meta)?.id ?? null;
 }
 
 /** The query for one ZIP's outline against a discovered layer. */
@@ -85,7 +91,9 @@ export function zctaQueryUrl(
   const field = opts.field ?? "ZCTA5";
   const params = new URLSearchParams({
     where: `${field}='${zip}'`,
-    outFields: "ZCTA5,GEOID,NAME",
+    // Every attribute rather than a named few: naming one the layer
+    // does not carry fails the whole query, and the row is small.
+    outFields: "*",
     returnGeometry: "true",
     outSR: "4326",
     geometryPrecision: "5",
@@ -223,40 +231,73 @@ const REVALIDATE_SECONDS = 30 * 24 * 60 * 60;
 const TIMEOUT_MS = 8_000;
 
 /** Which service and layer answered, remembered per process. */
-let zctaLayer: { service: string; layerId: number } | null = null;
+let zctaLayer: { service: string; layerId: number; name: string } | null = null;
 
-async function getJson(url: string): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    next: { revalidate: REVALIDATE_SECONDS },
-  });
-  if (!res.ok) return null;
-  return res.json().catch(() => null);
-}
+type Fetched = { ok: true; body: unknown } | { ok: false; detail: string };
 
-async function discoverZctaLayer(): Promise<{ service: string; layerId: number } | null> {
-  if (zctaLayer) return zctaLayer;
-  for (const service of TIGERWEB_SERVICES) {
-    const meta = await getJson(`${service}?f=json`).catch(() => null);
-    const layerId = zctaLayerIdFrom(meta);
-    if (layerId !== null) {
-      zctaLayer = { service, layerId };
-      return zctaLayer;
-    }
+async function getJson(url: string): Promise<Fetched> {
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      next: { revalidate: REVALIDATE_SECONDS },
+    });
+    if (!res.ok) return { ok: false, detail: `HTTP ${res.status}` };
+    const body = await res.json().catch(() => null);
+    return body === null ? { ok: false, detail: "not JSON" } : { ok: true, body };
+  } catch (e) {
+    return { ok: false, detail: e instanceof Error ? e.message : "fetch failed" };
   }
-  return null;
 }
+
+/** The service's short name, for a diagnostic line. */
+function serviceName(service: string): string {
+  return service.split("/services/")[1] ?? service;
+}
+
+async function discoverZctaLayer(): Promise<
+  { ok: true; service: string; layerId: number; name: string } | { ok: false; detail: string }
+> {
+  if (zctaLayer) return { ok: true, ...zctaLayer };
+  const notes: string[] = [];
+  for (const service of TIGERWEB_SERVICES) {
+    const got = await getJson(`${service}?f=json`);
+    if (!got.ok) {
+      notes.push(`${serviceName(service)}: ${got.detail}`);
+      continue;
+    }
+    const layer = zctaLayerFrom(got.body);
+    if (layer) {
+      zctaLayer = { service, layerId: layer.id, name: layer.name };
+      return { ok: true, ...zctaLayer };
+    }
+    const count = (got.body as { layers?: unknown[] })?.layers?.length ?? 0;
+    notes.push(`${serviceName(service)}: no ZCTA layer among ${count} layers`);
+  }
+  return { ok: false, detail: notes.join("; ") };
+}
+
+export type BoundaryLookup =
+  | { ok: true; boundary: ZipBoundary }
+  | {
+      ok: false;
+      reason: "bad-zip" | "no-layer" | "no-shape";
+      /** What each step said, for the person reading the route's
+       *  answer: which service, which layer, what each query returned.
+       *  Service prose, never listing data. */
+      detail: string;
+    };
 
 /**
- * One ZIP's outline, or null: unreachable service, a ZIP the Bureau has
- * no tabulation area for (some are post-office boxes with no ground),
- * an answer in a shape this does not read. Nothing here throws.
+ * One ZIP's outline, or the reason there is none: an unreachable
+ * service, a ZIP the Bureau has no tabulation area for (some are
+ * post-office boxes with no ground), an answer in a shape this does
+ * not read. Nothing here throws.
  */
-export async function fetchZipBoundary(zip: string): Promise<ZipBoundary | null> {
-  if (!/^\d{5}$/.test(zip)) return null;
-  const layer = await discoverZctaLayer().catch(() => null);
-  if (!layer) return null;
+export async function lookupZipBoundary(zip: string): Promise<BoundaryLookup> {
+  if (!/^\d{5}$/.test(zip)) return { ok: false, reason: "bad-zip", detail: "five digits" };
+  const layer = await discoverZctaLayer();
+  if (!layer.ok) return { ok: false, reason: "no-layer", detail: layer.detail };
 
   const attempts: Array<{ field: "ZCTA5" | "GEOID"; format: "geojson" | "json" }> = [
     { field: "ZCTA5", format: "geojson" },
@@ -264,14 +305,35 @@ export async function fetchZipBoundary(zip: string): Promise<ZipBoundary | null>
     { field: "ZCTA5", format: "json" },
     { field: "GEOID", format: "json" },
   ];
+  const notes: string[] = [];
   for (const attempt of attempts) {
-    const body = await getJson(zctaQueryUrl(layer.service, layer.layerId, zip, attempt)).catch(
-      () => null
-    );
-    if (!body) continue;
+    const label = `${attempt.field}/${attempt.format}`;
+    const got = await getJson(zctaQueryUrl(layer.service, layer.layerId, zip, attempt));
+    if (!got.ok) {
+      notes.push(`${label}: ${got.detail}`);
+      continue;
+    }
+    // ArcGIS answers a bad query with 200 and an error object.
+    const err = (got.body as { error?: { message?: string; details?: string[] } })?.error;
+    if (err) {
+      notes.push(`${label}: ${[err.message, ...(err.details ?? [])].filter(Boolean).join(" ")}`);
+      continue;
+    }
     const feature =
-      attempt.format === "geojson" ? featureFromGeoJsonBody(body) : esriToGeoJson(body);
-    if (feature) return { zip, feature, bbox: bboxOf(feature) };
+      attempt.format === "geojson" ? featureFromGeoJsonBody(got.body) : esriToGeoJson(got.body);
+    if (feature) return { ok: true, boundary: { zip, feature, bbox: bboxOf(feature) } };
+    const n = (got.body as { features?: unknown[] })?.features?.length;
+    notes.push(`${label}: ${n === 0 ? "no record for this ZIP" : "no polygon in the answer"}`);
   }
-  return null;
+  return {
+    ok: false,
+    reason: "no-shape",
+    detail: `${serviceName(layer.service)} layer ${layer.layerId} "${layer.name}" — ${notes.join("; ")}`,
+  };
+}
+
+/** The outline alone, for callers that do not need the reason. */
+export async function fetchZipBoundary(zip: string): Promise<ZipBoundary | null> {
+  const found = await lookupZipBoundary(zip);
+  return found.ok ? found.boundary : null;
 }

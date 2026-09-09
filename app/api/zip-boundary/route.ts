@@ -4,9 +4,10 @@
  *   /api/zip-boundary?zip=32225
  *
  * Answers { ok: true, boundary } with a GeoJSON polygon and its box, or
- * { ok: false, reason } when the Census Bureau's boundary service has
- * no shape for it or could not be reached. See lib/map/zip-boundary for
- * where the shapes come from.
+ * { ok: false, reason, detail } when the Census Bureau's boundary
+ * service has no shape for it or could not be reached — detail says
+ * which step said what, so a pasted answer is enough to diagnose. See
+ * lib/map/zip-boundary for where the shapes come from.
  *
  * Kept in the shared store once fetched: a ZIP's outline changes with a
  * census, and the same handful of ZIPs get searched by everybody.
@@ -15,7 +16,7 @@
 import { NextResponse } from "next/server";
 import { requireSignedIn } from "@/lib/auth/gate";
 import { readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
-import { fetchZipBoundary, isZipBoundary } from "@/lib/map/zip-boundary";
+import { isZipBoundary, lookupZipBoundary } from "@/lib/map/zip-boundary";
 
 export const maxDuration = 20;
 
@@ -37,12 +38,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, boundary: stored.value }, { headers });
   }
 
-  const boundary = await fetchZipBoundary(zip);
-  if (!boundary) {
-    return NextResponse.json({ ok: false, reason: "no-shape" }, { headers });
+  const found = await lookupZipBoundary(zip);
+  if (!found.ok) {
+    return NextResponse.json(
+      { ok: false, reason: found.reason, detail: found.detail },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
   // A failed write is a shape fetched again next time, not a missing
   // outline now.
-  void writeKeyed(`${STORE_PREFIX}${zip}`, boundary).catch(() => undefined);
-  return NextResponse.json({ ok: true, boundary }, { headers });
+  void writeKeyed(`${STORE_PREFIX}${zip}`, found.boundary).catch(() => undefined);
+  return NextResponse.json({ ok: true, boundary: found.boundary }, { headers });
 }

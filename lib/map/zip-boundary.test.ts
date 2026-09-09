@@ -32,6 +32,10 @@ describe("finding the ZCTA layer in a service's layer list", () => {
     ).toBe(7);
   });
 
+  it("recognises the Bureau's own abbreviation for the layer", () => {
+    expect(zctaLayerIdFrom({ layers: [{ id: 5, name: "ZCTA5" }, { id: 6, name: "ZCTA5 Labels" }] })).toBe(5);
+  });
+
   it("has no answer for a list without one, or for no list at all", () => {
     expect(zctaLayerIdFrom({ layers: [{ id: 0, name: "Counties" }] })).toBeNull();
     expect(zctaLayerIdFrom({ error: { code: 500 } })).toBeNull();
@@ -45,6 +49,7 @@ describe("the query for one ZIP", () => {
     expect(url.pathname).toBe("/MapServer/2/query");
     expect(url.searchParams.get("where")).toBe("ZCTA5='32225'");
     expect(url.searchParams.get("outSR")).toBe("4326");
+    expect(url.searchParams.get("outFields")).toBe("*");
     expect(url.searchParams.get("f")).toBe("geojson");
     expect(Number(url.searchParams.get("maxAllowableOffset"))).toBeGreaterThan(0);
   });
