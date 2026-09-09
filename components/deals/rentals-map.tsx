@@ -23,7 +23,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
 import { fmtMoney, fmtMoneyShort } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
+import type { ZipBoundary } from "@/lib/map/zip-boundary";
 import { cn } from "@/lib/utils";
+import type { GeoJSON } from "geojson";
 
 
 /** Continental-US default framing before any pins ask for better. */
@@ -37,6 +39,56 @@ export interface MapFocus {
   lat: number;
   lon: number;
   radiusMiles: number;
+  /** The exact box to frame, when the area has a known outline — a
+   *  ZIP's boundary. Set, it replaces the radius above. */
+  bounds?: [number, number, number, number];
+}
+
+/* ------------------------------------------------------------------ */
+/* The searched ZIP's outline                                          */
+/* ------------------------------------------------------------------ */
+
+const BOUNDARY_SOURCE = "zip-boundary";
+const BOUNDARY_FILL = "zip-boundary-fill";
+const BOUNDARY_LINE = "zip-boundary-line";
+/** The pins' red (--select in globals.css). The dark theme inverts the
+ *  canvas and turns the hue back, so a mid-lightness red is still a
+ *  red there. */
+const BOUNDARY_RED = "#d7263d";
+const NOTHING: GeoJSON = { type: "FeatureCollection", features: [] };
+
+/**
+ * Draw (or clear) the searched ZIP's outline: a faint red wash under
+ * the street names so they stay legible, and a red border over
+ * everything, the way a drawn boundary reads on every property site.
+ * Only ever called once the style has loaded — a source added before
+ * that is thrown away with the placeholder style.
+ */
+function drawBoundary(map: maplibregl.Map, boundary: ZipBoundary | null): void {
+  const data: GeoJSON = boundary ? (boundary.feature as GeoJSON) : NOTHING;
+  const source = map.getSource(BOUNDARY_SOURCE) as maplibregl.GeoJSONSource | undefined;
+  if (source) {
+    source.setData(data);
+    return;
+  }
+  map.addSource(BOUNDARY_SOURCE, { type: "geojson", data });
+  const firstSymbol = map.getStyle()?.layers?.find((l) => l.type === "symbol")?.id;
+  map.addLayer(
+    {
+      id: BOUNDARY_FILL,
+      type: "fill",
+      source: BOUNDARY_SOURCE,
+      paint: { "fill-color": BOUNDARY_RED, "fill-opacity": 0.07 },
+    },
+    firstSymbol
+  );
+  map.addLayer({
+    id: BOUNDARY_LINE,
+    type: "line",
+    source: BOUNDARY_SOURCE,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": BOUNDARY_RED, "line-width": 2.5, "line-opacity": 0.95 },
+  });
 }
 
 /** The map's current viewport, in degrees. */
@@ -63,6 +115,8 @@ interface RentalsMapProps {
   listings: RentalListing[];
   /** Set for a market/ZIP search; null while browsing nationwide. */
   focus: MapFocus | null;
+  /** The searched ZIP's outline, drawn in the pins' red; null clears it. */
+  boundary?: ZipBoundary | null;
   /** The viewport after each move the PERSON made; null when a search
    *  re-framed the map and the constraint should lift. */
   onViewportChange?: (bounds: MapBounds | null) => void;
@@ -85,6 +139,7 @@ const MILES_PER_DEG_LAT = 69;
 export function RentalsMap({
   listings,
   focus,
+  boundary = null,
   onViewportChange,
   viewFiltered = false,
   onResetView,
@@ -101,6 +156,10 @@ export function RentalsMap({
   const markerElsRef = React.useRef(new Map<string, HTMLButtonElement>());
   const marketSigRef = React.useRef<string>("");
   const focusKeyRef = React.useRef<string>("");
+  /** The style has loaded, so sources and layers may be added. */
+  const styleReadyRef = React.useRef(false);
+  /** The outline to draw, held for the moment the style is ready. */
+  const boundaryRef = React.useRef<ZipBoundary | null>(boundary);
   /** A move the person started is in progress (set on movestart with a
    *  real input event; programmatic moves carry none). */
   const gestureRef = React.useRef(false);
@@ -142,6 +201,10 @@ export function RentalsMap({
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right"
     );
+    map.on("load", () => {
+      styleReadyRef.current = true;
+      drawBoundary(map, boundaryRef.current);
+    });
 
     // Tiles can't load in offline previews — pins still place to scale.
     // Report, never intervene. An earlier cut swapped in an empty
@@ -265,13 +328,17 @@ export function RentalsMap({
         const dLat = focus.radiusMiles / MILES_PER_DEG_LAT;
         const dLon =
           dLat / Math.max(0.2, Math.cos((focus.lat * Math.PI) / 180));
-        map.fitBounds(
-          new maplibregl.LngLatBounds(
-            [focus.lon - dLon, focus.lat - dLat],
-            [focus.lon + dLon, focus.lat + dLat]
-          ),
-          { padding: 40, duration: 600 }
-        );
+        // A known outline is framed exactly; otherwise the radius.
+        const box = focus.bounds
+          ? new maplibregl.LngLatBounds(
+              [focus.bounds[0], focus.bounds[1]],
+              [focus.bounds[2], focus.bounds[3]]
+            )
+          : new maplibregl.LngLatBounds(
+              [focus.lon - dLon, focus.lat - dLat],
+              [focus.lon + dLon, focus.lat + dLat]
+            );
+        map.fitBounds(box, { padding: 40, duration: 600 });
       }
     } else if (
       listings.length > 0 &&
@@ -288,6 +355,15 @@ export function RentalsMap({
     focusKeyRef.current = focus?.key ?? "";
     marketSigRef.current = signature;
   }, [listings, focus]);
+
+  // The searched ZIP's outline follows the search; drawn now if the
+  // style is ready, else the moment it is.
+  React.useEffect(() => {
+    boundaryRef.current = boundary;
+    const map = mapRef.current;
+    if (!map || !styleReadyRef.current) return;
+    drawBoundary(map, boundary);
+  }, [boundary]);
 
   // Card hover / pill click → pin highlight (map hover feeds back
   // through onHover, so both directions stay in sync).
