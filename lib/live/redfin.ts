@@ -27,6 +27,7 @@
  * delete the aliases that never fire.
  */
 
+import { zipFromAddress } from "./zip";
 import { streetPartOf } from "@/lib/live/address";
 import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
@@ -266,6 +267,7 @@ const SQFT_KEYS = ["sq_ft", "sqFt", "squareFeet"] as const;
 const LAT_KEYS = ["latitude", "lat", "latLong.latitude"] as const;
 const LON_KEYS = ["longitude", "lng", "lon", "latLong.longitude"] as const;
 const URL_KEYS = ["url", "listingUrl", "detailUrl"] as const;
+const ZIP_KEYS = ["zip", "zipCode", "postalCode", "zip_code", "postal_code"] as const;
 const TYPE_KEYS = ["propertyType", "homeType"] as const;
 /** Short display chips beside a listing — a second amenity signal. */
 const FACTS_KEYS = ["key_facts", "keyFacts", "facts", "badge"] as const;
@@ -441,6 +443,13 @@ export function mapRedfinListing(
       address: streetPartOf(address),
       city: pickString(raw, CITY_KEYS) ?? market.name,
       stateCode: pickString(raw, STATE_KEYS) ?? market.stateCode,
+      // Their own field when they send one, else the postal tail of the
+      // address — either lets a ZIP search cut a city's furnished set
+      // down to the ZIP that was typed.
+      ...(() => {
+        const zip = pickString(raw, ZIP_KEYS) ?? zipFromAddress(address ?? undefined);
+        return zip && /^\d{5}$/.test(zip) ? { zip } : {};
+      })(),
       marketSlug: market.slug,
       lat,
       lon,

@@ -45,6 +45,9 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { FurnishedSearching } from "./furnished-searching";
+import { inZip } from "@/lib/live/zip";
+import { getZipBoundary } from "@/lib/data/zip-boundary";
+import type { ZipBoundary } from "@/lib/map/zip-boundary";
 import { useSession } from "@/components/providers/session-provider";
 import {
   getRedfinFurnished,
@@ -272,6 +275,21 @@ export function DealsExplorer({
     };
   }, [zip, openUpgrade]);
 
+  // The ZIP's outline for the map, fetched the moment a ZIP is typed,
+  // alongside its listings rather than after them.
+  const [zipBoundary, setZipBoundary] = React.useState<ZipBoundary | null>(null);
+  React.useEffect(() => {
+    if (!zip) return;
+    let cancelled = false;
+    getZipBoundary(zip).then((b) => {
+      if (!cancelled) setZipBoundary(b);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [zip]);
+  const boundary = zip && zipBoundary?.zip === zip ? zipBoundary : null;
+
   const zipActive = Boolean(zip && zipResult?.zip === zip && zipResult.live);
   const zipChecking = Boolean(zip && zipResult?.zip !== zip);
   const zipFailed = Boolean(
@@ -355,20 +373,18 @@ export function DealsExplorer({
    * The market Furnished gets asked about.
    *
    * Furnished is answered by a city search, so a ZIP cannot be asked
-   * directly. But a ZIP sits inside a city and that city can be, which
-   * turns "this filter does nothing here" into an answer — a WIDER one
-   * than was searched, which the chip and the count both say out loud
-   * rather than quietly swapping the area under somebody.
+   * directly. But a ZIP sits inside a city and that city can be: the
+   * city's furnished set is bought once and cut down to the ZIP on the
+   * way to the screen (see `rows`), so a ZIP search with Furnished on
+   * shows that ZIP's furnished rentals and nothing wider. An earlier
+   * version showed the whole city and said so in the count, which was
+   * honest and still not what was typed.
    */
   const furnishedMarket = React.useMemo(() => {
     if (liveTarget) return liveTarget;
     const slug = zipResult?.zip === zip ? zipResult.market : null;
     return slug ? (markets.find((m) => m.slug === slug) ?? null) : null;
   }, [liveTarget, zipResult, zip, markets]);
-
-  /** True when the furnished set covers a whole city rather than the
-   *  ZIP that was actually typed. */
-  const furnishedWidened = Boolean(!liveTarget && furnishedMarket);
 
   const furnishedTarget =
     filters.furnishedOnly && furnishedMarket ? furnishedMarket.slug : null;
@@ -426,7 +442,11 @@ export function DealsExplorer({
           : listFilter
             ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
             : [];
-    return source.flatMap((raw) => {
+    // A ZIP search shows that ZIP and nothing else, whatever the source:
+    // the furnished set above is a whole city's, and even the feed's own
+    // ZIP answer is checked row by row. See lib/live/zip.
+    const scoped = zip ? source.filter((l) => inZip(l, zip)) : source;
+    return scoped.flatMap((raw) => {
       const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
       const listing = raw;
@@ -587,6 +607,19 @@ export function DealsExplorer({
   );
 
   const mapFocus = React.useMemo<MapFocus | null>(() => {
+    // The ZIP's own outline frames the search once it is known. Its key
+    // differs from the listings' one below, so the camera moves from
+    // the listings' box to the ZIP's the moment the shape arrives.
+    if (boundary) {
+      const [w, s, e, n] = boundary.bbox;
+      return {
+        key: `zip-${zip}#${fitNonce}#outline`,
+        lat: (s + n) / 2,
+        lon: (w + e) / 2,
+        radiusMiles: 6,
+        bounds: boundary.bbox,
+      };
+    }
     if (zipActive && zipResult?.center) {
       return {
         key: `zip-${zip}#${fitNonce}`,
@@ -606,7 +639,7 @@ export function DealsExplorer({
       };
     }
     return null;
-  }, [zipActive, zipResult, zip, liveTarget, fitNonce]);
+  }, [boundary, zipActive, zipResult, zip, liveTarget, fitNonce]);
 
   const hasActiveFilters =
     !isDefaultDealFilters(filters) || zip !== null || listFilter !== null;
@@ -719,8 +752,8 @@ export function DealsExplorer({
     ? `${fmtNum(totals.rentals)} rentals across ${fmtNum(totals.markets)} markets`
     : redfinActive
       ? `${fmtNum(filtered.length)} furnished rentals in ${
-          furnishedMarket?.name ?? "this area"
-        }${furnishedWidened ? `, not just ZIP ${zip}` : ""}`
+          zip ? `ZIP ${zip}` : (furnishedMarket?.name ?? "this area")
+        }`
       : zipActive
       ? `${fmtNum(filtered.length)} live rentals in ZIP ${zip}`
       : liveActive
@@ -825,11 +858,6 @@ export function DealsExplorer({
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
               <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
               Furnished
-              {furnishedWidened ? (
-                <span className="font-normal text-muted-foreground">
-                  · {furnishedMarket?.name} city-wide
-                </span>
-              ) : null}
             </span>
           ) : redfinReason ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
@@ -946,6 +974,7 @@ export function DealsExplorer({
           <RentalsMap
             listings={mapListings}
             focus={mapFocus}
+            boundary={boundary}
             onViewportChange={handleViewportChange}
             viewFiltered={viewBounds !== null}
             onResetView={resetView}
@@ -1011,7 +1040,9 @@ export function DealsExplorer({
                read live. Grey cards for half a minute read as a page
                that had hung; this says what is happening and shows
                time passing. */
-            <FurnishedSearching market={furnishedMarket?.name ?? "this area"} />
+            <FurnishedSearching
+              market={zip ? `ZIP ${zip}` : (furnishedMarket?.name ?? "this area")}
+            />
           ) : (awaitingFeed || awaitingLists) && filtered.length === 0 ? (
             <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-2">
               {Array.from({ length: 6 }, (_, i) => (
@@ -1037,9 +1068,9 @@ export function DealsExplorer({
                   // was reporting "no active rentals in ZIP 33602"
                   // while running a city-wide furnished query, which
                   // blames the wrong thing and hides the real one.
-                  redfinActive && (redfin?.listings.length ?? 0) === 0
+                  redfinActive && rows.length === 0
                     ? `No furnished rentals listed in ${
-                        furnishedMarket?.name ?? "this area"
+                        zip ? `ZIP ${zip}` : (furnishedMarket?.name ?? "this area")
                       }`
                     : zipFailed
                     ? liveFailureLabel(zipResult?.reason)
@@ -1056,7 +1087,7 @@ export function DealsExplorer({
                           : "No rentals match"
                 }
                 description={
-                  redfinActive && (redfin?.listings.length ?? 0) === 0
+                  redfinActive && rows.length === 0
                     ? "The feed carries no furnished units here today. Turn Furnished off to see everything else listed."
                     : zipFailed
                     ? zipResult?.reason === "auth"

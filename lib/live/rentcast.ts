@@ -10,6 +10,7 @@
  * Docs: https://developers.rentcast.io — GET /v1/listings/rental/long-term
  */
 
+import { zipFromAddress } from "./zip";
 import { mineFeatures } from "@/lib/live/features";
 import { priceTrend } from "@/lib/live/price-history";
 import { MARKETS } from "@/lib/mock/markets";
@@ -34,6 +35,7 @@ export interface RentCastListing {
   addressLine2?: string;
   city?: string;
   state?: string;
+  zipCode?: string;
   latitude?: number;
   longitude?: number;
   propertyType?: string;
@@ -100,6 +102,12 @@ export function mapRentCastListing(
     address: addressOf(raw),
     city: raw.city ?? market.name,
     stateCode: raw.state ?? market.stateCode,
+    // The card's address is the street line, so the ZIP has to be kept
+    // on its own for a ZIP search to know what is in it.
+    ...(() => {
+      const zip = raw.zipCode?.trim() || zipFromAddress(raw.formattedAddress);
+      return zip ? { zip } : {};
+    })(),
     marketSlug: market.slug,
     lat: raw.latitude,
     lon: raw.longitude,
@@ -339,5 +347,10 @@ export async function fetchLiveRentalsByZip(zip: string): Promise<{
     lon: located.reduce((s, r) => s + r.longitude!, 0) / located.length,
   };
   const market = nearestMarket(center.lat, center.lon);
-  return { market, center, listings: toSortedListings(rows, market) };
+  // The feed answered a ZIP query, so a row it returned without a ZIP
+  // of its own is still in this one.
+  const listings = toSortedListings(rows, market).map((l) =>
+    l.zip ? l : { ...l, zip }
+  );
+  return { market, center, listings };
 }

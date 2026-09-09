@@ -254,6 +254,10 @@ export interface RentalListing {
   /** The parent market's name. */
   city: string;
   stateCode: string;
+  /** The ZIP, when the feed stated one apart from the address line.
+   *  lib/live/zip reads this first and the address's postal tail
+   *  second; a ZIP search shows only rows one of them places in it. */
+  zip?: string;
   marketSlug: string;
   /** Neighborhood this sits in — preview inventory only; live rows
    *  carry the feed's own address instead. */
