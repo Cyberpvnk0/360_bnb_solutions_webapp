@@ -24,6 +24,7 @@
  * opened a result that could only search for it.
  */
 import { usableListingPage } from "./listing-links";
+import { zipFromAddress } from "./zip";
 
 export function analyzeHref(l: {
   address: string;
@@ -40,6 +41,8 @@ export function analyzeHref(l: {
   rentMonthly?: number;
   /** The listing's own page at its source, when the feed gave one. */
   sourceUrl?: string;
+  /** The ZIP, when the feed stated one apart from the address line. */
+  zip?: string;
 }): string {
   const params = new URLSearchParams({
     a: l.address,
@@ -48,6 +51,10 @@ export function analyzeHref(l: {
     bd: String(l.bedrooms),
     ba: String(l.bathrooms),
   });
+  // The ZIP travels too: it is what the result's page lookup searches
+  // by (lib/live/redfin-page), and the address line often lacks it.
+  const zip = l.zip?.trim() || zipFromAddress(l.address);
+  if (zip && /^\d{5}$/.test(zip)) params.set("z", zip);
   // The type travels only when the listing stated it. A stand-in used
   // for filtering would arrive on the result as a fact about the house.
   if (l.propertyTypeKnown !== false) params.set("t", l.propertyType);
@@ -84,6 +91,8 @@ export function analyzeSearchHref(place: {
   street?: string;
   city?: string;
   state?: string;
+  /** Empty when the suggestion's provider does not publish it. */
+  zip?: string;
   point: { lat: number; lon: number };
 }): string {
   const street = place.street?.trim();
@@ -92,6 +101,8 @@ export function analyzeSearchHref(place: {
     lat: String(place.point.lat),
     lon: String(place.point.lon),
   });
+  const zip = place.zip?.trim() || zipFromAddress(place.address);
+  if (zip && /^\d{5}$/.test(zip)) params.set("z", zip);
   // City and state only beside a street line; beside the full line
   // they would say the same thing twice.
   if (street && place.city?.trim()) params.set("c", place.city.trim());

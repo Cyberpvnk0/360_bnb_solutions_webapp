@@ -26,14 +26,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  Mail,
-  Phone,
-  TriangleAlert,
-  User,
-  X,
-} from "lucide-react";
+import { ArrowRight, ArrowUpRight, Mail, Phone, TriangleAlert, User, X } from "lucide-react";
 import { projectDeal } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtNum, fmtPct, localityLine } from "@/lib/format";
 import { benchmark2brInputs } from "@/lib/mock/markets";
@@ -53,7 +46,7 @@ import { AddToListMenu } from "./add-to-list-menu";
 import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
 import { analyzeHref } from "@/lib/live/analyze-href";
-import { hasOwnListingPage } from "@/lib/live/listing-links";
+import { hasOwnListingPage, webLookupHref } from "@/lib/live/listing-links";
 import { useListingContact } from "./use-listing-contact";
 import { cn } from "@/lib/utils";
 
@@ -522,6 +515,29 @@ export function ListingDetailDialog({
                     : ""}
                 </p>
               )}
+              {/* Better than nothing, and only when nothing is what the
+                  listing site gave: a web search for the rental, typed
+                  out, since the reader was about to type it anyway.
+                  The number is usually wherever else the unit is
+                  advertised. */}
+              {isLive && !contact && looked.status !== "loading" && looked.status !== "idle"
+                ? (() => {
+                    const href = webLookupHref(listing);
+                    return href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Searches the web for this rental, where a contact is often posted"
+                        className="mt-3 inline-flex h-8 items-center gap-1 rounded-sm border border-border px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-secondary/60"
+                      >
+                        Web lookup
+                        <ArrowUpRight aria-hidden className="size-3.5" />
+                        <span className="sr-only">(opens in a new tab)</span>
+                      </a>
+                    ) : null;
+                  })()
+                : null}
             </Panel>
 
             {/* Seeded inventory only. A live row's description is the

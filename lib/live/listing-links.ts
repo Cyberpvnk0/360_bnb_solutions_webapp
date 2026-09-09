@@ -61,6 +61,30 @@ export interface Addressed {
   stateCode: string;
   /** The listing's own page at its source, when the source told us. */
   sourceUrl?: string;
+  /** The ZIP, when known: the listing site's search for it is the
+   *  fast way to the page (lib/live/redfin-page). */
+  zip?: string;
+  /** Where it is, when known: the ZIP can be found under the point. */
+  point?: { lat: number; lon: number };
+}
+
+/**
+ * The query that asks the page lookup (app/api/listing-page, and the
+ * contact route beside it) about a place: the address it must match,
+ * and the ZIP and point that tell it where to look.
+ */
+export function pageQuery(place: Addressed): URLSearchParams {
+  const query = new URLSearchParams({
+    address: place.address,
+    city: place.city,
+    state: place.stateCode,
+  });
+  if (place.zip && /^\d{5}$/.test(place.zip)) query.set("zip", place.zip);
+  if (place.point && Number.isFinite(place.point.lat) && Number.isFinite(place.point.lon)) {
+    query.set("lat", String(place.point.lat));
+    query.set("lon", String(place.point.lon));
+  }
+  return query;
 }
 
 /**
@@ -227,12 +251,31 @@ export function listingSearchHref(place: Addressed): string | null {
 export function findingHref(place: Addressed): string | null {
   const p = parts(place);
   if (!p) return null;
-  const query = new URLSearchParams({
+  const query = pageQuery({
+    ...place,
     address: p.street,
     city: p.city,
-    state: p.state,
+    stateCode: p.state,
   });
   return `/go/listing?${query}`;
+}
+
+/**
+ * A web search for the property's rental, for a panel that could get
+ * no contact off a listing page: not among the listing site's rentals,
+ * or a page that could not be read, or one that publishes none. Not
+ * scoped to the two sites — the point is every other place the rental
+ * is advertised, where the number usually is — and biased to rental
+ * pages by the phrase. The reader was going to search anyway; this
+ * types it for them.
+ */
+export function webLookupHref(place: Addressed): string | null {
+  const p = parts(place);
+  if (!p) return null;
+  const { number, name } = searchTerms(p.street);
+  const pin = number && name ? `"${number}" "${name}"` : `"${p.street}"`;
+  const query = `${pin} ${p.city} ${p.state} for rent`.trim();
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
 /** Which destination a link goes to, so the label can say so. A

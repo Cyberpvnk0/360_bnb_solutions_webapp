@@ -20,7 +20,7 @@
  */
 
 import * as React from "react";
-import type { Addressed } from "@/lib/live/listing-links";
+import { pageQuery, type Addressed } from "@/lib/live/listing-links";
 
 export type PageStatus = "idle" | "looking" | "found" | "none";
 
@@ -51,12 +51,7 @@ async function lookup(place: Addressed, key: string): Promise<Settled> {
 
   const request = (async (): Promise<Settled> => {
     try {
-      const query = new URLSearchParams({
-        address: place.address,
-        city: place.city,
-        state: place.stateCode,
-      });
-      const res = await fetch(`/api/listing-page?${query}`);
+      const res = await fetch(`/api/listing-page?${pageQuery(place)}`);
       const body = (await res.json().catch(() => null)) as {
         ok?: boolean;
         page?: string | null;

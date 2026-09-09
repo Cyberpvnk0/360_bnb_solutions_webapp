@@ -13,6 +13,7 @@ import {
   looksSpent,
   redfinRentalsUrlFor,
   siteRowsFrom,
+  zipRentalsUrl,
 } from "./redfin";
 import { streetPartOf } from "./address";
 
@@ -409,5 +410,11 @@ describe("siteRowsFrom — what the join reads, and only that", () => {
       siteRowsFrom([{ address: "1 A St", url: "https://www.redfin.com/z" }])[0]
         .sourceUrl
     ).toBe("https://www.redfin.com/z");
+  });
+});
+
+describe("zipRentalsUrl", () => {
+  it("is the site's own ZIP rentals path, with no id to resolve", () => {
+    expect(zipRentalsUrl("33604")).toBe("https://www.redfin.com/zipcode/33604/rentals");
   });
 });

@@ -81,6 +81,15 @@ export function nextPageUrls(body: unknown): string[] {
 }
 
 /**
+ * The site's rentals search for one ZIP. No id to resolve: the ZIP is
+ * the path. The fast way from an address to its page — a ZIP is a few
+ * pages where a city is dozens — see lib/live/zip-pages.
+ */
+export function zipRentalsUrl(zip: string): string {
+  return `https://www.redfin.com/zipcode/${zip}/rentals`;
+}
+
+/**
  * A Redfin rentals search URL for a KNOWN city id, optionally narrowed
  * to furnished units. Mirrors the real URL shape:
  *   /city/8907/FL/Jacksonville/rentals/filter/is-furnished
@@ -714,8 +723,36 @@ export async function fetchRedfinRentals(
 ): Promise<RedfinFetch> {
   const searchUrl = await redfinRentalsUrl(market, opts);
   if (!searchUrl) throw new RedfinError("no-city");
+  const walk = await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages));
+  const furnished = Boolean(opts.furnished);
+  const mapped =
+    opts.map === false
+      ? { listings: [], skipped: {}, geocodedBy: {} }
+      : await mapRedfinRows(walk.raw, market, { furnished });
+  return { ...mapped, ...walk, searchUrl };
+}
 
-  const limit = maxPages(opts.pages);
+/** Every page of one search, exactly as the vendor returns them. */
+export interface SearchWalk {
+  raw: Row[];
+  body: unknown;
+  parsed: boolean;
+  bytes: number;
+  credits: number | null;
+  pages: number;
+  morePages: boolean;
+  failedPages: number;
+}
+
+/**
+ * Every page of one search URL, up to `limit` — a city's rentals for
+ * the Furnished filter and the market join, a ZIP's for the page
+ * lookup — following the site's own next-page links.
+ */
+export async function fetchRedfinSearchRows(
+  searchUrl: string,
+  limit: number
+): Promise<SearchWalk> {
   const raw: Row[] = [];
   let bytes = 0;
   let credits: number | null = null;
@@ -784,25 +821,5 @@ export async function fetchRedfinRentals(
   const failedPages = failed.length;
   // Pages we failed to read still exist, so a lossy pass reports both.
   const morePages = queue.length > 0 || failedPages > 0;
-  const furnished = Boolean(opts.furnished);
-  const mapped =
-    opts.map === false
-      ? { listings: [], skipped: {}, geocodedBy: {} }
-      : await mapRedfinRows(raw, market, { furnished });
-  const { listings, skipped, geocodedBy } = mapped;
-
-  return {
-    listings,
-    raw,
-    skipped,
-    geocodedBy,
-    pages,
-    morePages,
-    failedPages,
-    body,
-    parsed,
-    bytes,
-    credits,
-    searchUrl,
-  };
+  return { raw, body, parsed, bytes, credits, pages, morePages, failedPages };
 }

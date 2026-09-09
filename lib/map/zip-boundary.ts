@@ -337,3 +337,63 @@ export async function fetchZipBoundary(zip: string): Promise<ZipBoundary | null>
   const found = await lookupZipBoundary(zip);
   return found.ok ? found.boundary : null;
 }
+
+/* ------------------------------------------------------------------ */
+/* The ZIP under a point                                               */
+/* ------------------------------------------------------------------ */
+
+/** The query for the tabulation area a point falls in. */
+export function zctaAtPointUrl(
+  service: string,
+  layerId: number,
+  point: { lat: number; lon: number }
+): string {
+  const params = new URLSearchParams({
+    geometry: `${point.lon},${point.lat}`,
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    outFields: "*",
+    returnGeometry: "false",
+    f: "json",
+  });
+  return `${service}/${layerId}/query?${params}`;
+}
+
+/** The five-digit ZCTA in a point query's answer, under whichever
+ *  field this revision of the layer files it, or null. */
+export function zipFromZctaBody(body: unknown): string | null {
+  const features = (body as { features?: unknown })?.features;
+  if (!Array.isArray(features)) return null;
+  for (const f of features) {
+    const record = f as { attributes?: unknown; properties?: unknown } | null;
+    const attrs = (record?.attributes ?? record?.properties) as
+      | Record<string, unknown>
+      | undefined;
+    if (!attrs) continue;
+    for (const field of ["ZCTA5", "GEOID", "BASENAME", "ZCTA5CE20", "ZCTA5CE10"]) {
+      const v = attrs[field];
+      if (typeof v === "string" && /^\d{5}$/.test(v)) return v;
+    }
+  }
+  return null;
+}
+
+/**
+ * The ZIP a point sits in, or null. For an address that arrived with
+ * no ZIP of its own — a typed one, geocoded — so the listing site's
+ * search for its ZIP can be asked for its page. A tabulation area is
+ * the Bureau's approximation of the postal ZIP, close enough to scope a
+ * search by. Nothing here throws.
+ */
+export async function lookupZipAt(point: {
+  lat: number;
+  lon: number;
+}): Promise<string | null> {
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return null;
+  const layer = await discoverZctaLayer();
+  if (!layer.ok) return null;
+  const got = await getJson(zctaAtPointUrl(layer.service, layer.layerId, point));
+  if (!got.ok) return null;
+  return zipFromZctaBody(got.body);
+}

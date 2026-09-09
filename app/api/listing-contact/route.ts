@@ -35,7 +35,7 @@ import { ScraperApiError } from "@/lib/live/scraperapi";
  * scraperapi). The platform default would kill the second read
  * mid-flight and the panel would call a page it never saw unreadable.
  */
-export const maxDuration = 150;
+export const maxDuration = 180;
 
 export async function GET(request: Request) {
   // A listing page is a billed read, made for one person's click.
@@ -54,8 +54,14 @@ export async function GET(request: Request) {
     const city = (searchParams.get("city") ?? "").trim();
     const state = (searchParams.get("state") ?? "").trim().toUpperCase();
     const zip = (searchParams.get("zip") ?? "").trim() || undefined;
+    const lat = Number(searchParams.get("lat"));
+    const lon = Number(searchParams.get("lon"));
+    const point =
+      Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+        ? { lat, lon }
+        : undefined;
     if (address.length >= 4 && city.length >= 2 && /^[A-Z]{2}$/.test(state)) {
-      const found = await resolveListingPage({ address, city, stateCode: state, zip });
+      const found = await resolveListingPage({ address, city, stateCode: state, zip, point });
       if (!found.url) {
         // Nothing to read, and nothing was spent on a page. `blocked`
         // tells the two reasons apart: the portal answered that it has

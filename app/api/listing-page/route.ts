@@ -25,7 +25,7 @@ import { requirePaid } from "@/lib/auth/gate";
 import { resolveListingPage } from "@/lib/live/redfin-page";
 
 /** The lookup's own budget (lib/live/redfin-page) plus room to answer. */
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 export async function GET(request: Request) {
   const paid = await requirePaid();
@@ -36,6 +36,12 @@ export async function GET(request: Request) {
   const city = (searchParams.get("city") ?? "").trim();
   const state = (searchParams.get("state") ?? "").trim().toUpperCase();
   const zip = (searchParams.get("zip") ?? "").trim() || undefined;
+  const lat = Number(searchParams.get("lat"));
+  const lon = Number(searchParams.get("lon"));
+  const point =
+    Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+      ? { lat, lon }
+      : undefined;
   if (address.length < 4 || city.length < 2 || !/^[A-Z]{2}$/.test(state)) {
     return NextResponse.json(
       { ok: false, reason: "bad-address" },
@@ -43,7 +49,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const found = await resolveListingPage({ address, city, stateCode: state, zip });
+  const found = await resolveListingPage({ address, city, stateCode: state, zip, point });
   return NextResponse.json({
     ok: true,
     page: found.url,

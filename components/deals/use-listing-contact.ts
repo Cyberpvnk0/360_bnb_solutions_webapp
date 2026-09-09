@@ -62,11 +62,15 @@ function targetFor(listing: RentalListing): Target | null {
   if (!listing.id.startsWith("live--")) return null;
   return {
     key: `addr:${listing.id}`,
+    // The ZIP and the point say where to look for the page; the
+    // address says what it must match. See lib/live/redfin-page.
     query: new URLSearchParams({
       address: listing.address,
       city: listing.city,
       state: listing.stateCode,
       ...(listing.zip ? { zip: listing.zip } : {}),
+      lat: String(listing.lat),
+      lon: String(listing.lon),
     }),
   };
 }

@@ -308,7 +308,12 @@ export function AnalyzeResult({
                 somebody else's house. A typed address arrives with no
                 page, so `find` asks the listing site for it. */}
             <div className="mt-2">
-              <PhotosLink place={analysis} real={realAddress} variant="chip" find />
+              <PhotosLink
+                place={{ ...analysis, point: propertyPoint ?? undefined }}
+                real={realAddress}
+                variant="chip"
+                find
+              />
             </div>
             {/* The one fact worth a line: whether the rent every figure
                 stands on is this unit's own or an estimate. Measured and

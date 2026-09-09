@@ -7,21 +7,38 @@
  * join, a unit the two sides write differently, a page deeper than the
  * join reads. Such a row had no page on file, so its contact was never
  * looked up — and the panel said the listing published none, which was
- * not true and cost somebody a phone call.
+ * not true and cost somebody a phone call. A typed address never had a
+ * page at all.
  *
- * So, on open, a row without a page asks the portal's own address
- * lookup — the same endpoint that resolves a city to its id, fed a
- * street line instead — and takes the page it names. STRICTLY: the
- * answer's street and unit must key identically to the row's, and its
- * town and state must match, or there is no page. A wrong page here is
- * a stranger's phone number under somebody's address.
+ * TWO WAYS TO THE PAGE, IN ORDER:
  *
- * One request through the scraping vendor per address, ever: hits are
- * kept a month and misses a week in the shared store.
+ *   1. The portal's own rentals search for the address's ZIP, keyed by
+ *      address (lib/live/zip-pages). The structured endpoint behind it
+ *      has been dependable — it is what the Furnished filter rides —
+ *      and a ZIP is a few pages, read once a day for everyone. An
+ *      address absent from a ZIP whose every page was read is not among
+ *      the site's rentals, and that is an answer.
+ *
+ *   2. The portal's address lookup — the endpoint that resolves a city
+ *      to its id, fed a street line — for an address with no ZIP to
+ *      search, or a ZIP with more pages than were read. It goes through
+ *      the plain proxy, which on this domain is slow and sometimes never
+ *      answers: the last resort, not the first.
+ *
+ * STRICTLY, both ways: the answer's street and unit must key identically
+ * to the row's, and the ZIP (or the state and town) must match, or
+ * there is no page. A wrong page here is a stranger's phone number
+ * under somebody's address.
+ *
+ * Hits are kept a month in the shared store; a miss a day, since the
+ * ZIP's search is read again daily and a listing may be on it tomorrow.
  */
 
 import { addressKey } from "./address";
 import { autocompleteUrlFor, fetchAutocomplete, normalizeCity } from "./redfin-city";
+import { zipFromAddress } from "./zip";
+import { pageInZip, readZipPages } from "./zip-pages";
+import { lookupZipAt } from "@/lib/map/zip-boundary";
 import { isFresh, readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
 
 export interface AddressRow {
@@ -41,16 +58,20 @@ const PROPERTY_PATH =
 const PORTAL = "https://www.redfin.com";
 
 const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** A day, not a week: the ZIP's search is read again daily, and the
+ *  listing may be on it tomorrow. */
+const MISS_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * How long the lookup may take. A bypass request on the portal takes
- * twenty seconds on a good day and the vendor retries for about
- * seventy; the route that calls this (app/api/listing-contact) budgets
- * for this AND the page read that follows it, so the two fit its own
- * ceiling with room to answer.
+ * Time for the whole resolution, and for the address lookup inside it.
+ * A bypass request on the portal takes twenty seconds on a good day
+ * and the vendor retries for about seventy; the routes that call this
+ * budget for this AND, for the contact, the page read that follows.
  */
+const TOTAL_BUDGET_MS = 80_000;
 const LOOKUP_BUDGET_MS = 50_000;
+/** The address lookup is not started with less than this. */
+const MIN_LOOKUP_MS = 15_000;
 
 /** Every property row in a lookup payload, wherever it nests. */
 export function extractAddressRows(
@@ -134,6 +155,16 @@ export function pickAddressRow(
   return null;
 }
 
+/** A place to find the page for: the address it must match, and the
+ *  ZIP and point that say where to look. */
+export interface Place {
+  address: string;
+  city: string;
+  stateCode: string;
+  zip?: string;
+  point?: { lat: number; lon: number };
+}
+
 function storeKey(place: { address: string; stateCode: string }): string | null {
   const key = addressKey(place.address);
   return key ? `page:v2:${place.stateCode.trim().toLowerCase()}:${key}` : null;
@@ -151,7 +182,7 @@ export interface PageLookup {
    *  the other is "not here". */
   answered: boolean;
   /** Why there is no page, for the person reading the route's answer:
-   *  what the lookup returned and what was rejected. Never a value off
+   *  what each step returned and what was rejected. Never a value off
    *  a listing. */
   detail: string | null;
 }
@@ -162,12 +193,7 @@ export interface PageLookup {
  *  if it goes out on its own. */
 const inFlight = new Map<string, Promise<PageLookup>>();
 
-export async function resolveListingPage(place: {
-  address: string;
-  city: string;
-  stateCode: string;
-  zip?: string;
-}): Promise<PageLookup> {
+export async function resolveListingPage(place: Place): Promise<PageLookup> {
   const key = storeKey(place);
   if (!key) return { url: null, answered: true, detail: "address could not be keyed" };
 
@@ -178,10 +204,17 @@ export async function resolveListingPage(place: {
   return lookup;
 }
 
-async function lookupOnce(
-  place: { address: string; city: string; stateCode: string; zip?: string },
-  key: string
-): Promise<PageLookup> {
+/** The ZIP to search: the row's own, the address line's, or the one
+ *  under the point. */
+async function zipFor(place: Place): Promise<string | null> {
+  const own = place.zip?.trim();
+  if (own && /^\d{5}$/.test(own)) return own;
+  const inLine = zipFromAddress(place.address);
+  if (inLine) return inLine;
+  return place.point ? lookupZipAt(place.point) : null;
+}
+
+async function lookupOnce(place: Place, key: string): Promise<PageLookup> {
   const stored = await readKeyedBlob(key).catch(() => null);
   if (stored) {
     const url = (stored.value as { url?: unknown }).url;
@@ -197,13 +230,59 @@ async function lookupOnce(
     }
   }
 
+  const started = Date.now();
+  const notes: string[] = [];
+  const remember = (url: string | null) =>
+    void writeKeyed(key, { url }).catch(() => undefined);
+
+  // 1. The ZIP's rentals, keyed by address.
+  const zip = await zipFor(place);
+  if (!zip) {
+    notes.push("no ZIP to search");
+  } else {
+    const pages = await readZipPages(zip);
+    if (!pages) {
+      notes.push(`${zip}'s rentals could not be read`);
+    } else {
+      const url = pageInZip(pages, place.address);
+      if (url) {
+        remember(url);
+        return { url, answered: true, detail: null };
+      }
+      notes.push(
+        `${pages.rows} rental${pages.rows === 1 ? "" : "s"} in ${zip}` +
+          `${pages.complete ? "" : ` (first ${pages.pages} pages)`}, none at this address`
+      );
+      if (pages.complete) {
+        // Read whole and not there: not among the site's rentals today.
+        remember(null);
+        return { url: null, answered: true, detail: notes.join("; ") };
+      }
+    }
+  }
+
+  // 2. The portal's address lookup, with what time is left.
   const apiKey = process.env.SCRAPERAPI_KEY;
-  if (!apiKey) return { url: null, answered: false, detail: "no scraping key configured" };
+  if (!apiKey) {
+    return {
+      url: null,
+      answered: false,
+      detail: [...notes, "no scraping key configured"].join("; "),
+    };
+  }
+  const left = TOTAL_BUDGET_MS - (Date.now() - started);
+  if (left < MIN_LOOKUP_MS) {
+    return {
+      url: null,
+      answered: false,
+      detail: [...notes, "no time left for the address lookup"].join("; "),
+    };
+  }
   try {
     const { attempt, body, tried } = await fetchAutocomplete(
       autocompleteUrlFor(`${place.address}, ${place.city}, ${place.stateCode}`),
       apiKey,
-      { budgetMs: LOOKUP_BUDGET_MS }
+      { budgetMs: Math.min(LOOKUP_BUDGET_MS, left) }
     );
     if (body === null) {
       // Not remembered: time running out says nothing about the address.
@@ -211,26 +290,27 @@ async function lookupOnce(
       return {
         url: null,
         answered: false,
-        detail: `lookup did not answer (${why} on ${tried.join(", ")})`,
+        detail: [...notes, `lookup did not answer (${why} on ${tried.join(", ")})`].join("; "),
       };
     }
     const rows = extractAddressRows(body);
     const url = pickAddressRow(rows, place);
-    // A miss is remembered too, so a listing the portal does not carry
-    // is not looked up on every open.
-    void writeKeyed(key, { url }).catch(() => undefined);
+    remember(url);
     return {
       url,
       answered: true,
       detail: url
         ? null
-        : `lookup answered with ${rows.length} property page${rows.length === 1 ? "" : "s"}, none for this address`,
+        : [
+            ...notes,
+            `lookup answered with ${rows.length} property page${rows.length === 1 ? "" : "s"}, none for this address`,
+          ].join("; "),
     };
   } catch (e) {
     return {
       url: null,
       answered: false,
-      detail: e instanceof Error ? e.message : "lookup failed",
+      detail: [...notes, e instanceof Error ? e.message : "lookup failed"].join("; "),
     };
   }
 }

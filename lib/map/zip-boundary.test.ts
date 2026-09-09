@@ -4,8 +4,10 @@ import {
   esriToGeoJson,
   featureFromGeoJsonBody,
   isZipBoundary,
+  zctaAtPointUrl,
   zctaLayerIdFrom,
   zctaQueryUrl,
+  zipFromZctaBody,
 } from "./zip-boundary";
 
 describe("finding the ZCTA layer in a service's layer list", () => {
@@ -128,5 +130,25 @@ describe("a stored boundary is checked before it is trusted", () => {
     expect(isZipBoundary({ zip: "3222", feature: f, bbox: bboxOf(f) })).toBe(false);
     expect(isZipBoundary({ zip: "32225", feature: { type: "Feature" }, bbox: [0, 0, 0, 0] })).toBe(false);
     expect(isZipBoundary(null)).toBe(false);
+  });
+});
+
+describe("the ZIP under a point", () => {
+  it("asks the layer which area the point intersects, without the shape", () => {
+    const url = new URL(zctaAtPointUrl("https://svc/MapServer", 7, { lat: 27.99, lon: -82.44 }));
+    expect(url.pathname).toBe("/MapServer/7/query");
+    expect(url.searchParams.get("geometry")).toBe("-82.44,27.99");
+    expect(url.searchParams.get("geometryType")).toBe("esriGeometryPoint");
+    expect(url.searchParams.get("spatialRel")).toBe("esriSpatialRelIntersects");
+    expect(url.searchParams.get("returnGeometry")).toBe("false");
+  });
+
+  it("reads the five digits under whichever field the layer files them", () => {
+    expect(zipFromZctaBody({ features: [{ attributes: { ZCTA5: "33604", NAME: "ZCTA5 33604" } }] })).toBe("33604");
+    expect(zipFromZctaBody({ features: [{ attributes: { GEOID: "33604" } }] })).toBe("33604");
+    expect(zipFromZctaBody({ features: [{ properties: { BASENAME: "33604" } }] })).toBe("33604");
+    expect(zipFromZctaBody({ features: [{ attributes: { NAME: "nothing here" } }] })).toBeNull();
+    expect(zipFromZctaBody({ features: [] })).toBeNull();
+    expect(zipFromZctaBody({ error: { message: "bad" } })).toBeNull();
   });
 });

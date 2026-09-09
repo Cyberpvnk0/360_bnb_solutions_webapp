@@ -101,6 +101,9 @@ function specFrom(
     // the listing site. This is a query parameter, which anyone can
     // edit, and it becomes a link the result sends people to.
     sourceUrl: usableListingPage(one("u")) ?? undefined,
+    // The ZIP, five digits or nothing: the result's page lookup
+    // searches the listing site by it.
+    zip: /^\d{5}$/.test(one("z") ?? "") ? one("z") : undefined,
     /** True when nobody told us the size and we picked one. The result
      *  page says so rather than presenting a guess as a reading. */
     assumedSize: bd === null || ba === null,

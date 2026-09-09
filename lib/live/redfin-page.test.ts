@@ -7,17 +7,32 @@ import {
 } from "./redfin-page";
 import { addressKey } from "./address";
 import { fetchAutocomplete } from "./redfin-city";
+import { readZipPages, type ZipPages } from "./zip-pages";
+import { indexBySite } from "./listing-join";
+import { lookupZipAt } from "@/lib/map/zip-boundary";
 import { readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
 
 vi.mock("./redfin-city", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./redfin-city")>()),
   fetchAutocomplete: vi.fn(),
 }));
+vi.mock("./zip-pages", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./zip-pages")>()),
+  readZipPages: vi.fn(),
+}));
+vi.mock("@/lib/map/zip-boundary", () => ({
+  lookupZipAt: vi.fn(),
+}));
 vi.mock("@/lib/db/market-store", () => ({
   isFresh: () => true,
   readKeyedBlob: vi.fn(),
   writeKeyed: vi.fn(),
 }));
+
+/** A ZIP's rows as lib/live/zip-pages hands them back. */
+function zipPages(rows: { address: string; sourceUrl: string }[], complete = true): ZipPages {
+  return { zip: "33604", index: indexBySite(rows), rows: rows.length, pages: 1, complete, from: "site" };
+}
 
 const PAYLOAD = {
   payload: {
@@ -119,16 +134,69 @@ describe("what a property page's path says", () => {
 
 describe("resolving a page from an address", () => {
   const lookup = vi.mocked(fetchAutocomplete);
+  const zipSearch = vi.mocked(readZipPages);
+  const zipAt = vi.mocked(lookupZipAt);
   const stored = vi.mocked(readKeyedBlob);
   const remember = vi.mocked(writeKeyed);
   beforeEach(() => {
     vi.stubEnv("SCRAPERAPI_KEY", "k");
     stored.mockResolvedValue(null);
     remember.mockResolvedValue(undefined as never);
+    zipSearch.mockResolvedValue(null);
+    zipAt.mockResolvedValue(null);
   });
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();
+  });
+
+  it("takes the page from the ZIP's rentals, and never asks the slow lookup", async () => {
+    zipSearch.mockResolvedValue(
+      zipPages([{ address: "1804 E Sitka St", sourceUrl: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661" }])
+    );
+    const r = await resolveListingPage({ ...TAMPA, address: "1804 East Sitka Street", zip: "33604" });
+    expect(zipSearch).toHaveBeenCalledWith("33604");
+    expect(r).toEqual({
+      url: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661",
+      answered: true,
+      detail: null,
+    });
+    expect(lookup).not.toHaveBeenCalled();
+    expect(remember).toHaveBeenCalledWith(`page:v2:fl:${addressKey("1804 E Sitka St")}`, {
+      url: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661",
+    });
+  });
+
+  it("reads the ZIP off the address line, or finds it under the point", async () => {
+    zipSearch.mockResolvedValue(zipPages([]));
+    await resolveListingPage({ ...TAMPA, address: "1804 E Sitka St, Tampa, FL 33604" });
+    expect(zipSearch).toHaveBeenLastCalledWith("33604");
+    zipAt.mockResolvedValue("33605");
+    await resolveListingPage({ ...TAMPA, address: "1810 E Sitka St", point: { lat: 27.99, lon: -82.44 } });
+    expect(zipAt).toHaveBeenCalledWith({ lat: 27.99, lon: -82.44 });
+    expect(zipSearch).toHaveBeenLastCalledWith("33605");
+  });
+
+  it("calls a ZIP read whole with no such address a miss, and remembers it", async () => {
+    zipSearch.mockResolvedValue(zipPages([{ address: "1 Other St", sourceUrl: "https://www.redfin.com/x/home/1" }], true));
+    const r = await resolveListingPage({ ...TAMPA, zip: "33604" });
+    expect(r.url).toBeNull();
+    expect(r.answered).toBe(true);
+    expect(r.detail).toMatch(/1 rental in 33604, none at this address/);
+    expect(lookup).not.toHaveBeenCalled();
+    expect(remember).toHaveBeenCalledWith(`page:v2:fl:${addressKey(TAMPA.address)}`, { url: null });
+  });
+
+  it("falls through to the lookup when the ZIP was read in part", async () => {
+    zipSearch.mockResolvedValue(zipPages([], false));
+    lookup.mockResolvedValue({
+      attempt: { tier: "premium", status: 200, text: "" },
+      body: PAYLOAD,
+      tried: ["premium"],
+    });
+    const r = await resolveListingPage({ ...TAMPA, zip: "33604" });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(r.url).toMatch(/47311661$/);
   });
 
   it("says the portal never answered, and remembers nothing", async () => {
@@ -143,7 +211,7 @@ describe("resolving a page from an address", () => {
     const r = await resolveListingPage(TAMPA);
     expect(r.url).toBeNull();
     expect(r.answered).toBe(false);
-    expect(r.detail).toBe("lookup did not answer (no answer in 50s on premium)");
+    expect(r.detail).toBe("no ZIP to search; lookup did not answer (no answer in 50s on premium)");
     expect(remember).not.toHaveBeenCalled();
   });
 

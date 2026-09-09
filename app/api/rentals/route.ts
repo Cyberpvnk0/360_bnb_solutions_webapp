@@ -55,6 +55,7 @@ import {
   joinListingFacts,
   needsListingPages,
 } from "@/lib/live/listing-join";
+import { readZipPages, readZipPagesStored } from "@/lib/live/zip-pages";
 import type { Market, RentalListing } from "@/lib/mock/types";
 
 /** One vendor call. Stated so a slow feed fails as a timeout we can
@@ -230,13 +231,23 @@ export async function GET(request: Request) {
     try {
       const { market, center, listings } = await fetchLiveRentalsByZip(zip);
       const spent = commitRentcastSearch(`zip:${zip}`);
+      // Pages for the rows, from the listing site's own search for
+      // this ZIP when it is on file — read behind the response
+      // otherwise, so the next search of the ZIP, and every contact
+      // lookup on these rows, has it. See lib/live/zip-pages.
+      const known = await readZipPagesStored(zip);
+      if (!known && listings.length > 0 && reserveJoin(`zip:${zip}`).allowed) {
+        after(async () => {
+          await readZipPages(zip);
+        });
+      }
       return NextResponse.json({
         live: true,
         asOf: new Date().toISOString(),
         zip,
         market: market?.slug ?? null,
         center,
-        listings,
+        listings: known ? joinListingFacts(listings, known.index) : listings,
         remaining: spent.remaining,
         cap: spent.cap,
       });

@@ -687,6 +687,12 @@ export async function fetchAutocomplete(
     const params = new URLSearchParams({
       api_key: key,
       url: target,
+      // From the US, as the page reads in lib/live/scraperapi already
+      // go: the portal turns away traffic from anywhere else, and a
+      // bypass that keeps drawing foreign addresses spends its retries
+      // being turned away — which read here as a lookup that never
+      // answered.
+      country_code: "us",
       ...tier.params,
     });
     let res: Response;

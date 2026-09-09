@@ -53,6 +53,9 @@ export interface AddressSpec {
    *  opens it; without it, the result can only search for the address
    *  — which is the honest answer for a typed one. */
   sourceUrl?: string;
+  /** The ZIP, when the address arrived with one. The result's page
+   *  lookup searches the listing site by it; the line often lacks it. */
+  zip?: string;
 }
 
 const EARTH_RADIUS_MILES = 3958.8;
@@ -137,6 +140,7 @@ export function buildAddressAnalysis(
       bathrooms: spec.bathrooms,
       propertyType: spec.propertyType,
       ...(spec.sourceUrl ? { sourceUrl: spec.sourceUrl } : {}),
+      ...(spec.zip ? { zip: spec.zip } : {}),
       /**
        * A bare YYYY-MM-DD, matching the seeded analyses.
        *

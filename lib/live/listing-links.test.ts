@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   findingHref,
   hasOwnListingPage,
+  pageQuery,
   photosHref,
   photosLink,
   searchTerms,
   usableListingPage,
+  webLookupHref,
 } from "./listing-links";
 
 const TAMPA = { address: "1234 Palm Ave", city: "Tampa", stateCode: "FL" };
@@ -191,5 +193,46 @@ describe("the finder page, for a click while the page is being found", () => {
   it("has nothing for half an address, like the search", () => {
     expect(findingHref({ ...TAMPA, city: "" })).toBeNull();
     expect(findingHref({ ...TAMPA, address: "//" })).toBeNull();
+  });
+});
+
+describe("what the page lookup is told", () => {
+  it("carries the ZIP and the point when the place has them", () => {
+    const q = pageQuery({ ...TAMPA, zip: "33604", point: { lat: 27.99, lon: -82.44 } });
+    expect(q.get("address")).toBe("1234 Palm Ave");
+    expect(q.get("zip")).toBe("33604");
+    expect(q.get("lat")).toBe("27.99");
+    expect(q.get("lon")).toBe("-82.44");
+    const bare = pageQuery(TAMPA);
+    expect(bare.has("zip")).toBe(false);
+    expect(bare.has("lat")).toBe(false);
+  });
+
+  it("drops a ZIP that is not five digits", () => {
+    expect(pageQuery({ ...TAMPA, zip: "3360" }).has("zip")).toBe(false);
+  });
+
+  it("goes through to the finder page", () => {
+    const href = findingHref({ ...TAMPA, zip: "33604", point: { lat: 27.99, lon: -82.44 } })!;
+    const url = new URL(href, "https://app.example");
+    expect(url.searchParams.get("zip")).toBe("33604");
+    expect(url.searchParams.get("lat")).toBe("27.99");
+  });
+});
+
+describe("the web lookup, when no listing page could give a contact", () => {
+  it("searches the whole web for the rental, pinned to the address", () => {
+    const href = webLookupHref({ ...TAMPA, address: "1804 East Sitka Street" })!;
+    const url = new URL(href);
+    expect(url.hostname).toBe("www.google.com");
+    const q = url.searchParams.get("q")!;
+    expect(q.startsWith('"1804" "Sitka"')).toBe(true);
+    expect(q).toContain("Tampa FL");
+    expect(q).toContain("for rent");
+    expect(q).not.toContain("site:");
+  });
+
+  it("has nothing for half an address", () => {
+    expect(webLookupHref({ ...TAMPA, city: "" })).toBeNull();
   });
 });

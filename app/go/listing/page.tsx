@@ -25,6 +25,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import {
   listingSearchHref,
+  pageQuery,
   usableListingPage,
   type Addressed,
 } from "@/lib/live/listing-links";
@@ -48,10 +49,14 @@ type Outcome = "finding" | "none" | "bad-address";
 
 function Finder() {
   const sp = useSearchParams();
+  const lat = Number(sp.get("lat"));
+  const lon = Number(sp.get("lon"));
   const place: Addressed = {
     address: sp.get("address")?.trim() ?? "",
     city: sp.get("city")?.trim() ?? "",
     stateCode: sp.get("state")?.trim() ?? "",
+    zip: sp.get("zip")?.trim() || undefined,
+    point: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : undefined,
   };
   const search = listingSearchHref(place);
   const [outcome, setOutcome] = React.useState<Outcome>(
@@ -64,12 +69,7 @@ function Finder() {
     void (async () => {
       let page: string | null = null;
       try {
-        const query = new URLSearchParams({
-          address: place.address,
-          city: place.city,
-          state: place.stateCode,
-        });
-        const res = await fetch(`/api/listing-page?${query}`);
+        const res = await fetch(`/api/listing-page?${pageQuery(place)}`);
         const body = (await res.json().catch(() => null)) as {
           ok?: boolean;
           page?: string | null;
