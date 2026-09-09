@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/primitives/empty-state";
+import { FurnishedSearching } from "./furnished-searching";
 import { useSession } from "@/components/providers/session-provider";
 import {
   getRedfinFurnished,
@@ -1005,6 +1006,12 @@ export function DealsExplorer({
                 </p>
               ) : null}
             </div>
+          ) : redfinChecking ? (
+            /* The long wait, named: the market's listings are being
+               read live. Grey cards for half a minute read as a page
+               that had hung; this says what is happening and shows
+               time passing. */
+            <FurnishedSearching market={furnishedMarket?.name ?? "this area"} />
           ) : (awaitingFeed || awaitingLists) && filtered.length === 0 ? (
             <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-2">
               {Array.from({ length: 6 }, (_, i) => (

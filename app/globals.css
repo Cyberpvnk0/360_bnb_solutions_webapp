@@ -446,20 +446,23 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* "Analyzing" — the result page while the numbers run                  */
-/* (components/analyze/analyzing-screen). An arc sweeping a ring, a     */
-/* glow breathing behind it, one line of copy crossfading through what  */
-/* the page is doing. Indeterminate on purpose: there is no measured    */
-/* progress to draw. Static under reduced motion.                       */
-.analyzing-ring {
-  animation: analyzing-rotate 1.6s linear infinite;
+/* "Working" — the wait states: the result page while the numbers run   */
+/* (components/analyze/analyzing-screen) and the Deal Finder while a    */
+/* market's furnished rentals are read (components/deals/               */
+/* furnished-searching). An arc sweeping a ring, a glow breathing        */
+/* behind it, one line of copy crossfading through what the page is    */
+/* doing, and a bar that sweeps rather than fills. Indeterminate on     */
+/* purpose: there is no measured progress to draw. Static under reduced */
+/* motion.                                                              */
+.working-ring {
+  animation: working-rotate 1.6s linear infinite;
 }
-.analyzing-ring .track {
+.working-ring .track {
   fill: none;
   stroke: var(--border);
   stroke-width: 3.5;
 }
-.analyzing-ring .arc {
+.working-ring .arc {
   fill: none;
   stroke: var(--select);
   stroke-width: 3.5;
@@ -468,14 +471,14 @@
   stroke-dasharray: 126;
   stroke-dashoffset: 100;
   transform-origin: 50% 50%;
-  animation: analyzing-dash 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: working-dash 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
-@keyframes analyzing-rotate {
+@keyframes working-rotate {
   to {
     transform: rotate(360deg);
   }
 }
-@keyframes analyzing-dash {
+@keyframes working-dash {
   0% {
     stroke-dashoffset: 118;
     transform: rotate(0deg);
@@ -489,10 +492,10 @@
     transform: rotate(360deg);
   }
 }
-.analyzing-glow {
-  animation: analyzing-breathe 2.6s ease-in-out infinite;
+.working-glow {
+  animation: working-breathe 2.6s ease-in-out infinite;
 }
-@keyframes analyzing-breathe {
+@keyframes working-breathe {
   0%,
   100% {
     opacity: 0.35;
@@ -506,12 +509,12 @@
 /* Three phrases, 1.8s each, one cycle of 5.4s. Each starts hidden and
    joins the cycle one slot later than the last (fill-mode "both" holds
    the first keyframe until its delay is up). */
-.analyzing-phrase {
+.working-phrase {
   opacity: 0;
-  animation: analyzing-cycle 5.4s cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+  animation: working-cycle 5.4s cubic-bezier(0.4, 0, 0.2, 1) infinite both;
   animation-delay: calc(var(--i) * 1.8s);
 }
-@keyframes analyzing-cycle {
+@keyframes working-cycle {
   0% {
     opacity: 0;
     transform: translateY(5px);
@@ -533,20 +536,50 @@
     transform: translateY(-5px);
   }
 }
+/* A bar that sweeps: a highlight crossing a track, never a fill that
+   would claim to know how far along the work is. */
+.working-bar {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--border);
+}
+.working-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--select), transparent);
+  animation: working-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes working-sweep {
+  from {
+    transform: translateX(-250%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .analyzing-ring,
-  .analyzing-ring .arc,
-  .analyzing-glow,
-  .analyzing-phrase {
+  .working-ring,
+  .working-ring .arc,
+  .working-glow,
+  .working-phrase,
+  .working-bar::after {
     animation: none;
   }
-  .analyzing-glow {
-    opacity: 0.5;
-  }
-  .analyzing-phrase {
+  .working-bar::after {
     display: none;
   }
-  .analyzing-phrase:first-child {
+  .working-glow {
+    opacity: 0.5;
+  }
+  .working-phrase {
+    display: none;
+  }
+  .working-phrase:first-child {
     display: block;
     opacity: 1;
   }

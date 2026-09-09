@@ -357,14 +357,17 @@ export function AnalyzeEntry({
           <ul className="divide-y divide-border">
             {recent.map((e) => (
               <li key={e.id}>
+                {/* Fills the pins' red on hover, like a comp row: the
+                    same "this one" signal everywhere a row can be
+                    picked. */}
                 <Link
                   href={e.href!}
-                  className="flex items-center justify-between gap-4 px-6 py-2.5 transition-colors duration-150 hover:bg-secondary/40"
+                  className="group flex items-center justify-between gap-4 px-6 py-2.5 transition-colors duration-150 hover:bg-select focus-visible:bg-select focus-visible:outline-none"
                 >
-                  <span className="min-w-0 truncate text-sm text-foreground">
+                  <span className="min-w-0 truncate text-sm text-foreground transition-colors duration-150 group-hover:text-white group-focus-visible:text-white">
                     {e.message.replace(/^Analyzed /, "")}
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular">
+                  <span className="shrink-0 text-xs text-muted-foreground transition-colors duration-150 tabular group-hover:text-white/85 group-focus-visible:text-white/85">
                     {fmtWhen(e.at)}
                   </span>
                 </Link>

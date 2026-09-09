@@ -36,11 +36,11 @@ function AnalyzingRing() {
     <div className="relative flex size-[104px] shrink-0 items-center justify-center">
       <span
         aria-hidden
-        className="analyzing-glow absolute inset-3 rounded-full bg-select/25 blur-xl"
+        className="working-glow absolute inset-3 rounded-full bg-select/25 blur-xl"
       />
       <svg
         viewBox="0 0 48 48"
-        className="analyzing-ring relative size-14"
+        className="working-ring relative size-14"
         aria-hidden
       >
         <circle className="track" cx="24" cy="24" r="20" />
@@ -54,12 +54,12 @@ function AnalyzingRing() {
 function AnalyzingPhrases() {
   return (
     <div
-      className="analyzing-phrases relative mt-2 h-5 text-sm text-muted-foreground"
+      className="working-phrases relative mt-2 h-5 text-sm text-muted-foreground"
     >
       {PHRASES.map((phrase, i) => (
         <span
           key={phrase}
-          className="analyzing-phrase absolute inset-0 truncate"
+          className="working-phrase absolute inset-0 truncate"
           style={{ "--i": i } as React.CSSProperties}
         >
           {phrase}
