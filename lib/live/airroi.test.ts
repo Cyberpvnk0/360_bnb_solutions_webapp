@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityOf, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, toFraction } from "./airroi";
+import { activityOf, wholePlace, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -322,5 +322,68 @@ describe("a comp the feed says is no longer listed", () => {
     expect(activityOf({ status: "live" }, null)).toEqual({ active: true, key: "status" });
     expect(activityOf({ status: "something else" }, null)).toEqual({ active: null, key: null });
     expect(activityOf({}, null)).toEqual({ active: null, key: null });
+  });
+});
+
+describe("still listed, read off the last ninety days' calendar", () => {
+  const withCalendar = (metrics: Record<string, number>) =>
+    realComp({ performance_metrics: { ttm_avg_rate: 214.6, ttm_occupancy: 0.63, ...metrics } });
+
+  it("leaves out a comp with no days at all in the last ninety", () => {
+    expect(mapComp(withCalendar({ l90d_total_days: 0 }), 0)).toBeNull();
+    expect(
+      mapComp(withCalendar({ l90d_available_days: 0, l90d_days_reserved: 0, l90d_blocked_days: 0 }), 0)
+    ).toBeNull();
+  });
+
+  it("keeps a listing with a calendar, however quiet", () => {
+    // Blocked or unbooked is still on the platform.
+    expect(mapComp(withCalendar({ l90d_total_days: 90, l90d_days_reserved: 0 }), 0)?.active).toBe(true);
+    expect(
+      mapComp(withCalendar({ l90d_available_days: 0, l90d_days_reserved: 0, l90d_blocked_days: 90 }), 0)?.active
+    ).toBe(true);
+  });
+
+  it("keeps a comp whose payload carries no calendar, and says so", () => {
+    expect(mapComp(realComp(), 0)?.active).toBeUndefined();
+    expect(activityOf(realComp(), null)).toEqual({ active: null, key: null });
+    expect(activityOf(withCalendar({ l90d_total_days: 12 }), null)).toEqual({
+      active: true,
+      key: "performance_metrics.l90d_total_days",
+    });
+  });
+
+  it("lets an explicit flag speak first", () => {
+    expect(
+      mapComp(
+        realComp({
+          listing_info: { listing_id: 1, listing_name: "x", is_active: false },
+          performance_metrics: { ttm_avg_rate: 200, ttm_occupancy: 0.5, l90d_total_days: 90 },
+        }),
+        0
+      )
+    ).toBeNull();
+  });
+});
+
+describe("whole places only", () => {
+  it("leaves out a room in somebody's home", () => {
+    for (const type of ["Private room", "Shared room", "Hotel room", "private_room"]) {
+      expect(
+        mapComp(realComp({ listing_info: { listing_id: 1, listing_name: "Room", room_type: type } }), 0)
+      ).toBeNull();
+    }
+  });
+
+  it("keeps a whole place, and a comp that does not say", () => {
+    expect(
+      mapComp(realComp({ listing_info: { listing_id: 1, listing_name: "Home", room_type: "Entire home/apt" } }), 0)
+    ).not.toBeNull();
+    expect(
+      mapComp(realComp({ listing_info: { listing_id: 1, listing_name: "Home", listing_type: "Entire place" } }), 0)
+    ).not.toBeNull();
+    expect(mapComp(realComp(), 0)).not.toBeNull();
+    expect(wholePlace({}, null)).toBe(true);
+    expect(wholePlace({}, { room_type: "Private room" })).toBe(false);
   });
 });

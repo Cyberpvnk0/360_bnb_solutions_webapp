@@ -51,6 +51,9 @@ const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  *   2             ids kept exact through the parse (parseJsonKeepingBigIds).
  *   3             listings the feed marks as no longer up are left out
  *                 of the set (lib/live/airroi, activityOf).
+ *   4             "no longer up" read off the last-90-day calendar the
+ *                 feed actually carries, and private or shared rooms
+ *                 left out (wholePlace).
  *
  * A set written in an older format is bought again, once: it may hold
  * comps that are not comps any more, and nothing in it says which. A
@@ -59,7 +62,7 @@ const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * so, and buying again would only buy the same; those links are
  * dropped at render instead (lib/live/comp-links).
  */
-export const ESTIMATE_VERSION = 3;
+export const ESTIMATE_VERSION = 4;
 
 /** The vendor spec for an analysis at a point — the thing a comp set
  *  is bought for. One builder, so the plan meter and the cache agree

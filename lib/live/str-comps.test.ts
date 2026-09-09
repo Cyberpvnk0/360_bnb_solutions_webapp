@@ -65,7 +65,7 @@ beforeEach(() => {
 
 describe("a comp set stored in an older format", () => {
   it("is bought again, once — it may hold comps that are not comps any more", async () => {
-    for (const older of [{}, { v: 2 }]) {
+    for (const older of [{}, { v: 2 }, { v: 3 }]) {
       feed.fetchEstimate.mockClear();
       store.writeEstimate.mockClear();
       store.readEstimate.mockResolvedValue({ estimate: { ...blank, ...older, comps: shortIdSet }, ...fresh });

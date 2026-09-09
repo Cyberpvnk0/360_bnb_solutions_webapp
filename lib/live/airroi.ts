@@ -370,19 +370,56 @@ const STATUS_KEYS = ["status", "listing_status", "listingStatus", "availability_
 const LIVE_WORDS = /^(active|live|listed|available|online|published)$/i;
 const GONE_WORDS = /^(inactive|unlisted|delisted|deleted|removed|suspended|paused|snoozed|offline|unavailable|closed)$/i;
 
+/** The last-90-days calendar, as the feed keeps it. */
+const L90D_TOTAL_KEYS = ["l90d_total_days"];
+const L90D_PART_KEYS = ["l90d_available_days", "l90d_days_reserved", "l90d_blocked_days"];
+
 /**
- * Whether the feed says this comp is still listed, and which field
- * said so. Null when it says nothing either way.
+ * Whether this comp is still listed, and which field said so. Null
+ * when nothing in the payload says either way.
  *
  * A comp set is trailing-twelve-month evidence, so it can carry a
  * listing that earned in the year and has since come down — and a
  * room link for one of those opens the platform's "something went
  * wrong" page, which is what the links that failed on an ordinary
  * eight-digit id were. Such a listing is left out of the set (see
- * mapComp). Only a signal the feed actually carries is read; nothing
- * is inferred from dates or silence.
+ * mapComp).
+ *
+ * The feed carries no listed-or-not flag (checked against a live
+ * payload: none of its groups has one). What it does carry, for every
+ * comp, is the last ninety days of the listing's calendar — days
+ * available, reserved and blocked, and their total. A listing that is
+ * on the platform has a calendar; one with no days at all in the last
+ * ninety is not there to be booked. That is the fact this reads, after
+ * an explicit flag if a feed ever sends one. A calendar that is merely
+ * quiet — blocked, or unbooked — is a live listing and stays.
  */
 export function activityOf(
+  row: Row,
+  info: Row | null
+): { active: boolean | null; key: string | null } {
+  const flagged = flagOf(row, info);
+  if (flagged.active !== null) return flagged;
+
+  const metrics = group(row, "performance_metrics") ?? row;
+  const total = pickNumber(metrics, L90D_TOTAL_KEYS);
+  if (total !== null) {
+    return { active: total > 0, key: "performance_metrics.l90d_total_days" };
+  }
+  const parts = L90D_PART_KEYS.map((k) => pickNumber(metrics, [k])).filter(
+    (n): n is number => n !== null
+  );
+  if (parts.length > 0) {
+    return {
+      active: parts.some((n) => n > 0),
+      key: "performance_metrics.l90d_*_days",
+    };
+  }
+  return { active: null, key: null };
+}
+
+/** An explicit listed-or-not flag, in the shapes feeds use. */
+function flagOf(
   row: Row,
   info: Row | null
 ): { active: boolean | null; key: string | null } {
@@ -408,6 +445,35 @@ export function activityOf(
     }
   }
   return { active: null, key: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Whole places only                                                   */
+/* ------------------------------------------------------------------ */
+
+const ROOM_TYPE_KEYS = ["room_type", "listing_type", "roomType", "listingType"];
+
+/**
+ * Whether a comp is a whole place rather than a room in one.
+ *
+ * The strategy this product underwrites leases a whole unit and lists
+ * it whole. A private room at $33 a night is a real listing and a
+ * wrong comparable, and a few of them in a set of twenty-five pull
+ * the average rate — and every figure built on it — well under what
+ * the unit itself would earn. The feed names each comp's type in
+ * listing_info (room_type, and listing_type beside it); a comp that
+ * says it is a private, shared or hotel room is left out, and one
+ * that says nothing is kept.
+ */
+export function wholePlace(row: Row, info: Row | null): boolean {
+  const src = info ?? row;
+  for (const k of ROOM_TYPE_KEYS) {
+    const v = pickString(src, [k]);
+    if (!v) continue;
+    if (/entire|whole|full/i.test(v)) return true;
+    if (/private|shared|hotel|room/i.test(v)) return false;
+  }
+  return true;
 }
 
 export function listingPageUrl(row: Row, info: Row | null, id: string): string | null {
@@ -468,13 +534,16 @@ export function rememberCompShape(rows: unknown[]): void {
   // Which field, if any, says whether a comp is still listed — the
   // one fact that decides whether its room link can be trusted.
   const activity = activityOf(first as Row, group(first as Row, "listing_info"));
-  shape.$active = [activity.key ?? "no field says whether a comp is still listed"];
-  // How many of the payload's comps the feed marked as no longer
-  // listed — and so were left out of the set. A count, never a value.
-  const gone = rows.filter(
-    (r) => !!r && typeof r === "object" && activityOf(r as Row, group(r as Row, "listing_info")).active === false
+  shape.$active = [activity.key ?? "nothing says whether a comp is still listed"];
+  // How many of the payload's comps were left out, and why — counts,
+  // never values.
+  const objects = rows.filter((r): r is Row => !!r && typeof r === "object");
+  const gone = objects.filter(
+    (r) => activityOf(r, group(r, "listing_info")).active === false
   ).length;
-  shape.$inactive = [`${gone} of ${rows.length} marked unlisted and left out`];
+  const rooms = objects.filter((r) => !wholePlace(r, group(r, "listing_info"))).length;
+  shape.$inactive = [`${gone} of ${rows.length} no longer listed, left out`];
+  shape.$rooms = [`${rooms} of ${rows.length} private or shared rooms, left out`];
   lastCompShape = shape;
   // Names only, never values; a failed write is a missing diagnostic,
   // not a missing feature.
@@ -546,6 +615,8 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   // is inferred from dates or silence.
   const { active } = activityOf(row, info);
   if (active === false) return null;
+  // Nor is a room in somebody's home a comparable for a whole unit.
+  if (!wholePlace(row, info)) return null;
 
   // The listing's own page: the feed's link when it gives one, else the
   // page its id names. Its cover photo likewise, from wherever the
