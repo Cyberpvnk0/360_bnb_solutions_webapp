@@ -21,6 +21,7 @@ import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMiles, fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { PropertyThumb } from "./property-thumb";
+import { createPricePin } from "@/lib/map/price-pin";
 import { compListingUrl } from "@/lib/live/comp-links";
 import { cn } from "@/lib/utils";
 
@@ -239,41 +240,17 @@ export function CompsStreetMap({
     if (!map) return;
     const markers: maplibregl.Marker[] = [];
     for (const comp of placed) {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.dataset.compId = comp.id;
-      el.setAttribute(
-        "aria-label",
-        `${comp.name} — ${fmtMoney(comp.adr)} a night, ${fmtMiles(comp.distanceMiles)} away`
-      );
-      // Same pin as the Deal Finder (styles in globals.css): red pill,
-      // tail on the address, the nightly rate compacted.
-      el.className = "rental-pin";
-      el.textContent = fmtMoneyShort(comp.adr);
-      el.addEventListener("mouseenter", () => onHoverRef.current(comp.id));
-      el.addEventListener("mouseleave", () => onHoverRef.current(null));
-      el.addEventListener("pointerdown", () => el.classList.add("is-pressed"));
-      const release = () => {
-        if (!el.classList.contains("is-pressed")) return;
-        el.classList.remove("is-pressed");
-        el.animate(
-          [
-            { transform: "scale(0.94) translateY(1px)" },
-            { transform: "scale(1.18)", offset: 0.6 },
-            { transform: "" },
-          ],
-          { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
-        );
-      };
-      el.addEventListener("pointerup", release);
-      el.addEventListener("pointerleave", release);
-      el.addEventListener("pointercancel", release);
-      el.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        onSelectRef.current(comp.id);
+      // Same pin as the Deal Finder (lib/map/price-pin): red pill, tail
+      // on the address, the nightly rate compacted.
+      const { marker } = createPricePin({
+        label: fmtMoneyShort(comp.adr),
+        ariaLabel: `${comp.name} — ${fmtMoney(comp.adr)} a night, ${fmtMiles(comp.distanceMiles)} away`,
+        dataset: { compId: comp.id },
+        onHover: (hot) => onHoverRef.current(hot ? comp.id : null),
+        onClick: () => onSelectRef.current(comp.id),
       });
       markers.push(
-        new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -6] })
+        new maplibregl.Marker({ element: marker, anchor: "bottom", offset: [0, -6] })
           .setLngLat([comp.lon, comp.lat])
           .addTo(map)
       );

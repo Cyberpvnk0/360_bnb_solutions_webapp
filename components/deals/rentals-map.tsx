@@ -24,6 +24,7 @@ import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
 import { fmtMoney, fmtMoneyShort } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import type { ZipBoundary } from "@/lib/map/zip-boundary";
+import { createPricePin } from "@/lib/map/price-pin";
 import { cn } from "@/lib/utils";
 import type { GeoJSON } from "geojson";
 
@@ -281,49 +282,22 @@ export function RentalsMap({
     els.clear();
 
     for (const l of listings) {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.setAttribute(
-        "aria-label",
-        `${l.address}, ${l.city} — ${fmtMoney(l.rentMonthly)} a month`
-      );
-      // The pin (styles in globals.css): red pill, short tail, the rent
-      // compacted the way the portals print it — $2.4K reads at a
-      // glance; the exact figure is on the card and in the label above.
-      el.className = "rental-pin";
-      el.textContent = fmtMoneyShort(l.rentMonthly);
-      el.addEventListener("mouseenter", () => onHoverRef.current(l.id));
-      el.addEventListener("mouseleave", () => onHoverRef.current(null));
-      // The press is a real motion, not just :active — a quick click
-      // never holds the button long enough for :active to be seen, so
-      // the pin sinks on pointerdown and springs back on release with
-      // an overshoot, the way a physical key does.
-      el.addEventListener("pointerdown", () => el.classList.add("is-pressed"));
-      const release = () => {
-        if (!el.classList.contains("is-pressed")) return;
-        el.classList.remove("is-pressed");
-        el.animate(
-          [
-            { transform: "scale(0.94) translateY(1px)" },
-            { transform: "scale(1.18)", offset: 0.6 },
-            { transform: "" },
-          ],
-          { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
-        );
-      };
-      el.addEventListener("pointerup", release);
-      el.addEventListener("pointerleave", release);
-      el.addEventListener("pointercancel", release);
-      el.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        onSelectRef.current(l.id);
+      // The pin (lib/map/price-pin, styles in globals.css): red pill,
+      // short tail, the rent compacted the way the portals print it —
+      // $2.4K reads at a glance; the exact figure is on the card and in
+      // the label.
+      const { marker, pin } = createPricePin({
+        label: fmtMoneyShort(l.rentMonthly),
+        ariaLabel: `${l.address}, ${l.city} — ${fmtMoney(l.rentMonthly)} a month`,
+        onHover: (hot) => onHoverRef.current(hot ? l.id : null),
+        onClick: () => onSelectRef.current(l.id),
       });
-      els.set(l.id, el);
+      els.set(l.id, pin);
       markers.set(
         l.id,
         // Anchored at the bottom so the tail's tip sits on the address,
         // not the pill's centre.
-        new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -6] })
+        new maplibregl.Marker({ element: marker, anchor: "bottom", offset: [0, -6] })
           .setLngLat([l.lon, l.lat])
           .addTo(map)
       );
@@ -391,8 +365,11 @@ export function RentalsMap({
       const hot = id === hoveredId && !selected;
       el.classList.toggle("is-hot", hot);
       el.classList.toggle("is-selected", selected);
-      // The button IS the marker element, so stacking lives on it.
-      el.style.setProperty("z-index", selected ? "40" : hot ? "30" : "10");
+      // Stacking lives on the positioned wrapper, not the pill.
+      (el.parentElement ?? el).style.setProperty(
+        "z-index",
+        selected ? "40" : hot ? "30" : "10"
+      );
     }
   }, [hoveredId, selectedId, listings]);
 

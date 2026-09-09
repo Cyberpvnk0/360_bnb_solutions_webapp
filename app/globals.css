@@ -349,7 +349,14 @@
    since that is what is planted on the map); press sinks — smaller, a
    touch lower, an inset shadow, so the pill reads as pushed into the
    map; selected stays lifted with a ring so the card it opened can be
-   found again on the map. Everything eases on the same curve. */
+   found again on the map. Everything eases on the same curve.
+
+   The pill sits inside .rental-marker, the element MapLibre positions
+   with an inline transform. Every transform below is on the pill, so
+   none of them fights the position — see lib/map/price-pin. */
+.rental-marker {
+  display: flex;
+}
 .rental-pin {
   --pin: #d7263d;
   --pin-ink: #fff;
