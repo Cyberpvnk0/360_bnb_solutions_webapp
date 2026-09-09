@@ -349,7 +349,7 @@ export function ListingDetailDialog({
               <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/50 px-4 py-3 sm:px-5">
                 <AddToListMenu listing={listing} />
                 <Button variant="outline" size="sm" asChild>
-                  <Link href={analyzeHref(listing)}>
+                  <Link href={analyzeHref(listing)} target="_blank" rel="noopener">
                     Run the numbers
                     <ArrowRight aria-hidden className="size-3.5" />
                   </Link>

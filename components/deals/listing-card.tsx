@@ -247,7 +247,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             asChild
             className="shadow-[0_1px_2px_rgba(16,16,18,0.08),0_2px_6px_rgba(16,16,18,0.08)] transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(16,16,18,0.1),0_4px_10px_rgba(16,16,18,0.1)]"
           >
-            <Link href={analyzeHref(l)}>
+            <Link href={analyzeHref(l)} target="_blank" rel="noopener">
               Run the numbers
               <ArrowRight aria-hidden className="size-3.5" />
             </Link>

@@ -228,7 +228,9 @@ function ListCard({ list }: { list: DealList }) {
               </p>
               <div className="flex items-center gap-1.5">
                 <Button asChild size="sm" variant="secondary" className="gap-1">
-                  <Link href={analyzeHref(l)}>Analyze</Link>
+                  <Link href={analyzeHref(l)} target="_blank" rel="noopener">
+                    Analyze
+                  </Link>
                 </Button>
                 <button
                   type="button"
