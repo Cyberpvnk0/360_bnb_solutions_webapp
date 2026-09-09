@@ -27,7 +27,6 @@ import {
   writeEstimate,
 } from "@/lib/db/market-store";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
-import { compIdLooksRounded } from "@/lib/live/listing-id";
 import type { Analysis, StrComp } from "@/lib/mock/types";
 
 /** Below this a comp set can't carry a projection honestly. */
@@ -50,15 +49,17 @@ const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  *   1 (unmarked)  ids parsed as numbers, so any past 2^53 were rounded
  *                 and their links opened nothing.
  *   2             ids kept exact through the parse (parseJsonKeepingBigIds).
+ *   3             listings the feed marks as no longer up are left out
+ *                 of the set (lib/live/airroi, activityOf).
  *
- * A set from before the change is bought again ONLY when it actually
- * holds a rounded id — most sets are old-style short ids and are fine
- * as they are — and never more than once: a set written since carries
- * the mark, and if its ids still look rounded then the vendor sent
- * them that way and buying again would only buy the same. The links
- * for those are dropped at render instead (lib/live/comp-links).
+ * A set written in an older format is bought again, once: it may hold
+ * comps that are not comps any more, and nothing in it says which. A
+ * set written in the current format is kept as it is, whatever its
+ * links look like — if its ids look rounded then the vendor sent them
+ * so, and buying again would only buy the same; those links are
+ * dropped at render instead (lib/live/comp-links).
  */
-export const ESTIMATE_VERSION = 2;
+export const ESTIMATE_VERSION = 3;
 
 /** The vendor spec for an analysis at a point — the thing a comp set
  *  is bought for. One builder, so the plan meter and the cache agree
@@ -104,11 +105,15 @@ export async function withLiveComps(
   // billed call at all, and it survives deploys — which the framework
   // cache underneath this does not.
   const cached = await readEstimate(estimateKey(spec)).catch(() => null);
-  if (cached && isFresh(cached.at, ESTIMATE_TTL_MS)) {
-    const comps = cached.estimate.comps as StrComp[];
-    const roundedIds =
-      cached.estimate.v !== ESTIMATE_VERSION && comps.some(compIdLooksRounded);
-    if (comps.length >= MIN_COMPS && !roundedIds) {
+  if (
+    cached &&
+    isFresh(cached.at, ESTIMATE_TTL_MS) &&
+    cached.estimate.v === ESTIMATE_VERSION
+  ) {
+    // Belt and braces: the current format never stores one, but a
+    // comp the feed marked as gone is not shown even if one got in.
+    const comps = (cached.estimate.comps as StrComp[]).filter((c) => c.active !== false);
+    if (comps.length >= MIN_COMPS) {
       return {
         analysis: {
           ...analysis,
@@ -120,6 +125,9 @@ export async function withLiveComps(
         liveComps: true,
       };
     }
+    // A thin set, remembered as thin: the modelled comps stand in, and
+    // the same answer is not bought again on every visit.
+    return { analysis, liveComps: false };
   }
 
   const key = `str:${point.lat.toFixed(2)},${point.lon.toFixed(2)}`;
@@ -137,13 +145,13 @@ export async function withLiveComps(
     // inferred the way the industry does, two to a bedroom, because the
     // analysis records the property rather than its listing.
     const estimate = await fetchEstimate(spec);
-    if (estimate.comps.length < MIN_COMPS) return { analysis, liveComps: false };
     commitLiveSearch(key);
 
-    // Just paid for this; make it the last time. A write failure is
-    // survivable — the answer still renders — but it means the next
-    // visitor buys the same address again, so it is not ignored
-    // silently the way a pure cache write would be.
+    // Just paid for this; make it the last time — a thin set included,
+    // because a thin answer bought again is the same thin answer. A
+    // write failure is survivable — the answer still renders — but it
+    // means the next visitor buys the same address again, so it is not
+    // ignored silently the way a pure cache write would be.
     await writeEstimate(estimateKey(spec), {
       v: ESTIMATE_VERSION,
       comps: estimate.comps,
@@ -152,6 +160,7 @@ export async function withLiveComps(
       adr: estimate.adr,
       occupancy: estimate.occupancy,
     }).catch(() => ({ ok: false, detail: "write threw" }));
+    if (estimate.comps.length < MIN_COMPS) return { analysis, liveComps: false };
     return {
       analysis: {
         ...analysis,

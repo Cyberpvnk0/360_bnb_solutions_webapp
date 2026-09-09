@@ -63,34 +63,28 @@ beforeEach(() => {
   feed.fetchEstimate.mockResolvedValue({ ...blank, percentiles: {}, comps: exactSet });
 });
 
-describe("a comp set stored before ids were kept exact", () => {
-  it("is bought again, once, when its ids look rounded", async () => {
-    store.readEstimate.mockResolvedValue({ estimate: { ...blank, comps: roundedSet }, ...fresh });
+describe("a comp set stored in an older format", () => {
+  it("is bought again, once — it may hold comps that are not comps any more", async () => {
+    for (const older of [{}, { v: 2 }]) {
+      feed.fetchEstimate.mockClear();
+      store.writeEstimate.mockClear();
+      store.readEstimate.mockResolvedValue({ estimate: { ...blank, ...older, comps: shortIdSet }, ...fresh });
 
-    const { analysis, liveComps } = await withLiveComps(ANALYSES[0], POINT);
+      const { analysis, liveComps } = await withLiveComps(ANALYSES[0], POINT);
 
-    expect(feed.fetchEstimate).toHaveBeenCalledTimes(1);
-    expect(liveComps).toBe(true);
-    expect(analysis.strComps).toBe(exactSet);
-    // Written back under the mark, so the next visit is a plain hit.
-    expect(store.writeEstimate).toHaveBeenCalledTimes(1);
-    expect(store.writeEstimate).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ v: ESTIMATE_VERSION })
-    );
-  });
-
-  it("is kept when its ids were never rounded", async () => {
-    store.readEstimate.mockResolvedValue({ estimate: { ...blank, comps: shortIdSet }, ...fresh });
-
-    const { analysis } = await withLiveComps(ANALYSES[0], POINT);
-
-    expect(feed.fetchEstimate).not.toHaveBeenCalled();
-    expect(analysis.strComps).toBe(shortIdSet);
+      expect(feed.fetchEstimate).toHaveBeenCalledTimes(1);
+      expect(liveComps).toBe(true);
+      expect(analysis.strComps).toBe(exactSet);
+      // Written back under the mark, so the next visit is a plain hit.
+      expect(store.writeEstimate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ v: ESTIMATE_VERSION })
+      );
+    }
   });
 });
 
-describe("a comp set stored since", () => {
+describe("a comp set stored in the current format", () => {
   it("is kept even when its ids look rounded — the vendor sent them so", async () => {
     // Buying again would only buy the same; the links are dropped at
     // render instead.
@@ -102,6 +96,36 @@ describe("a comp set stored since", () => {
     const { analysis } = await withLiveComps(ANALYSES[0], POINT);
 
     expect(feed.fetchEstimate).not.toHaveBeenCalled();
-    expect(analysis.strComps).toBe(roundedSet);
+    expect(analysis.strComps).toEqual(roundedSet);
+  });
+
+  it("never shows a comp marked as gone, and never re-buys a thin answer", async () => {
+    // Five stored, two of them gone: three is too thin to project on,
+    // so the modelled comps stand in — without buying the same thin
+    // answer again.
+    const stored = [...exactSet.slice(0, 3), { ...exactSet[3], active: false }, { ...exactSet[4], active: false }];
+    store.readEstimate.mockResolvedValue({
+      estimate: { ...blank, v: ESTIMATE_VERSION, comps: stored },
+      ...fresh,
+    });
+
+    const { analysis, liveComps } = await withLiveComps(ANALYSES[0], POINT);
+
+    expect(feed.fetchEstimate).not.toHaveBeenCalled();
+    expect(liveComps).toBe(false);
+    expect(analysis.strComps).toBe(ANALYSES[0].strComps);
+  });
+
+  it("remembers a thin purchase so it is not bought twice", async () => {
+    store.readEstimate.mockResolvedValue(null);
+    feed.fetchEstimate.mockResolvedValue({ ...blank, percentiles: {}, comps: exactSet.slice(0, 2) });
+
+    const { liveComps } = await withLiveComps(ANALYSES[0], POINT);
+
+    expect(liveComps).toBe(false);
+    expect(store.writeEstimate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ v: ESTIMATE_VERSION })
+    );
   });
 });

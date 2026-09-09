@@ -295,13 +295,14 @@ describe("a room link is never built from a rounded id", () => {
 });
 
 describe("a comp the feed says is no longer listed", () => {
-  it("keeps its numbers and loses its link", () => {
-    // Trailing-twelve-month evidence counts whether or not the listing
-    // is still up; the page of one that is not is an error.
-    const c = mapComp(realComp({ listing_info: { listing_id: 36549812, listing_name: "Gone", is_active: false } }), 0);
-    expect(c?.adr).toBeGreaterThan(0);
-    expect(c?.active).toBe(false);
-    expect(c?.listingUrl).toBeUndefined();
+  it("is not a comp at all", () => {
+    // Its year's earnings are history, not the market someone is about
+    // to enter, and its room page is the platform's error page.
+    for (const gone of [{ is_active: false }, { status: "inactive" }, { unlisted: true }]) {
+      expect(
+        mapComp(realComp({ listing_info: { listing_id: 36549812, listing_name: "Gone", ...gone } }), 0)
+      ).toBeNull();
+    }
   });
 
   it("links as before when the feed says it is live, or says nothing", () => {

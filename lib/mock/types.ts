@@ -111,9 +111,9 @@ export interface StrComp {
   /** The listing's own page on its platform, when known — a comp is a
    *  real listing somebody can open. */
   listingUrl?: string;
-  /** Whether the feed says the listing is still up. False means it
-   *  said no — the comp still counts as evidence, but its page would
-   *  be an error and nothing links to it. Absent when it did not say. */
+  /** True when the feed said the listing is still up; absent when it
+   *  did not say. Never false on a mapped comp — a listing the feed
+   *  marks as gone is not a comp and is left out (lib/live/airroi). */
   active?: boolean;
   /** The listing's cover photo, when the feed carries one. Linked, not
    *  copied: the image is served by its platform, never stored here. */

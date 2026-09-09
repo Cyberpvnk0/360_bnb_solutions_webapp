@@ -374,12 +374,13 @@ const GONE_WORDS = /^(inactive|unlisted|delisted|deleted|removed|suspended|pause
  * Whether the feed says this comp is still listed, and which field
  * said so. Null when it says nothing either way.
  *
- * A comp set is trailing-twelve-month evidence: a listing that earned
- * in the year is a comp whether or not it is still up today, and some
- * are not. A room link for one of those opens the platform's
- * "something went wrong" page — which is what the links that failed
- * on an ordinary eight-digit id were. Only a signal the feed actually
- * carries is read; nothing is inferred from dates or silence.
+ * A comp set is trailing-twelve-month evidence, so it can carry a
+ * listing that earned in the year and has since come down — and a
+ * room link for one of those opens the platform's "something went
+ * wrong" page, which is what the links that failed on an ordinary
+ * eight-digit id were. Such a listing is left out of the set (see
+ * mapComp). Only a signal the feed actually carries is read; nothing
+ * is inferred from dates or silence.
  */
 export function activityOf(
   row: Row,
@@ -468,6 +469,12 @@ export function rememberCompShape(rows: unknown[]): void {
   // one fact that decides whether its room link can be trusted.
   const activity = activityOf(first as Row, group(first as Row, "listing_info"));
   shape.$active = [activity.key ?? "no field says whether a comp is still listed"];
+  // How many of the payload's comps the feed marked as no longer
+  // listed — and so were left out of the set. A count, never a value.
+  const gone = rows.filter(
+    (r) => !!r && typeof r === "object" && activityOf(r as Row, group(r as Row, "listing_info")).active === false
+  ).length;
+  shape.$inactive = [`${gone} of ${rows.length} marked unlisted and left out`];
   lastCompShape = shape;
   // Names only, never values; a failed write is a missing diagnostic,
   // not a missing feature.
@@ -532,13 +539,18 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     `airroi-${index}`;
   const name =
     (info ? pickString(info, NAME_KEYS) : null) ?? pickString(row, NAME_KEYS);
-  // The listing's own page: the feed's link when it gives one, else the
-  // page its id names — and neither for a listing the feed says is no
-  // longer up, whose page would be an error. Its cover photo likewise,
-  // from wherever the payload keeps it — never from the description,
-  // which is prose.
+  // A listing the feed says is no longer up is not a comp. Its year's
+  // earnings are history, not the market someone is about to enter,
+  // and its room page is the platform's error page. Out, whole — not
+  // kept with a caveat. A feed that says nothing is trusted; nothing
+  // is inferred from dates or silence.
   const { active } = activityOf(row, info);
-  const listingUrl = active === false ? null : listingPageUrl(row, info, id);
+  if (active === false) return null;
+
+  // The listing's own page: the feed's link when it gives one, else the
+  // page its id names. Its cover photo likewise, from wherever the
+  // payload keeps it — never from the description, which is prose.
+  const listingUrl = listingPageUrl(row, info, id);
   const photoUrl =
     (info ? pickHttpsUrl(info, PHOTO_KEYS) ?? pickFirstPhoto(info) : null) ??
     pickHttpsUrl(row, PHOTO_KEYS) ??
