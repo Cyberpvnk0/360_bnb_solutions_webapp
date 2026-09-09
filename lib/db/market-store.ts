@@ -551,6 +551,16 @@ function isEstimate(value: unknown): value is StoredEstimate {
   );
 }
 
+/** Read a diagnostic blob by key — any JSON object stored under it. */
+export async function readKeyedBlob(
+  key: string
+): Promise<{ value: Record<string, unknown>; at: string | null } | null> {
+  return readKeyed(
+    key,
+    (v): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
+  );
+}
+
 export async function readEstimate(
   key: string
 ): Promise<{ estimate: StoredEstimate; at: string | null } | null> {

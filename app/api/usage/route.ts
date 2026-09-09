@@ -15,10 +15,11 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/gate";
 import { scraperUsage } from "@/lib/live/scraper-usage";
-import { airRoiBudget, compFieldsSeen, hasAirRoiKey } from "@/lib/live/airroi";
+import { airRoiBudget, COMP_SHAPE_KEY, compFieldsSeen, hasAirRoiKey } from "@/lib/live/airroi";
 import { rentcastBudget } from "@/lib/live/quota";
 import { planTablesReady } from "@/lib/db/usage";
 import {
+  readKeyedBlob,
   storeConfigured,
   storeCounts,
   storeStatus,
@@ -58,6 +59,9 @@ export async function GET() {
    * answers the actual question and names the reason when the answer is
    * no.
    */
+  // Memory first (same process), then the store (any process).
+  const compsShape =
+    compFieldsSeen() ?? (await readKeyedBlob(COMP_SHAPE_KEY).catch(() => null))?.value ?? null;
   const health = await storeStatus().catch(() => ({
     ok: false,
     detail: "health check threw",
@@ -67,7 +71,11 @@ export async function GET() {
     /** The comps feed's field names from the last analysis this
      *  server ran — names only. How the link and photo readers get
      *  checked against what the feed really sends. */
-    compsPayloadShape: compFieldsSeen(),
+    compsPayloadShape: compsShape,
+    compsPayloadShapeNote:
+      compsShape === null
+        ? "No comp set has been bought since this was added. Cached analyses never reach the vendor; analyze a NEW address (or change a property's size) once, then reload this."
+        : "Field names of the vendor's last comp payload, one level deep. Names only.",
 
     usage,
     /**

@@ -34,6 +34,7 @@
  */
 
 import type { StrComp } from "@/lib/mock/types";
+import { writeKeyed } from "@/lib/db/market-store";
 
 const BASE = "https://api.airroi.com";
 
@@ -329,6 +330,12 @@ export function listingPageUrl(row: Row, info: Row | null, id: string): string |
  */
 let lastCompShape: Record<string, string[]> | null = null;
 
+/** Where the shape is kept between processes: the shared cache table.
+ *  On serverless the process that bought a comp set is almost never
+ *  the one that answers /api/usage, so memory alone reads as "never
+ *  saw one" — which is what it did. */
+export const COMP_SHAPE_KEY = "diag:comps-shape";
+
 export function rememberCompShape(rows: unknown[]): void {
   const first = rows.find((r) => r && typeof r === "object");
   if (!first) return;
@@ -340,6 +347,9 @@ export function rememberCompShape(rows: unknown[]): void {
         : [Array.isArray(v) ? `array(${v.length})` : typeof v];
   }
   lastCompShape = shape;
+  // Names only, never values; a failed write is a missing diagnostic,
+  // not a missing feature.
+  void writeKeyed(COMP_SHAPE_KEY, shape).catch(() => undefined);
 }
 
 export function compFieldsSeen(): Record<string, string[]> | null {
