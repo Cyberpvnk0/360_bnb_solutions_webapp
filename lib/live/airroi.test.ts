@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
+import { airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -227,5 +227,49 @@ describe("which platform a comp's link points at", () => {
       0
     );
     expect(comp?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567");
+  });
+});
+
+describe("ids past 2^53 survive the parse", () => {
+  const BIG = "1482756537092586123";
+
+  it("quotes an integer a JavaScript number cannot hold exactly", () => {
+    // JSON.parse alone reads this as …586000 and the room URL built
+    // from it opens Airbnb's "something went wrong" page.
+    const parsed = parseJsonKeepingBigIds(`{"listing_id":${BIG},"adr":181.5}`) as Record<string, unknown>;
+    expect(parsed.listing_id).toBe(BIG);
+    expect(parsed.adr).toBe(181.5);
+  });
+
+  it("leaves every number a JavaScript number can hold alone", () => {
+    const parsed = parseJsonKeepingBigIds(
+      `{"a":41234567,"b":-12,"c":0.42,"d":1e5,"e":9007199254740991,"f":[1,2,3]}`
+    ) as Record<string, unknown>;
+    expect(parsed).toEqual({ a: 41234567, b: -12, c: 0.42, d: 1e5, e: 9007199254740991, f: [1, 2, 3] });
+  });
+
+  it("does not touch digits inside a string, prose included", () => {
+    const text = `{"description":"call ${BIG}, or 1234567890123456789, today","q":"a \\"quoted\\" ${BIG}","id":${BIG}}`;
+    const parsed = parseJsonKeepingBigIds(text) as Record<string, unknown>;
+    expect(parsed.description).toBe(`call ${BIG}, or 1234567890123456789, today`);
+    expect(parsed.q).toBe(`a "quoted" ${BIG}`);
+    expect(parsed.id).toBe(BIG);
+  });
+
+  it("handles ids nested inside the groups the feed actually uses", () => {
+    const parsed = parseJsonKeepingBigIds(
+      `{"data":[{"listing_info":{"listing_id":${BIG},"platform":"airbnb"},"performance_metrics":{"ttm_avg_rate":120}}]}`
+    ) as { data: Array<{ listing_info: { listing_id: unknown } }> };
+    expect(parsed.data[0].listing_info.listing_id).toBe(BIG);
+  });
+
+  it("builds the room link from the exact id once it arrives as a string", () => {
+    const c = mapComp(realComp({ listing_info: { listing_id: BIG, listing_name: "Loft" } }), 0);
+    expect(c?.listingUrl).toBe(`https://www.airbnb.com/rooms/${BIG}`);
+    expect(c?.id).toBe(`sc-live-${BIG}`);
+  });
+
+  it("still throws on a body that is not JSON, so the caller sees null", () => {
+    expect(() => parseJsonKeepingBigIds("<html>nope</html>")).toThrow();
   });
 });

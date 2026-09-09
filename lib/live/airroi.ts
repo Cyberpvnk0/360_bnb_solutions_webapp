@@ -188,6 +188,63 @@ function pickNumber(row: Row, keys: string[]): number | null {
   return null;
 }
 
+/**
+ * Parse a JSON body without rounding the ids in it.
+ *
+ * Airbnb's newer listing ids run to nineteen digits — past 2^53, which
+ * is as far as a JavaScript number counts exactly. JSON.parse read
+ * 1482756537092586123 as 1482756537092586000, and a room URL built
+ * from that opens Airbnb's "something went wrong" page, which is what
+ * every comp with a new-style id did. Any integer too long to hold
+ * exactly is quoted before the parse, so it arrives as the string it
+ * should have been; every id reader here takes a string first.
+ *
+ * Walks the text rather than regex-replacing it, because a listing's
+ * description is prose that can contain "…, 1234567890123456789, …"
+ * and a replacement inside a string literal would break the document.
+ * Nothing else in a comps payload is sixteen digits long; a float or a
+ * short integer passes through untouched.
+ */
+export function parseJsonKeepingBigIds(text: string): unknown {
+  let out = "";
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const ch = text[i];
+    if (ch === '"') {
+      // A string literal, copied verbatim, escapes and all.
+      let j = i + 1;
+      while (j < n) {
+        if (text[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (text[j] === '"') {
+          j++;
+          break;
+        }
+        j++;
+      }
+      out += text.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (ch === "-" || (ch >= "0" && ch <= "9")) {
+      let j = i + 1;
+      while (j < n && /[0-9.eE+-]/.test(text[j])) j++;
+      const tok = text.slice(i, j);
+      const unsafe =
+        /^-?\d{16,}$/.test(tok) && !Number.isSafeInteger(Number(tok));
+      out += unsafe ? `"${tok}"` : tok;
+      i = j;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return JSON.parse(out);
+}
+
 function pickString(row: Row, keys: string[]): string | null {
   for (const k of keys) {
     const v = row[k];
@@ -637,7 +694,14 @@ async function call(
     }
     throw new AirRoiError("http", res.status, detail);
   }
-  return res.json().catch(() => null);
+  // Read as text and parsed here rather than with res.json(): see
+  // parseJsonKeepingBigIds for the ids that would not survive it.
+  const text = await res.text().catch(() => "");
+  try {
+    return parseJsonKeepingBigIds(text);
+  } catch {
+    return null;
+  }
 }
 
 const EARTH_RADIUS_MILES = 3958.8;
