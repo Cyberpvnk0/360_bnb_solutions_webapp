@@ -9,7 +9,10 @@
  *
  * ONE LABEL, TWO DESTINATIONS. When the row carries its own listing URL
  * this opens that property; when it doesn't, lib/live/listing-links
- * falls back to a quoted, site-scoped search that finds it. Both say
+ * falls back to a site-scoped search that finds it — and on a surface
+ * that shows one property, `find` asks the listing site for the page
+ * by address in the background and upgrades the link when it lands.
+ * Both say
  * "View photos", because the button is named for what the reader is
  * after rather than for our plumbing, and a label that changes under
  * them is its own kind of noise. The hover title still says which one
@@ -30,18 +33,31 @@
  */
 
 import { ArrowUpRight } from "lucide-react";
-import { photosLink, type Addressed } from "@/lib/live/listing-links";
+import {
+  hasOwnListingPage,
+  photosLink,
+  type Addressed,
+} from "@/lib/live/listing-links";
 import { cn } from "@/lib/utils";
+import { useListingPage } from "./use-listing-page";
 
 export function PhotosLink({
   place,
   /** False for seeded preview rows — their addresses are generated. */
   real,
+  /**
+   * True on a surface that shows ONE property: a row without a page
+   * asks the listing site for it by address, and the link becomes the
+   * listing when the answer lands (a search until then). Never on a
+   * grid — the lookup is a billed request per address.
+   */
+  find = false,
   className,
   variant = "button",
 }: {
   place: Addressed;
   real: boolean;
+  find?: boolean;
   className?: string;
   /**
    * "button" for an action row, "pill" for an overlay on an image,
@@ -49,7 +65,12 @@ export function PhotosLink({
    */
   variant?: "button" | "pill" | "chip";
 }) {
-  const dest = real ? photosLink(place) : null;
+  const looked = useListingPage(place, find && real && !hasOwnListingPage(place));
+  const dest = real
+    ? photosLink(
+        looked.page ? { ...place, sourceUrl: looked.page } : place
+      )
+    : null;
   if (!dest) return null;
 
   const onListing = dest.kind === "listing";
@@ -62,7 +83,9 @@ export function PhotosLink({
       title={
         onListing
           ? "Opens this property's listing page"
-          : "Searches the listing sites for this exact address"
+          : looked.status === "looking"
+            ? "Finding this property's listing page… until then, searches the listing sites for it"
+            : "Searches the listing sites for this exact address"
       }
       // Cards open a detail panel on click; this must not do both.
       onClick={(e) => e.stopPropagation()}

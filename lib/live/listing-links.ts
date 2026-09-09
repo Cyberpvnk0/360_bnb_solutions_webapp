@@ -19,7 +19,13 @@
  *      many rows as possible rather than only the ones that arrived
  *      with a URL attached.
  *
- *   2. A web search for the exact address, scoped to those two sites.
+ *   2. A web search for the address, scoped to those two sites.
+ *
+ * And a way from two to one: on a surface that shows a single property
+ * (the analyzer, the detail panel), a row without a page asks the
+ * portal for it by address — lib/live/redfin-page, through
+ * app/api/listing-page — and the link becomes the listing when the
+ * answer lands. See components/deals/photos-link.
  *
  * WHY SLOT TWO IS A SEARCH ENGINE AND NOT A PORTAL URL.
  *
@@ -134,18 +140,80 @@ export function hasOwnListingPage(place: Addressed): boolean {
 const SEARCH_SITES = ["redfin.com", "realtor.com"] as const;
 
 /**
+ * The words of a street line that have more than one spelling, and so
+ * must never be quoted: a directional is "E" on the portal and "East"
+ * from the geocoder, and a suffix is "St" on one and "Street" on the
+ * other. Long and short forms both, lower-cased.
+ */
+const DIRECTIONALS = new Set([
+  "n", "s", "e", "w", "ne", "nw", "se", "sw",
+  "north", "south", "east", "west",
+  "northeast", "northwest", "southeast", "southwest",
+]);
+const SUFFIXES = new Set([
+  "st", "street", "ave", "avenue", "rd", "road", "dr", "drive", "ln", "lane",
+  "ct", "court", "blvd", "boulevard", "ter", "terrace", "pl", "place",
+  "cir", "circle", "pkwy", "parkway", "hwy", "highway", "trl", "trail",
+  "expy", "expressway", "sq", "square", "xing", "crossing", "pt", "point",
+  "way", "loop", "run", "path", "walk", "row", "aly", "alley", "cv", "cove",
+  "hts", "heights", "pass", "plz", "plaza", "trce", "trace", "bnd", "bend",
+]);
+const UNIT_WORDS = new Set(["apt", "apartment", "unit", "ste", "suite", "rm", "room"]);
+
+/**
+ * The two words of a street line that identify the property and have
+ * only one way of being written: the house number and the street's
+ * own name. "1804 East Sitka Street" and "1804 E Sitka St" share
+ * exactly "1804" and "Sitka", and nothing else.
+ */
+export function searchTerms(street: string): { number: string | null; name: string | null } {
+  // The street line proper: a unit after a comma is not part of it.
+  const line = street.split(",")[0].trim();
+  const words = line.split(" ").filter(Boolean);
+  const number = /^\d+[a-z]?$/i.test(words[0] ?? "") ? words[0] : null;
+  let name: string | null = null;
+  for (const word of number ? words.slice(1) : words) {
+    const bare = word.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+    if (bare === "") continue;
+    // A unit marker ends the street's name; whatever follows is the
+    // flat, which the portal writes its own way.
+    if (UNIT_WORDS.has(bare) || /^#/.test(word)) break;
+    if (DIRECTIONALS.has(bare) || SUFFIXES.has(bare)) continue;
+    name = word.replace(/[.,]+$/g, "");
+    break;
+  }
+  return { number, name };
+}
+
+/**
  * A search that finds this exact property on one of those two sites.
  *
- * The address goes in quoted, so the engine matches the street line
- * rather than ranking the neighbourhood, and the site filter keeps the
- * results to pages that actually hold the listing and its photos.
+ * QUOTE THE TWO WORDS THAT HAVE ONE SPELLING, AND NOTHING ELSE. An
+ * earlier cut quoted the whole street line, and the line it was handed
+ * came from a geocoder that writes "1804 East Sitka Street" while the
+ * portal's page says "1804 E Sitka St": an exact-phrase search for the
+ * one cannot match the other, and the engine answered that no page on
+ * either site matched — for a listing that was there. The house number
+ * and the street's own name are written the same way everywhere, so
+ * they go in quoted and pin the result to this property; the rest of
+ * the line (the directional, the suffix, the unit) is what has two
+ * spellings, so it stays out. The site filter keeps the results to
+ * pages that actually hold the listing and its photos.
+ *
+ * A line with no number — a named building — is quoted whole, since
+ * there is nothing else to hold it to.
  */
 export function listingSearchHref(place: Addressed): string | null {
   const p = parts(place);
   if (!p) return null;
 
+  const { number, name } = searchTerms(p.street);
+  const pin =
+    number && name
+      ? `"${number}" "${name}"`
+      : `"${p.street}"`;
   const sites = SEARCH_SITES.map((s) => `site:${s}`).join(" OR ");
-  const query = `"${p.street}" ${p.city} ${p.state} (${sites})`.trim();
+  const query = `${pin} ${p.city} ${p.state} (${sites})`.trim();
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 

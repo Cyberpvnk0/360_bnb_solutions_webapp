@@ -305,9 +305,10 @@ export function AnalyzeResult({
                 listing's own page, and a link is not a copy. Offered
                 only for a real address — a seeded one is a plausible
                 street that does not exist, and searching it lands on
-                somebody else's house. */}
+                somebody else's house. A typed address arrives with no
+                page, so `find` asks the listing site for it. */}
             <div className="mt-2">
-              <PhotosLink place={analysis} real={realAddress} variant="chip" />
+              <PhotosLink place={analysis} real={realAddress} variant="chip" find />
             </div>
             {/* The one fact worth a line: whether the rent every figure
                 stands on is this unit's own or an estimate. Measured and

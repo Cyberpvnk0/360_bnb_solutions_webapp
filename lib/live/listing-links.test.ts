@@ -3,6 +3,7 @@ import {
   hasOwnListingPage,
   photosHref,
   photosLink,
+  searchTerms,
   usableListingPage,
 } from "./listing-links";
 
@@ -48,22 +49,36 @@ describe("the listing's own page comes first", () => {
 });
 
 describe("the fallback search, when there is no page URL", () => {
-  it("searches for the exact address on the two listing sites", () => {
-    // Correct by construction: neither portal exposes a URL that
-    // resolves a street address, so the engine's index does the
-    // resolving and there is no internal id to guess wrong.
-    const q = queryOf(photosHref(TAMPA)!);
-    expect(q).toContain('"1234 Palm Ave"');
+  it("quotes the house number and the street's name, and nothing with two spellings", () => {
+    // The geocoder writes "1804 East Sitka Street"; the portal's page
+    // says "1804 E Sitka St". Quoting the whole line matched neither
+    // and the engine answered "no documents" for a listing that was
+    // there. The number and the name are spelled one way everywhere.
+    const q = queryOf(photosHref({ ...TAMPA, address: "1804 East Sitka Street" })!);
+    expect(q.startsWith('"1804" "Sitka"')).toBe(true);
+    expect(q).not.toContain('"1804 East Sitka Street"');
     expect(q).toContain("Tampa");
     expect(q).toContain("FL");
     expect(q).toContain("site:redfin.com");
     expect(q).toContain("site:realtor.com");
   });
 
-  it("quotes the street line so the engine matches it rather than the area", () => {
-    // Unquoted, "1234 Palm Ave Tampa FL" ranks the market page — which
-    // is exactly what twenty clicked properties all landed on.
-    expect(queryOf(photosHref(TAMPA)!).startsWith('"1234 Palm Ave"')).toBe(true);
+  it("finds the name past a directional and before the suffix", () => {
+    expect(searchTerms("10920 N 29th St")).toEqual({ number: "10920", name: "29th" });
+    expect(searchTerms("12 O'Brien St. N.W.")).toEqual({ number: "12", name: "O'Brien" });
+    expect(searchTerms("1234 Palm Ave")).toEqual({ number: "1234", name: "Palm" });
+    expect(searchTerms("500 Boulevard of the Allies")).toEqual({ number: "500", name: "of" });
+  });
+
+  it("stops at a unit marker, which the portal writes its own way", () => {
+    expect(searchTerms("88 W Main St #4B")).toEqual({ number: "88", name: "Main" });
+    expect(searchTerms("88 W Main St Apt 4B")).toEqual({ number: "88", name: "Main" });
+    expect(searchTerms("88 W Main St, Unit 4B")).toEqual({ number: "88", name: "Main" });
+  });
+
+  it("quotes a line with no number whole, since nothing else holds it", () => {
+    expect(searchTerms("Palm Ave")).toEqual({ number: null, name: "Palm" });
+    expect(queryOf(photosHref({ ...TAMPA, address: "The Palms" })!)).toContain('"The Palms"');
   });
 
   it("scopes the search rather than turning an address loose on the web", () => {
@@ -92,7 +107,7 @@ describe("the fallback search, when there is no page URL", () => {
     // query to everything before the unit.
     const href = photosHref({ ...TAMPA, address: "88 W Main St #4B" })!;
     expect(href).not.toContain("#");
-    expect(queryOf(href)).toContain('"88 W Main St 4B"');
+    expect(queryOf(href)).toContain('"88" "Main"');
   });
 
   it("keeps the punctuation a real address carries", () => {
@@ -101,7 +116,7 @@ describe("the fallback search, when there is no page URL", () => {
       city: "St. Petersburg",
       stateCode: "FL",
     })!;
-    expect(queryOf(href)).toContain(`"12 O'Brien St. N.W." St. Petersburg FL`);
+    expect(queryOf(href)).toContain(`"12" "O'Brien" St. Petersburg FL`);
   });
 
   it("collapses runs of whitespace instead of emitting empty segments", () => {
