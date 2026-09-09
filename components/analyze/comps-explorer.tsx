@@ -7,7 +7,9 @@
  */
 
 import * as React from "react";
+import { ArrowUpRight } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
+import { compListingUrl } from "@/lib/live/comp-links";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
@@ -20,11 +22,29 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
   {
     key: "name",
     header: "Listing",
-    cell: (c) => (
-      <span className="font-sans font-medium text-foreground">{c.name}</span>
-    ),
+    cell: (c) => {
+      const page = compListingUrl(c);
+      return (
+        <span className="inline-flex max-w-full items-center gap-1.5">
+          <span className="truncate font-sans font-medium text-foreground">{c.name}</span>
+          {page ? (
+            <a
+              href={page}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open ${c.name} on Airbnb`}
+              title="Open on Airbnb"
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            >
+              <ArrowUpRight aria-hidden className="size-3.5" />
+            </a>
+          ) : null}
+        </span>
+      );
+    },
     sortValue: (c) => c.name,
-    className: "max-w-56 truncate",
+    className: "max-w-64",
   },
   {
     key: "bedrooms",

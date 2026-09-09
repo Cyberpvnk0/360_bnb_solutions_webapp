@@ -216,6 +216,55 @@ const BATHS_KEYS = ["baths", "bathrooms", "bathroomCount"];
 const DIST_KEYS = ["distanceMiles", "distance_miles", "distance"];
 const NAME_KEYS = ["listing_name", "title", "name", "listingName", "listing_title"];
 const ID_KEYS = ["listing_id", "id", "listingId", "airbnbId"];
+// Where the listing lives and what it looks like, if the feed says.
+const URL_KEYS = ["listing_url", "url", "airbnb_url", "link", "listingUrl"];
+const PHOTO_KEYS = [
+  "picture_url", "cover_photo_url", "cover_photo", "photo_url", "image_url",
+  "thumbnail_url", "main_photo", "main_image", "pictureUrl", "thumbnail",
+];
+const PHOTO_LIST_KEYS = ["photos", "images", "pictures"];
+
+/** An https URL or nothing — a comp's link and picture leave this file
+ *  only when they are real addresses on the web. */
+function pickHttpsUrl(row: Row, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = row[k];
+    const candidate =
+      typeof v === "string"
+        ? v
+        : v && typeof v === "object" && typeof (v as Row).url === "string"
+          ? ((v as Row).url as string)
+          : null;
+    if (candidate && /^https:\/\//i.test(candidate.trim())) return candidate.trim();
+  }
+  return null;
+}
+
+/** The first https URL in the first photo of a photo list, whatever
+ *  shape the list's entries take. */
+function pickFirstPhoto(row: Row): string | null {
+  for (const k of PHOTO_LIST_KEYS) {
+    const list = row[k];
+    if (!Array.isArray(list) || list.length === 0) continue;
+    const first = list[0];
+    if (typeof first === "string" && /^https:\/\//i.test(first)) return first;
+    if (first && typeof first === "object") {
+      const hit = pickHttpsUrl(first as Row, ["url", "picture_url", "src", "large", "medium", "small"]);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * A listing's page on Airbnb from its id. Their ids are plain integers
+ * and their room URLs are built from nothing else, so a numeric id is a
+ * page. Anything else is not guessed at.
+ */
+export function airbnbRoomUrl(id: string | number | null | undefined): string | null {
+  const s = String(id ?? "").trim();
+  return /^\d{5,}$/.test(s) ? `https://www.airbnb.com/rooms/${s}` : null;
+}
 const LAT_KEYS = ["latitude", "lat"];
 const LON_KEYS = ["longitude", "lng", "lon", "long"];
 
@@ -254,9 +303,21 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   const id =
     (info ? pickString(info, ID_KEYS) ?? pickNumber(info, ID_KEYS)?.toString() : null) ??
     pickString(row, ID_KEYS) ??
+    pickNumber(row, ID_KEYS)?.toString() ??
     `airroi-${index}`;
   const name =
     (info ? pickString(info, NAME_KEYS) : null) ?? pickString(row, NAME_KEYS);
+  // The listing's own page: the feed's link when it gives one, else the
+  // page its id names. Its cover photo likewise, from wherever the
+  // payload keeps it — never from the description, which is prose.
+  const listingUrl =
+    (info ? pickHttpsUrl(info, URL_KEYS) : null) ??
+    pickHttpsUrl(row, URL_KEYS) ??
+    airbnbRoomUrl(id);
+  const photoUrl =
+    (info ? pickHttpsUrl(info, PHOTO_KEYS) ?? pickFirstPhoto(info) : null) ??
+    pickHttpsUrl(row, PHOTO_KEYS) ??
+    pickFirstPhoto(row);
 
   // Only a pair counts. Half a coordinate would place a pin on the
   // prime meridian and look deliberate doing it.
@@ -288,6 +349,8 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   return {
     id: `sc-live-${id}`,
     name: name ?? `${Math.max(1, Math.round(bedrooms))} BR nearby rental`,
+    ...(listingUrl ? { listingUrl } : {}),
+    ...(photoUrl ? { photoUrl } : {}),
     bedrooms: Math.max(0, Math.round(bedrooms)),
     bathrooms: Math.max(0.5, bathrooms),
     adr: Math.round(adr),

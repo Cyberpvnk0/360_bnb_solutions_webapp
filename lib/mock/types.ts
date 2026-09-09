@@ -108,6 +108,12 @@ export type PropertyType = "apartment" | "house" | "condo" | "townhome";
 export interface StrComp {
   id: string;
   name: string;
+  /** The listing's own page on its platform, when known — a comp is a
+   *  real listing somebody can open. */
+  listingUrl?: string;
+  /** The listing's cover photo, when the feed carries one. Linked, not
+   *  copied: the image is served by its platform, never stored here. */
+  photoUrl?: string;
   bedrooms: number;
   bathrooms: number;
   adr: number;

@@ -21,6 +21,7 @@ import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMiles, fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { PropertyThumb } from "./property-thumb";
+import { compListingUrl } from "@/lib/live/comp-links";
 import { cn } from "@/lib/utils";
 
 
@@ -75,6 +76,29 @@ function airbnbAreaUrl(lat: number, lon: number): string {
   const d = 0.006;
   const box = `ne_lat=${(lat + d).toFixed(4)}&ne_lng=${(lon + d).toFixed(4)}&sw_lat=${(lat - d).toFixed(4)}&sw_lng=${(lon - d).toFixed(4)}`;
   return `https://www.airbnb.com/s/homes?refinement_paths%5B%5D=%2Fhomes&search_by_map=true&${box}&zoom=15`;
+}
+
+/**
+ * The comp's cover photo when the feed carries one — the platform's own
+ * image, linked from its own servers, never stored or copied here — and
+ * the seeded sketch when it does not or the image will not load.
+ */
+function CompPhoto({ comp }: { comp: PlacedComp }) {
+  const [broken, setBroken] = React.useState(false);
+  if (!comp.photoUrl || broken) {
+    return <PropertyThumb seed={comp.id} className="h-20 w-24 shrink-0" />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- a third-party image whose host is not ours to allow-list
+    <img
+      src={comp.photoUrl}
+      alt={comp.name}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      onError={() => setBroken(true)}
+      className="h-20 w-24 shrink-0 rounded-md object-cover"
+    />
+  );
 }
 
 interface CompsStreetMapProps {
@@ -292,7 +316,7 @@ export function CompsStreetMap({
         {/* Docked listing card for the selected comp */}
         {active ? (
           <div className="absolute inset-x-3 bottom-3 z-20 flex gap-3 rounded-lg border border-border bg-card p-3">
-            <PropertyThumb seed={active.id} className="h-20 w-24 shrink-0" />
+            <CompPhoto comp={active} />
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <p className="truncate text-sm font-semibold text-foreground">
@@ -314,15 +338,20 @@ export function CompsStreetMap({
                 /yr · {fmtMiles(active.distanceMiles)} away
               </p>
               <div className="mt-2 flex items-center justify-between gap-3">
-                <a
-                  href={airbnbAreaUrl(active.lat, active.lon)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-gold transition-colors duration-150 hover:text-gold-bright"
-                >
-                  Open this area on Airbnb
-                  <ArrowUpRight aria-hidden className="size-3" />
-                </a>
+                {(() => {
+                  const page = compListingUrl(active);
+                  return (
+                    <a
+                      href={page ?? airbnbAreaUrl(active.lat, active.lon)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-select transition-colors duration-150 hover:underline"
+                    >
+                      {page ? "View listing on Airbnb" : "Open this area on Airbnb"}
+                      <ArrowUpRight aria-hidden className="size-3" />
+                    </a>
+                  );
+                })()}
                 {active.placed ? null : (
                   <span className="text-[10px] text-muted-foreground">
                     Approximate position — the platform blurs a listing

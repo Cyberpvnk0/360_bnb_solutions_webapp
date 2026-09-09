@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
+import { airbnbRoomUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -170,5 +170,38 @@ describe("the comps query", () => {
     const p = compsParams(30.33, -81.66, { bedrooms: 0 });
     expect(Number(p.baths)).toBeGreaterThan(0);
     expect(Number(p.guests)).toBeGreaterThan(0);
+  });
+});
+
+describe("a comp's own page and picture", () => {
+  it("names the listing's page from its id, and only from a real id", () => {
+    expect(airbnbRoomUrl(41234567)).toBe("https://www.airbnb.com/rooms/41234567");
+    expect(airbnbRoomUrl("41234567")).toBe("https://www.airbnb.com/rooms/41234567");
+    expect(airbnbRoomUrl("abc")).toBeNull();
+    expect(airbnbRoomUrl(null)).toBeNull();
+  });
+
+  it("carries the feed's link and cover photo when they are https, never prose", () => {
+    const comp = mapComp(
+      realComp({
+        listing_info: {
+          listing_id: 41234567,
+          listing_name: "Riverside 2BR",
+          listing_url: "https://www.airbnb.com/rooms/41234567?src=feed",
+          picture_url: "https://a0.muscache.com/im/pictures/abc.jpg",
+          description: "PROSE THAT MUST NOT ESCAPE",
+        },
+      }),
+      0
+    );
+    expect(comp?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567?src=feed");
+    expect(comp?.photoUrl).toBe("https://a0.muscache.com/im/pictures/abc.jpg");
+    expect(JSON.stringify(comp)).not.toContain("PROSE");
+  });
+
+  it("falls back to the page the id names, and to no photo at all", () => {
+    const comp = mapComp(realComp({}), 0);
+    expect(comp?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567");
+    expect(comp?.photoUrl).toBeUndefined();
   });
 });
