@@ -200,7 +200,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             ) : null}
             <Pipe />
             <span className="font-normal text-muted-foreground">
-              {TYPE_LABEL[l.propertyType]}
+              {l.propertyTypeKnown === false ? null : TYPE_LABEL[l.propertyType]}
             </span>
           </p>
 

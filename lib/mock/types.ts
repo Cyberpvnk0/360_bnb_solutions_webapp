@@ -258,6 +258,9 @@ export interface RentalListing {
   bathrooms: number;
   sqft: number;
   propertyType: PropertyType;
+  /** False when the feed did not state a type and `propertyType` is a
+   *  stand-in for filtering — shown nowhere as a fact. */
+  propertyTypeKnown?: boolean;
   /** Asking rent, dollars per month. */
   rentMonthly: number;
   /** Days since the listing went up (0 = today). Absent when the source

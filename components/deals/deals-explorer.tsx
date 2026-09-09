@@ -517,7 +517,11 @@ export function DealsExplorer({
       { header: "City", value: (r) => r.listing.city },
       { header: "State", value: (r) => r.listing.stateCode },
       { header: "Market", value: (r) => bySlug.get(r.listing.marketSlug) ?? r.listing.marketSlug },
-      { header: "Type", value: (r) => TYPE_LABEL[r.listing.propertyType] },
+      {
+        header: "Type",
+        value: (r) =>
+          r.listing.propertyTypeKnown === false ? "" : TYPE_LABEL[r.listing.propertyType],
+      },
       { header: "Bedrooms", value: (r) => r.listing.bedrooms },
       { header: "Bathrooms", value: (r) => r.listing.bathrooms },
       { header: "Sq ft", value: (r) => r.listing.sqft || "" },

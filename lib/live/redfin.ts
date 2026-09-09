@@ -300,11 +300,13 @@ const TYPE_MAP: Record<string, PropertyType> = {
   "multi-family": "apartment",
 };
 
-function propertyTypeOf(row: Row): PropertyType {
+function propertyTypeOf(row: Row): { type: PropertyType; known: boolean } {
   const raw = pickString(row, TYPE_KEYS)?.toLowerCase();
-  // Redfin's rental inventory is apartment-heavy; that is the honest
-  // default when the feed doesn't say, and it never invents a house.
-  return (raw ? TYPE_MAP[raw] : undefined) ?? "apartment";
+  const mapped = raw ? TYPE_MAP[raw] : undefined;
+  // Redfin's rental inventory is apartment-heavy; that is the stand-in
+  // when the feed doesn't say — for FILTERING only. A card never prints
+  // a type the feed did not state.
+  return mapped ? { type: mapped, known: true } : { type: "apartment", known: false };
 }
 
 /** Containers a search response might wrap its listings in. */
@@ -445,7 +447,8 @@ export function mapRedfinListing(
       bedrooms,
       bathrooms,
       sqft: Math.round(pickNumber(raw, SQFT_KEYS) ?? 0),
-      propertyType: propertyTypeOf(raw),
+      propertyType: propertyTypeOf(raw).type,
+      propertyTypeKnown: propertyTypeOf(raw).known,
       rentMonthly: Math.round(rentMonthly),
       // Redfin's search rows carry no listing date. Left absent rather
       // than zeroed, which would badge all eighty "New, listed today".

@@ -25,6 +25,8 @@ export function analyzeHref(l: {
   bedrooms: number;
   bathrooms: number;
   propertyType: string;
+  /** False when the type above is a filtering stand-in, not a fact. */
+  propertyTypeKnown?: boolean;
   /** Asking rent per month. Absent for a row that has none. */
   rentMonthly?: number;
 }): string {
@@ -34,8 +36,10 @@ export function analyzeHref(l: {
     lon: String(l.lon),
     bd: String(l.bedrooms),
     ba: String(l.bathrooms),
-    t: l.propertyType,
   });
+  // The type travels only when the listing stated it. A stand-in used
+  // for filtering would arrive on the result as a fact about the house.
+  if (l.propertyTypeKnown !== false) params.set("t", l.propertyType);
   if (Number.isFinite(l.rentMonthly) && (l.rentMonthly as number) > 0) {
     params.set("r", String(Math.round(l.rentMonthly as number)));
   }

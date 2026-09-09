@@ -138,6 +138,8 @@ export function AnalyzeResult({
     milesAway: number;
     /** True when the size was assumed rather than supplied. */
     assumedSize: boolean;
+    /** True when no listing stated the property type. */
+    assumedType: boolean;
     /**
      * Where the starting rent came from.
      *
@@ -220,7 +222,6 @@ export function AnalyzeResult({
   // when it clears costs narrowly, red when the market runs short. Read
   // from the same margin the gauge shows, so the two never disagree.
   const grade = dealGrade(neverBreaksEven ? -Infinity : p.marginOfSafety);
-  const sleeps = analysis.bedrooms * 2 + 2;
   // Annual figures display as rounded-monthly × 12 so a reader who
   // multiplies the two on-screen numbers gets an exact match.
   const annualRevenueDisplay = Math.round(p.monthlyRevenue) * 12;
@@ -351,10 +352,16 @@ export function AnalyzeResult({
                   <StatusChip tone="outline">{analysis.bathrooms} ba</StatusChip>
                 </>
               )}
-              <StatusChip tone="outline">Sleeps {sleeps}</StatusChip>
-              <StatusChip tone="outline">
-                {PROPERTY_TYPE_LABEL[analysis.propertyType]}
-              </StatusChip>
+              {/* The type prints only when a listing stated it. A typed
+                  address has none, and nothing on this page depends on
+                  it — so nothing is invented for the chip. The old
+                  "Sleeps N" chip was bedrooms × 2 + 2, a guess shown as
+                  a fact; it is gone. */}
+              {searchedAddress?.assumedType ? null : (
+                <StatusChip tone="outline">
+                  {PROPERTY_TYPE_LABEL[analysis.propertyType]}
+                </StatusChip>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 print:hidden">

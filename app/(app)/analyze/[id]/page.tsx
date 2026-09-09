@@ -46,7 +46,7 @@ const MAX_RENT = 100_000;
  */
 function specFrom(
   sp: Record<string, string | string[] | undefined>
-): (AddressSpec & { assumedSize: boolean }) | null {
+): (AddressSpec & { assumedSize: boolean; assumedType: boolean }) | null {
   const one = (k: string) => {
     const v = sp[k];
     return Array.isArray(v) ? v[0] : v;
@@ -90,6 +90,9 @@ function specFrom(
     bedrooms: bd ?? ASSUMED_BEDROOMS,
     bathrooms: ba ?? ASSUMED_BATHROOMS,
     propertyType: type && TYPES.includes(type) ? type : "house",
+    /** True when no listing stated the type. The calculator does not
+     *  use it, so the result simply does not print one. */
+    assumedType: !(type && TYPES.includes(type)),
     rentMonthly,
     city: one("c")?.trim() || undefined,
     stateCode: one("s")?.trim().slice(0, 2).toUpperCase() || undefined,
@@ -175,6 +178,7 @@ export default async function AnalyzeResultPage({
           market,
           milesAway,
           assumedSize: spec.assumedSize,
+          assumedType: spec.assumedType,
           // Which kind of number the calculator opened on. Measured and
           // modelled are never blended here, and never shown alike.
           rentSource: spec.rentMonthly === undefined ? "market" : "listing",
