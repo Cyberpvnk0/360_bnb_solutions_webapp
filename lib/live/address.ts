@@ -205,3 +205,47 @@ function normaliseStreet(raw: string): string {
   const rest = canonicaliseDirectionals(cleaned.slice(number.length).trim());
   return `${number} ${rest}`.trim();
 }
+
+/**
+ * The street line of a postal address, for a heading that has the
+ * town on the line below it.
+ *
+ * One feed writes the full line — "4013 W Wilshire Dr, Phoenix, AZ
+ * 85021" — and the result page prints the city and state under the
+ * heading regardless, so the heading was saying the town twice and
+ * running out of room doing it. This drops the trailing parts that are
+ * the city, the state (with or without its ZIP) or a bare ZIP, and
+ * keeps everything else — a unit after a comma stays. A line with no
+ * such tail comes back as it is.
+ */
+export function streetLine(
+  address: string,
+  city?: string,
+  stateCode?: string
+): string {
+  const parts = address
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return address.trim();
+  const cityKey = city?.trim().toLowerCase();
+  const state = stateCode?.trim().toUpperCase();
+  const isTail = (part: string) => {
+    const lower = part.toLowerCase();
+    if (cityKey && lower === cityKey) return true;
+    if (/^\d{5}(?:-\d{4})?$/.test(part)) return true;
+    // "AZ", "AZ 85021" — the given state, or any two-letter one when
+    // the state was not said, so long as a ZIP follows it.
+    const m = /^([A-Za-z]{2})(?:\s+\d{5}(?:-\d{4})?)?$/.exec(part);
+    if (m) {
+      const code = m[1].toUpperCase();
+      if (state) return code === state;
+      return /\d{5}/.test(part);
+    }
+    return false;
+  };
+  // Always keep the first part: it is the street, whatever it says.
+  let end = parts.length;
+  while (end > 1 && isTail(parts[end - 1])) end -= 1;
+  return parts.slice(0, end).join(", ");
+}

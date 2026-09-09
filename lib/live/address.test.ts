@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addressKey, buildingKey } from "@/lib/live/address";
+import { addressKey, buildingKey, streetLine } from "@/lib/live/address";
 
 describe("addressKey", () => {
   it("matches the same building written two ways", () => {
@@ -229,5 +229,39 @@ describe("saints and forts in street names", () => {
     // "Street" already reduces to "st"; folding saint the same way
     // must not disturb it.
     expect(addressKey("1204 Glencoe Street")).toBe("1204 glencoe st");
+  });
+});
+
+describe("streetLine", () => {
+  it("drops the town, state and ZIP a heading would say twice", () => {
+    expect(streetLine("4013 W Wilshire Dr, Phoenix, AZ 85021", "Phoenix", "AZ")).toBe(
+      "4013 W Wilshire Dr"
+    );
+    expect(streetLine("674 23rd St Unit 16, Oakland, CA 94612", "Oakland", "CA")).toBe(
+      "674 23rd St Unit 16"
+    );
+    expect(streetLine("1535 Van Buren St, Jacksonville, FL", "Jacksonville", "FL")).toBe(
+      "1535 Van Buren St"
+    );
+  });
+
+  it("keeps a unit that sits after a comma", () => {
+    expect(streetLine("1234 Main St, Apt 5, Phoenix, AZ 85021", "Phoenix", "AZ")).toBe(
+      "1234 Main St, Apt 5"
+    );
+  });
+
+  it("works without being told the town, when a ZIP anchors the tail", () => {
+    expect(streetLine("4013 W Wilshire Dr, Phoenix, AZ 85021")).toBe("4013 W Wilshire Dr, Phoenix");
+    expect(streetLine("4013 W Wilshire Dr, Phoenix, AZ 85021", undefined, "AZ")).toBe(
+      "4013 W Wilshire Dr, Phoenix"
+    );
+  });
+
+  it("leaves a plain street line, and a lone part, alone", () => {
+    expect(streetLine("4013 W Wilshire Dr", "Phoenix", "AZ")).toBe("4013 W Wilshire Dr");
+    expect(streetLine("Phoenix", "Phoenix", "AZ")).toBe("Phoenix");
+    // A two-letter street name with no ZIP after it is not a state.
+    expect(streetLine("10 Main St, La", "Phoenix", "AZ")).toBe("10 Main St, La");
   });
 });

@@ -27,6 +27,7 @@ import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
 import { dealGrade, GRADE_TEXT } from "@/lib/calc/grade";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
+import { streetLine } from "@/lib/live/address";
 import { TIERS, type TierId } from "@/config/app";
 import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
@@ -271,8 +272,14 @@ export function AnalyzeResult({
             className="h-28 w-full max-w-44 shrink-0 md:h-[104px] md:w-[152px]"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-              {analysis.address}
+            {/* The street line, wrapping when it must: the town is on
+                the next line already, and a heading that cut itself off
+                with an ellipsis hid the one thing the page is about. */}
+            <h1
+              title={analysis.address}
+              className="mt-1 text-balance font-display text-2xl font-semibold leading-tight tracking-tight text-foreground md:text-3xl"
+            >
+              {streetLine(analysis.address, analysis.city, analysis.stateCode)}
             </h1>
             {/* One line of context, not three paragraphs: the town, the
                 market the rules come from when that is somewhere else,
