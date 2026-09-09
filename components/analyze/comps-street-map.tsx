@@ -154,9 +154,11 @@ export function CompsStreetMap({
     onSelectRef.current = onSelect;
   }, [onHover, onSelect]);
   const subjectLabelRef = React.useRef(subjectLabel);
+  const subjectExactRef = React.useRef(subjectExact);
   React.useEffect(() => {
     subjectLabelRef.current = subjectLabel;
-  }, [subjectLabel]);
+    subjectExactRef.current = subjectExact;
+  }, [subjectLabel, subjectExact]);
 
   /**
    * THE MAP IS BUILT ONCE PER ANCHOR, and the anchor is two numbers.
@@ -202,7 +204,12 @@ export function CompsStreetMap({
 
     // Subject pin — brand red diamond in a gold ring.
     const subjectEl = document.createElement("div");
-    subjectEl.setAttribute("aria-label", subjectLabelRef.current);
+    subjectEl.setAttribute(
+      "aria-label",
+      subjectExactRef.current
+        ? subjectLabelRef.current
+        : `${subjectLabelRef.current} (market centre)`
+    );
     subjectEl.className =
       "flex size-7 items-center justify-center rounded-full border border-gold bg-surface/90";
     const diamond = document.createElement("span");
@@ -352,36 +359,13 @@ export function CompsStreetMap({
                     </a>
                   );
                 })()}
-                {active.placed ? null : (
-                  <span className="text-[10px] text-muted-foreground">
-                    Approximate position — the platform blurs a listing
-                    until it is booked
-                  </span>
-                )}
+
               </div>
             </div>
           </div>
         ) : null}
       </div>
 
-      <figcaption className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
-        <p className="flex items-center gap-1.5">
-          <span aria-hidden className="inline-block size-2 rotate-45 bg-brand" />
-          <span>{subjectExact ? "Your property" : "Your property (market centre — exact spot unknown)"}</span>
-          <span
-            aria-hidden
-            className="ml-2 inline-block h-2 w-3.5 rounded-full bg-[#d7263d]"
-          />
-          <span>Comps priced by the night — click one to open it</span>
-        </p>
-        {placed.every((c) => c.placed) ? null : (
-          <p>
-            {placed.some((c) => c.placed)
-              ? "Some pins are approximate — the platform blurs a listing's location until it is booked."
-              : "Pins are approximate — the platform blurs a listing's location until it is booked."}
-          </p>
-        )}
-      </figcaption>
     </figure>
   );
 }

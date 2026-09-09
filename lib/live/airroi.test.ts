@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { airbnbRoomUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
+import { airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -203,5 +203,29 @@ describe("a comp's own page and picture", () => {
     const comp = mapComp(realComp({}), 0);
     expect(comp?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567");
     expect(comp?.photoUrl).toBeUndefined();
+  });
+});
+
+describe("which platform a comp's link points at", () => {
+  it("sends a Vrbo listing to Vrbo, and an unknown platform nowhere", () => {
+    const vrbo = mapComp(
+      realComp({ listing_info: { listing_id: 987654, listing_name: "Lake house", platform: "vrbo" } }),
+      0
+    );
+    expect(vrbo?.listingUrl).toBe("https://www.vrbo.com/987654");
+    const other = mapComp(
+      realComp({ listing_info: { listing_id: 987654, listing_name: "Lake house", platform: "booking.com" } }),
+      0
+    );
+    expect(other?.listingUrl).toBeUndefined();
+    expect(vrboListingUrl("abc")).toBeNull();
+  });
+
+  it("prefers a platform-named id over the generic one", () => {
+    const comp = mapComp(
+      realComp({ listing_info: { listing_id: 1, listing_name: "x", airbnb_id: 41234567 } }),
+      0
+    );
+    expect(comp?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567");
   });
 });

@@ -265,6 +265,86 @@ export function airbnbRoomUrl(id: string | number | null | undefined): string | 
   const s = String(id ?? "").trim();
   return /^\d{5,}$/.test(s) ? `https://www.airbnb.com/rooms/${s}` : null;
 }
+
+/** Vrbo's listing pages are likewise built from a numeric id. */
+export function vrboListingUrl(id: string | number | null | undefined): string | null {
+  const s = String(id ?? "").trim();
+  return /^\d{4,}$/.test(s) ? `https://www.vrbo.com/${s}` : null;
+}
+
+const PLATFORM_KEYS = ["platform", "source", "channel", "site", "provider", "ota", "marketplace"];
+
+/**
+ * Which platform a comp is listed on, when the feed says. The feed
+ * covers more than one, and a Vrbo id sent to airbnb.com/rooms opens
+ * Airbnb's "something went wrong" page — which is exactly what a link
+ * built without asking did.
+ */
+export function platformOf(row: Row, info: Row | null): "airbnb" | "vrbo" | "other" | null {
+  const raw = (info ? pickString(info, PLATFORM_KEYS) : null) ?? pickString(row, PLATFORM_KEYS);
+  if (!raw) return null;
+  const v = raw.toLowerCase();
+  if (v.includes("airbnb")) return "airbnb";
+  if (v.includes("vrbo") || v.includes("homeaway") || v.includes("expedia")) return "vrbo";
+  return "other";
+}
+
+/**
+ * The listing's page, in order of certainty: the feed's own link; a
+ * platform-specific id the feed names outright (airbnb_id, vrbo_id);
+ * the generic id on whatever platform the feed says; and, when the
+ * feed says nothing, Airbnb — the platform the ids have always been
+ * from. A comp the feed marks as some third platform gets no link
+ * rather than a wrong one.
+ */
+export function listingPageUrl(row: Row, info: Row | null, id: string): string | null {
+  const given = (info ? pickHttpsUrl(info, URL_KEYS) : null) ?? pickHttpsUrl(row, URL_KEYS);
+  if (given) return given;
+  const src = info ?? row;
+  const airbnbId = pickString(src, ["airbnb_id", "airbnbId"]) ?? pickNumber(src, ["airbnb_id", "airbnbId"]);
+  if (airbnbId !== null) return airbnbRoomUrl(airbnbId);
+  const vrboId = pickString(src, ["vrbo_id", "vrboId"]) ?? pickNumber(src, ["vrbo_id", "vrboId"]);
+  if (vrboId !== null) return vrboListingUrl(vrboId);
+  switch (platformOf(row, info)) {
+    case "vrbo":
+      return vrboListingUrl(id);
+    case "other":
+      return null;
+    default:
+      return airbnbRoomUrl(id);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* What the comps payload looks like — names, never values             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The field names of the last comp payload this process mapped, one
+ * level deep. Kept so a staff reader of /api/usage can see what the
+ * feed actually sends — which groups, which keys — without a billed
+ * call and without any listing value leaving the server. The link and
+ * photo readers above were written from guesses at these names; this
+ * is how the guesses get checked.
+ */
+let lastCompShape: Record<string, string[]> | null = null;
+
+export function rememberCompShape(rows: unknown[]): void {
+  const first = rows.find((r) => r && typeof r === "object");
+  if (!first) return;
+  const shape: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(first as Row)) {
+    shape[k] =
+      v && typeof v === "object" && !Array.isArray(v)
+        ? Object.keys(v as Row).sort()
+        : [Array.isArray(v) ? `array(${v.length})` : typeof v];
+  }
+  lastCompShape = shape;
+}
+
+export function compFieldsSeen(): Record<string, string[]> | null {
+  return lastCompShape;
+}
 const LAT_KEYS = ["latitude", "lat"];
 const LON_KEYS = ["longitude", "lng", "lon", "long"];
 
@@ -310,10 +390,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   // The listing's own page: the feed's link when it gives one, else the
   // page its id names. Its cover photo likewise, from wherever the
   // payload keeps it — never from the description, which is prose.
-  const listingUrl =
-    (info ? pickHttpsUrl(info, URL_KEYS) : null) ??
-    pickHttpsUrl(row, URL_KEYS) ??
-    airbnbRoomUrl(id);
+  const listingUrl = listingPageUrl(row, info, id);
   const photoUrl =
     (info ? pickHttpsUrl(info, PHOTO_KEYS) ?? pickFirstPhoto(info) : null) ??
     pickHttpsUrl(row, PHOTO_KEYS) ??
@@ -683,9 +760,11 @@ export async function fetchEstimate(opts: {
       ? monthly.filter((n): n is number => typeof n === "number")
       : null,
     comps: withDistance(
-      extractArray({ listings: row.comparable_listings })
-        .map(mapComp)
-        .filter((c): c is StrComp => c !== null),
+      (() => {
+        const raw = extractArray({ listings: row.comparable_listings });
+        rememberCompShape(raw);
+        return raw.map(mapComp).filter((c): c is StrComp => c !== null);
+      })(),
       subject
     ),
   };

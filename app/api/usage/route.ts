@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/gate";
 import { scraperUsage } from "@/lib/live/scraper-usage";
-import { airRoiBudget, hasAirRoiKey } from "@/lib/live/airroi";
+import { airRoiBudget, compFieldsSeen, hasAirRoiKey } from "@/lib/live/airroi";
 import { rentcastBudget } from "@/lib/live/quota";
 import { planTablesReady } from "@/lib/db/usage";
 import {
@@ -64,6 +64,11 @@ export async function GET() {
   }));
 
   return NextResponse.json({
+    /** The comps feed's field names from the last analysis this
+     *  server ran — names only. How the link and photo readers get
+     *  checked against what the feed really sends. */
+    compsPayloadShape: compFieldsSeen(),
+
     usage,
     /**
      * The OTHER meter. Two vendors bill this product and only one of
