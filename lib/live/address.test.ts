@@ -31,6 +31,20 @@ describe("addressKey", () => {
     );
   });
 
+  it("reads a room number as the unit", () => {
+    // A house let by the room: "Rm 4" is a unit like "Apt 4", and the
+    // building is the house.
+    expect(addressKey("14716 Carnation Dr Rm 4, Tampa, FL 33613")).toBe(
+      "14716 carnation dr #4"
+    );
+    expect(addressKey("14716 Carnation Dr Room 4, Tampa, FL 33613")).toBe(
+      "14716 carnation dr #4"
+    );
+    expect(buildingKey("14716 Carnation Dr Rm 4, Tampa, FL 33613")).toBe(
+      addressKey("14716 Carnation Dr, Tampa, FL 33613")
+    );
+  });
+
   it("refuses to key an address it cannot parse", () => {
     // No key means no match, which means no borrowed photo.
     expect(addressKey("Address on file")).toBeNull();

@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { FurnishedSearching } from "./furnished-searching";
+import { collapseDuplicateListings } from "@/lib/live/dedupe-listings";
 import { inZip } from "@/lib/live/zip";
 import { getZipBoundary } from "@/lib/data/zip-boundary";
 import type { ZipBoundary } from "@/lib/map/zip-boundary";
@@ -426,14 +427,17 @@ export function DealsExplorer({
     // Furnished swaps the source outright: Redfin answers that question
     // at its own search, so the result set IS the furnished set rather
     // than a general set we then guess our way through.
+    // A live set is shown with its duplicates folded — the same house
+    // under two lines, see lib/live/dedupe-listings. A saved list is
+    // what was saved.
     const source = redfinActive
-      ? redfin!.listings
+      ? collapseDuplicateListings(redfin!.listings)
       : zip
         ? zipActive
-          ? zipResult!.listings
+          ? collapseDuplicateListings(zipResult!.listings)
           : []
         : marketRows
-          ? marketRows
+          ? collapseDuplicateListings(marketRows)
           : listFilter
             ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
             : [];

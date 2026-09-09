@@ -45,7 +45,7 @@ const SUFFIXES: [RegExp, string][] = [
   // time anything compares.
   [/\b(saint)\b/g, "st"],
   [/\b(fort|ft)\b/g, "ft"],
-  [/\b(apartment|apt|unit|ste|suite)\b/g, "unit"],
+  [/\b(apartment|apt|unit|ste|suite|rm|room)\b/g, "unit"],
   // Directionals, spelled out on one side and lettered on the other.
   // "9256 7th Ave S" and "9256 7th Avenue South" are the same building,
   // and without these they were two different keys — which on a grid of
@@ -86,12 +86,14 @@ function canonicaliseDirectionals(street: string): string {
 }
 
 /** A comma-separated part that belongs to the street, not the city:
- *  "Apt 902", "#4B", "Unit 12". */
-const UNIT_PART = /^(?:#|(?:apartment|apt|unit|ste|suite)\b\.?)\s*([\w-]+)$/i;
+ *  "Apt 902", "#4B", "Unit 12", "Rm 4". A room is a unit: a house let
+ *  by the room lists each one, and a feed that drops the room number
+ *  on one of them wrote the same building twice. */
+const UNIT_PART = /^(?:#|(?:apartment|apt|unit|ste|suite|rm|room)\b\.?)\s*([\w-]+)$/i;
 
 /** The same, sitting on the end of the street line rather than in its
  *  own comma-separated part. */
-const INLINE_UNIT = /\s+(?:#\s*|(?:apartment|apt|unit|ste|suite)\b\.?\s*)([\w-]+)\s*$/i;
+const INLINE_UNIT = /\s+(?:#\s*|(?:apartment|apt|unit|ste|suite|rm|room)\b\.?\s*)([\w-]+)\s*$/i;
 
 /**
  * The comparable form of an address, or null when there isn't one.
