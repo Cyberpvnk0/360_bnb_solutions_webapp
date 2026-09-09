@@ -66,6 +66,7 @@ function targetFor(listing: RentalListing): Target | null {
       address: listing.address,
       city: listing.city,
       state: listing.stateCode,
+      ...(listing.zip ? { zip: listing.zip } : {}),
     }),
   };
 }

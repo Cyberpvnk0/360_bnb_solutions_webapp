@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { extractAddressRows, pickAddressRow } from "./redfin-page";
+import { extractAddressRows, parsePropertyPath, pickAddressRow } from "./redfin-page";
 
 const PAYLOAD = {
   payload: {
     sections: [
       {
         rows: [
-          { id: "1_47311661", name: "1804 E Sitka St, Tampa, FL 33604", url: "/FL/Tampa/1804-E-Sitka-St-33604/home/47311661", type: "1" },
+          // The lookup prints the street and the town in separate fields.
+          { id: "1_47311661", name: "1804 E Sitka St", subName: "Tampa, FL 33604", url: "/FL/Tampa/1804-E-Sitka-St-33604/home/47311661", type: "1" },
           { id: "2_1", name: "Sitka", url: "/neighborhood/1/FL/Tampa/Sitka", type: "2" },
-          { id: "1_99", name: "1804 E Sitka St Unit 2, Tampa, FL 33604", url: "/FL/Tampa/1804-E-Sitka-St-33604/unit-2/home/99?x=1", type: "1" },
+          { id: "1_99", name: "1804 E Sitka St Unit 2", subName: "Tampa, FL 33604", url: "/FL/Tampa/1804-E-Sitka-St-33604/unit-2/home/99?x=1", type: "1" },
         ],
       },
     ],
@@ -57,7 +58,43 @@ describe("picking the page for exactly this address", () => {
     expect(pickAddressRow(rows, { ...TAMPA, stateCode: "GA" })).toBeNull();
   });
 
+  it("lets the ZIP vouch for a town the feed names differently", () => {
+    // A suburb listed under the market's name: the path says Tampa,
+    // the row says the market, and the ZIP settles it.
+    expect(pickAddressRow(rows, { ...TAMPA, city: "Tampa Bay Area", zip: "33604" })).toBe(
+      "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661"
+    );
+    expect(pickAddressRow(rows, { ...TAMPA, city: "Tampa Bay Area", zip: "33605" })).toBeNull();
+  });
+
+  it("matches on the page's path even when the row prints nothing useful", () => {
+    const bare = [{ name: "", url: "/FL/Tampa/1804-E-Sitka-St-33604/home/47311661" }];
+    expect(pickAddressRow(bare, TAMPA)).toBe(
+      "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661"
+    );
+  });
+
   it("has nothing for an address it cannot key", () => {
     expect(pickAddressRow(rows, { ...TAMPA, address: "" })).toBeNull();
+  });
+});
+
+describe("what a property page's path says", () => {
+  it("reads the state, town, street, ZIP and unit out of it", () => {
+    expect(parsePropertyPath("/FL/Tampa/1804-E-Sitka-St-33604/unit-2/home/99?x=1")).toEqual({
+      state: "FL",
+      city: "Tampa",
+      street: "1804 E Sitka St",
+      zip: "33604",
+      unit: "2",
+    });
+    expect(parsePropertyPath("/FL/St-Petersburg/100-Main-St/home/5")).toEqual({
+      state: "FL",
+      city: "St Petersburg",
+      street: "100 Main St",
+      zip: null,
+      unit: null,
+    });
+    expect(parsePropertyPath("/neighborhood/1/FL/Tampa/Sitka")).toBeNull();
   });
 });

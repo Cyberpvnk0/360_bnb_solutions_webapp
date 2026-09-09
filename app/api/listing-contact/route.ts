@@ -49,13 +49,22 @@ export async function GET(request: Request) {
     const address = (searchParams.get("address") ?? "").trim();
     const city = (searchParams.get("city") ?? "").trim();
     const state = (searchParams.get("state") ?? "").trim().toUpperCase();
+    const zip = (searchParams.get("zip") ?? "").trim() || undefined;
     if (address.length >= 4 && city.length >= 2 && /^[A-Z]{2}$/.test(state)) {
-      page = await resolveListingPage({ address, city, stateCode: state });
-      if (!page) {
+      const found = await resolveListingPage({ address, city, stateCode: state, zip });
+      if (!found.url) {
         // The portal does not know this address: nothing to read, and
-        // nothing was spent on a page.
-        return NextResponse.json({ ok: true, contact: null, blocked: false, page: null });
+        // nothing was spent on a page. `detail` says what the lookup
+        // did answer, for whoever is checking why.
+        return NextResponse.json({
+          ok: true,
+          contact: null,
+          blocked: false,
+          page: null,
+          detail: found.detail,
+        });
       }
+      page = found.url;
       url = page;
     }
   }

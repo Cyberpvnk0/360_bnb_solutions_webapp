@@ -31,8 +31,13 @@ export interface AddressRow {
   url: string;
 }
 
-/** The shape of a property page's path on the portal. */
-const PROPERTY_PATH = /^\/[A-Z]{2}\/[^?#\s]+\/home\/\d+/;
+/** The shape of a property page's path on the portal:
+ *  /FL/Tampa/1804-E-Sitka-St-33604/home/47311661, with an optional
+ *  /unit-2/ before "home". The path names the state, the town, the
+ *  street (ZIP last) and the unit — everything a match needs, whether
+ *  or not the row's own fields say them. */
+const PROPERTY_PATH =
+  /^\/([A-Z]{2})\/([^/?#\s]+)\/([^/?#\s]+)(?:\/unit-([^/?#\s]+))?\/home\/\d+/;
 const PORTAL = "https://www.redfin.com";
 
 const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -51,37 +56,70 @@ export function extractAddressRows(
   }
   if (!value || typeof value !== "object") return out;
   const row = value as Record<string, unknown>;
-  if (
-    typeof row.url === "string" &&
-    PROPERTY_PATH.test(row.url) &&
-    typeof row.name === "string" &&
-    row.name.trim()
-  ) {
-    out.push({ name: row.name.trim(), url: row.url });
+  if (typeof row.url === "string" && PROPERTY_PATH.test(row.url)) {
+    // The line the row prints, from whichever fields carry it: the
+    // lookup writes the street in `name` and the town in `subName` (or
+    // `market`), and an older shape wrote the whole line in `name`.
+    const line = [row.name, row.subName, row.market]
+      .filter((v): v is string => typeof v === "string" && v.trim() !== "")
+      .join(", ");
+    out.push({ name: line, url: row.url });
   }
   for (const v of Object.values(row)) extractAddressRows(v, depth + 1, out);
   return out;
 }
 
+/** What the page's path says about the property. */
+export function parsePropertyPath(url: string): {
+  state: string;
+  city: string;
+  street: string;
+  zip: string | null;
+  unit: string | null;
+} | null {
+  const m = PROPERTY_PATH.exec(url);
+  if (!m) return null;
+  const words = m[3].split("-");
+  const zip = /^\d{5}$/.test(words[words.length - 1]) ? words.pop()! : null;
+  return {
+    state: m[1].toUpperCase(),
+    city: m[2].replace(/-/g, " "),
+    street: words.join(" "),
+    zip,
+    unit: m[4] ? m[4].replace(/-/g, " ") : null,
+  };
+}
+
 /**
- * The page for exactly this address, or null. The street and unit must
- * key the same way on both sides — "St" against "Street" is fine, unit
- * 4 against unit 5 is not — and the row's line must name the town and
- * the state, as its own token.
+ * The page for exactly this address, or null.
+ *
+ * The match is made on the page's own path rather than on the row's
+ * printed line, because the path always carries the state, the town,
+ * the street and the unit, and the printed line carries whatever the
+ * lookup felt like printing. The street and unit must key the same way
+ * on both sides — "St" against "Street" is fine, unit 4 against unit 5
+ * is not — the state must be the one asked for, and the town must
+ * match or, failing that, the ZIP must. A near miss is no page: a
+ * wrong page is a stranger's number under somebody's address.
  */
 export function pickAddressRow(
   rows: readonly AddressRow[],
-  place: { address: string; city: string; stateCode: string }
+  place: { address: string; city: string; stateCode: string; zip?: string }
 ): string | null {
   const want = addressKey(place.address);
   if (!want) return null;
   const wantCity = normalizeCity(place.city);
-  const state = new RegExp(`\\b${place.stateCode.trim().toLowerCase()}\\b`);
+  const wantState = place.stateCode.trim().toUpperCase();
   for (const row of rows) {
-    if (addressKey(row.name) !== want) continue;
-    const tail = row.name.split(",").slice(1).join(" ");
-    if (wantCity && !normalizeCity(tail).includes(wantCity)) continue;
-    if (!state.test(tail.toLowerCase())) continue;
+    const path = parsePropertyPath(row.url);
+    if (!path || path.state !== wantState) continue;
+    const townMatches = wantCity !== "" && normalizeCity(path.city) === wantCity;
+    const zipMatches = !!place.zip && path.zip === place.zip;
+    if (!townMatches && !zipMatches) continue;
+    const theirs = addressKey(
+      path.unit ? `${path.street} Unit ${path.unit}` : path.street
+    );
+    if (theirs !== want) continue;
     return `${PORTAL}${row.url.split(/[?#]/)[0]}`;
   }
   return null;
@@ -89,41 +127,66 @@ export function pickAddressRow(
 
 function storeKey(place: { address: string; stateCode: string }): string | null {
   const key = addressKey(place.address);
-  return key ? `page:${place.stateCode.trim().toLowerCase()}:${key}` : null;
+  return key ? `page:v2:${place.stateCode.trim().toLowerCase()}:${key}` : null;
 }
 
 /**
  * The listing page for a row that arrived without one, or null when
  * the portal does not know the address. Never throws.
  */
+export interface PageLookup {
+  url: string | null;
+  /** Why there is no page, for the person reading the route's answer:
+   *  what the lookup returned and what was rejected. Never a value off
+   *  a listing. */
+  detail: string | null;
+}
+
 export async function resolveListingPage(place: {
   address: string;
   city: string;
   stateCode: string;
-}): Promise<string | null> {
+  zip?: string;
+}): Promise<PageLookup> {
   const key = storeKey(place);
-  if (!key) return null;
+  if (!key) return { url: null, detail: "address could not be keyed" };
 
   const stored = await readKeyedBlob(key).catch(() => null);
   if (stored) {
     const url = (stored.value as { url?: unknown }).url;
-    if (typeof url === "string" && isFresh(stored.at, HIT_TTL_MS)) return url;
-    if (url === null && isFresh(stored.at, MISS_TTL_MS)) return null;
+    if (typeof url === "string" && isFresh(stored.at, HIT_TTL_MS)) {
+      return { url, detail: null };
+    }
+    if (url === null && isFresh(stored.at, MISS_TTL_MS)) {
+      return { url: null, detail: "no page, remembered from an earlier lookup" };
+    }
   }
 
   const apiKey = process.env.SCRAPERAPI_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { url: null, detail: "no scraping key configured" };
   try {
-    const { body } = await fetchAutocomplete(
+    const { attempt, body, tried } = await fetchAutocomplete(
       autocompleteUrlFor(`${place.address}, ${place.city}, ${place.stateCode}`),
       apiKey
     );
-    const url = pickAddressRow(extractAddressRows(body), place);
+    if (body === null) {
+      return {
+        url: null,
+        detail: `lookup did not answer (HTTP ${attempt.status} on ${tried.join(", ")})`,
+      };
+    }
+    const rows = extractAddressRows(body);
+    const url = pickAddressRow(rows, place);
     // A miss is remembered too, so a listing the portal does not carry
     // is not looked up on every open.
     void writeKeyed(key, { url }).catch(() => undefined);
-    return url;
-  } catch {
-    return null;
+    return {
+      url,
+      detail: url
+        ? null
+        : `lookup answered with ${rows.length} property page${rows.length === 1 ? "" : "s"}, none for this address`,
+    };
+  } catch (e) {
+    return { url: null, detail: e instanceof Error ? e.message : "lookup failed" };
   }
 }
