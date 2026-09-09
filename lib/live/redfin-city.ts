@@ -45,9 +45,24 @@ const TIERS: { name: string; params: Record<string, string> }[] = [
   { name: "ultra", params: { ultra_premium: "true" } },
 ];
 
-/** Per-attempt ceiling. Two attempts have to fit inside the route's own
- *  budget with room to answer, however slow the upstream is. */
-const ATTEMPT_TIMEOUT_MS = 20_000;
+/**
+ * How long a lookup may take, every tier together, unless the caller
+ * says otherwise.
+ *
+ * A bypass request on this domain routinely takes twenty seconds, and
+ * the vendor keeps retrying for about seventy before it gives up. The
+ * first cut gave each tier twenty seconds flat, which cut most premium
+ * attempts off mid-flight and then handed ultra the same short rope:
+ * the address lookup behind a listing's contact answered "HTTP 408 on
+ * premium, ultra" for a page the portal had all along. A tier now gets
+ * the whole of what is left, and a tier that runs out of time ends the
+ * lookup rather than starting another that cannot finish.
+ */
+export const DEFAULT_LOOKUP_BUDGET_MS = 40_000;
+
+/** No tier is started with less than this: a bypass never answers
+ *  faster, so the attempt could only spend the vendor's patience. */
+const MIN_ATTEMPT_MS = 12_000;
 
 /**
  * Known ids, seeded from real URLs. A static entry costs nothing and is
@@ -650,16 +665,24 @@ interface Attempt {
   text: string;
 }
 
-/** Climb the tiers until one returns something that parses. Returns the
- *  last attempt when none do, so the caller can report what happened. */
+/**
+ * Climb the tiers until one returns something that parses, inside one
+ * budget for the lot. Returns the last attempt when none do, so the
+ * caller can report what happened: `body` null with status 408 means
+ * the time ran out, and is not evidence about what the portal knows.
+ */
 export async function fetchAutocomplete(
   target: string,
-  key: string
+  key: string,
+  opts: { budgetMs?: number } = {}
 ): Promise<{ attempt: Attempt; body: unknown; tried: string[] }> {
+  const deadline = Date.now() + (opts.budgetMs ?? DEFAULT_LOOKUP_BUDGET_MS);
   const tried: string[] = [];
   let last: Attempt = { tier: "none", status: 0, text: "" };
 
   for (const tier of TIERS) {
+    const left = deadline - Date.now();
+    if (left < MIN_ATTEMPT_MS) break;
     tried.push(tier.name);
     const params = new URLSearchParams({
       api_key: key,
@@ -670,12 +693,20 @@ export async function fetchAutocomplete(
     try {
       res = await fetch(`${SCRAPER}?${params}`, {
         next: { revalidate: CITY_ID_REVALIDATE_SECONDS },
-        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+        signal: AbortSignal.timeout(left),
       });
-    } catch {
-      // A tier that hangs is a tier that failed; give the next one its
-      // own budget rather than letting one stall the whole request.
-      last = { tier: tier.name, status: 408, text: "attempt timed out" };
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        // The budget is spent. A second tier would start with nothing.
+        last = {
+          tier: tier.name,
+          status: 408,
+          text: `no answer in ${Math.round(left / 1000)}s`,
+        };
+        break;
+      }
+      // A dropped connection is this tier's failure, not the clock's.
+      last = { tier: tier.name, status: 0, text: "network error" };
       continue;
     }
     const text = await res.text();
@@ -823,6 +854,14 @@ export async function cityIdFor(market: Market): Promise<number | null> {
   let id: number | null = null;
   try {
     const { body } = await fetchAutocomplete(target, key);
+    if (body === null) {
+      // No answer at all — the clock ran out, or every tier was
+      // refused. Not stored, for the reason below: it says nothing
+      // about whether the portal has this city, and an earlier cut
+      // wrote it as a week-long miss.
+      resolved.set(market.slug, null);
+      return null;
+    }
     id = pickCandidate(extractCandidates(body), market);
   } catch {
     // An unreachable resolver is an unwired market, not an error to

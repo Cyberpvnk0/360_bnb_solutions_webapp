@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import {
   REDFIN_CITY_ID,
   extractCandidates,
+  fetchAutocomplete,
   normalizeCity,
   parseGuardedJson,
   pickCandidate,
@@ -138,5 +139,76 @@ describe("REDFIN_CITY_ID", () => {
       expect(Number.isInteger(id), slug).toBe(true);
       expect(id, slug).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("fetchAutocomplete's budget", () => {
+  const timeout = () => Object.assign(new Error("aborted"), { name: "TimeoutError" });
+  const ok = (body: string) => new Response(body, { status: 200 });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("ends the lookup when the clock runs out, rather than starting another tier", async () => {
+    const fetchSpy = vi.fn().mockRejectedValue(timeout());
+    vi.stubGlobal("fetch", fetchSpy);
+    const r = await fetchAutocomplete("https://x/autocomplete", "k", { budgetMs: 30_000 });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(r.tried).toEqual(["premium"]);
+    expect(r.body).toBeNull();
+    expect(r.attempt.status).toBe(408);
+    expect(r.attempt.text).toMatch(/no answer in 30s/);
+  });
+
+  it("gives a tier the whole of what is left", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(ok('{}&&{"payload":{"sections":[]}}'));
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchAutocomplete("https://x/autocomplete", "k", { budgetMs: 45_000 });
+    const init = fetchSpy.mock.calls[0][1] as { signal: AbortSignal };
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal.aborted).toBe(false);
+  });
+
+  it("climbs to the next tier on a refusal, while there is time", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("no", { status: 500 }))
+      .mockResolvedValueOnce(ok('{}&&{"payload":{"sections":[]}}'));
+    vi.stubGlobal("fetch", fetchSpy);
+    const r = await fetchAutocomplete("https://x/autocomplete", "k", { budgetMs: 40_000 });
+    expect(r.tried).toEqual(["premium", "ultra"]);
+    expect(r.body).toEqual({ payload: { sections: [] } });
+    expect(String(fetchSpy.mock.calls[1][0])).toContain("ultra_premium=true");
+  });
+
+  it("does not start a tier it cannot finish", async () => {
+    // The clock is the budget's, so the attempt has to move it: a
+    // refusal that arrives after thirty seconds leaves ten, which is
+    // not enough for a bypass to answer in.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fetchSpy = vi.fn().mockImplementation(async () => {
+      vi.setSystemTime(Date.now() + 30_000);
+      return new Response("no", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const r = await fetchAutocomplete("https://x/autocomplete", "k", { budgetMs: 40_000 });
+      expect(r.tried).toEqual(["premium"]);
+      expect(r.attempt.status).toBe(500);
+      expect(r.body).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a dropped connection as one tier's failure, not the clock's", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(ok('{}&&{"payload":{"sections":[]}}'));
+    vi.stubGlobal("fetch", fetchSpy);
+    const r = await fetchAutocomplete("https://x/autocomplete", "k", { budgetMs: 40_000 });
+    expect(r.tried).toEqual(["premium", "ultra"]);
+    expect(r.body).not.toBeNull();
   });
 });

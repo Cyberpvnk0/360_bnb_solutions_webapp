@@ -90,11 +90,16 @@ async function lookup(target: Target): Promise<ContactLookup> {
       if (!res.ok || !data?.ok) return { status: "unreadable", contact: null, page: null };
       const page = typeof data.page === "string" ? data.page : null;
       if (data.contact) return { status: "found", contact: data.contact, page };
-      // Found by address and the portal had no page: different from a
-      // page that loaded and published nothing, and from one we never
-      // got to see.
+      // Looked up by address and no page came back. `blocked` says
+      // whether the portal answered "no such page" or never answered
+      // at all — different from a page that loaded and published
+      // nothing, and from one we never got to see.
       if (!target.query.has("url") && data.page === null) {
-        return { status: "no-page", contact: null, page: null };
+        return {
+          status: data.blocked ? "unreadable" : "no-page",
+          contact: null,
+          page: null,
+        };
       }
       return { status: data.blocked ? "unreadable" : "none", contact: null, page };
     } catch {

@@ -28,10 +28,14 @@ import { resolveListingPage } from "@/lib/live/redfin-page";
 import { reserveContact } from "@/lib/live/quota";
 import { ScraperApiError } from "@/lib/live/scraperapi";
 
-/** A protected listing page takes seconds and may climb a tier ladder;
- *  the platform default would kill it mid-climb and read as a silent
- *  failure. */
-export const maxDuration = 60;
+/**
+ * Room for two protected reads in a row: finding the page by address
+ * (up to fifty seconds, lib/live/redfin-page) and then reading it (the
+ * vendor retries for about seventy before it gives up, lib/live/
+ * scraperapi). The platform default would kill the second read
+ * mid-flight and the panel would call a page it never saw unreadable.
+ */
+export const maxDuration = 150;
 
 export async function GET(request: Request) {
   // A listing page is a billed read, made for one person's click.
@@ -53,13 +57,15 @@ export async function GET(request: Request) {
     if (address.length >= 4 && city.length >= 2 && /^[A-Z]{2}$/.test(state)) {
       const found = await resolveListingPage({ address, city, stateCode: state, zip });
       if (!found.url) {
-        // The portal does not know this address: nothing to read, and
-        // nothing was spent on a page. `detail` says what the lookup
-        // did answer, for whoever is checking why.
+        // Nothing to read, and nothing was spent on a page. `blocked`
+        // tells the two reasons apart: the portal answered that it has
+        // no page for this address, or it never answered at all — a
+        // clock that ran out is "try again", not "not here". `detail`
+        // says what the lookup did answer, for whoever is checking why.
         return NextResponse.json({
           ok: true,
           contact: null,
-          blocked: false,
+          blocked: !found.answered,
           page: null,
           detail: found.detail,
         });

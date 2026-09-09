@@ -1,5 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { extractAddressRows, parsePropertyPath, pickAddressRow } from "./redfin-page";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  extractAddressRows,
+  parsePropertyPath,
+  pickAddressRow,
+  resolveListingPage,
+} from "./redfin-page";
+import { addressKey } from "./address";
+import { fetchAutocomplete } from "./redfin-city";
+import { readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
+
+vi.mock("./redfin-city", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./redfin-city")>()),
+  fetchAutocomplete: vi.fn(),
+}));
+vi.mock("@/lib/db/market-store", () => ({
+  isFresh: () => true,
+  readKeyedBlob: vi.fn(),
+  writeKeyed: vi.fn(),
+}));
 
 const PAYLOAD = {
   payload: {
@@ -96,5 +114,83 @@ describe("what a property page's path says", () => {
       unit: null,
     });
     expect(parsePropertyPath("/neighborhood/1/FL/Tampa/Sitka")).toBeNull();
+  });
+});
+
+describe("resolving a page from an address", () => {
+  const lookup = vi.mocked(fetchAutocomplete);
+  const stored = vi.mocked(readKeyedBlob);
+  const remember = vi.mocked(writeKeyed);
+  beforeEach(() => {
+    vi.stubEnv("SCRAPERAPI_KEY", "k");
+    stored.mockResolvedValue(null);
+    remember.mockResolvedValue(undefined as never);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it("says the portal never answered, and remembers nothing", async () => {
+    // The Deal Finder's own failure: both tiers cut off by the clock.
+    // That is "try again", not "not here" — so it must not be stored
+    // as a miss, and the panel must not say the property isn't listed.
+    lookup.mockResolvedValue({
+      attempt: { tier: "premium", status: 408, text: "no answer in 50s" },
+      body: null,
+      tried: ["premium"],
+    });
+    const r = await resolveListingPage(TAMPA);
+    expect(r.url).toBeNull();
+    expect(r.answered).toBe(false);
+    expect(r.detail).toBe("lookup did not answer (no answer in 50s on premium)");
+    expect(remember).not.toHaveBeenCalled();
+  });
+
+  it("finds the page and remembers it", async () => {
+    lookup.mockResolvedValue({
+      attempt: { tier: "premium", status: 200, text: "" },
+      body: PAYLOAD,
+      tried: ["premium"],
+    });
+    const r = await resolveListingPage(TAMPA);
+    expect(r).toEqual({
+      url: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661",
+      answered: true,
+      detail: null,
+    });
+    expect(remember).toHaveBeenCalledWith(
+      `page:v2:fl:${addressKey("1804 E Sitka St")}`,
+      { url: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661" }
+    );
+    // Its own budget, wider than a city lookup's.
+    expect(lookup).toHaveBeenCalledWith(expect.any(String), "k", { budgetMs: 50_000 });
+  });
+
+  it("remembers a real miss as one", async () => {
+    lookup.mockResolvedValue({
+      attempt: { tier: "premium", status: 200, text: "" },
+      body: PAYLOAD,
+      tried: ["premium"],
+    });
+    const r = await resolveListingPage({ ...TAMPA, address: "1806 E Sitka St" });
+    expect(r.url).toBeNull();
+    expect(r.answered).toBe(true);
+    expect(r.detail).toMatch(/answered with 2 property pages, none for this address/);
+    expect(remember).toHaveBeenCalledWith(
+      `page:v2:fl:${addressKey("1806 E Sitka St")}`,
+      { url: null }
+    );
+  });
+
+  it("serves a remembered answer without asking again", async () => {
+    stored.mockResolvedValue({
+      value: { url: null },
+      at: new Date().toISOString(),
+    } as never);
+    const r = await resolveListingPage(TAMPA);
+    expect(r.answered).toBe(true);
+    expect(r.detail).toMatch(/remembered/);
+    expect(lookup).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,12 @@ import { mineFeatures } from "@/lib/live/features";
 
 const BASE = "https://api.scraperapi.com/";
 
+/** The vendor retries a protected page for about seventy seconds and
+ *  then answers 500; past that, nothing is coming. Stated here so a
+ *  read that hangs ends as a reported failure inside the route's own
+ *  budget, rather than as the platform cutting the route off. */
+const SCRAPE_TIMEOUT_MS = 75_000;
+
 /** 30 days. A lease listing's own words don't change; only its
  *  availability does, and that comes from RentCast, not from here. */
 export const ENRICH_REVALIDATE_SECONDS = 2_592_000;
@@ -395,9 +401,16 @@ async function scrape(
       // Shared across every student for a month: the same address is
       // one vendor call no matter how many people surface it.
       next: { revalidate: ENRICH_REVALIDATE_SECONDS },
+      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
     });
-  } catch {
-    throw new ScraperApiError("network");
+  } catch (error) {
+    throw new ScraperApiError(
+      "network",
+      undefined,
+      error instanceof Error && error.name === "TimeoutError"
+        ? `no answer in ${Math.round(SCRAPE_TIMEOUT_MS / 1000)}s`
+        : undefined
+    );
   }
 
   if (!res.ok) {

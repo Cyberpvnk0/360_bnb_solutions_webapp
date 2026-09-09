@@ -43,6 +43,15 @@ const PORTAL = "https://www.redfin.com";
 const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * How long the lookup may take. A bypass request on the portal takes
+ * twenty seconds on a good day and the vendor retries for about
+ * seventy; the route that calls this (app/api/listing-contact) budgets
+ * for this AND the page read that follows it, so the two fit its own
+ * ceiling with room to answer.
+ */
+const LOOKUP_BUDGET_MS = 50_000;
+
 /** Every property row in a lookup payload, wherever it nests. */
 export function extractAddressRows(
   value: unknown,
@@ -136,6 +145,11 @@ function storeKey(place: { address: string; stateCode: string }): string | null 
  */
 export interface PageLookup {
   url: string | null;
+  /** False when the portal never answered — the clock ran out, every
+   *  tier was refused, no key — as opposed to answering that it has no
+   *  such page. The two must not read the same: one is "try again",
+   *  the other is "not here". */
+  answered: boolean;
   /** Why there is no page, for the person reading the route's answer:
    *  what the lookup returned and what was rejected. Never a value off
    *  a listing. */
@@ -149,30 +163,38 @@ export async function resolveListingPage(place: {
   zip?: string;
 }): Promise<PageLookup> {
   const key = storeKey(place);
-  if (!key) return { url: null, detail: "address could not be keyed" };
+  if (!key) return { url: null, answered: true, detail: "address could not be keyed" };
 
   const stored = await readKeyedBlob(key).catch(() => null);
   if (stored) {
     const url = (stored.value as { url?: unknown }).url;
     if (typeof url === "string" && isFresh(stored.at, HIT_TTL_MS)) {
-      return { url, detail: null };
+      return { url, answered: true, detail: null };
     }
     if (url === null && isFresh(stored.at, MISS_TTL_MS)) {
-      return { url: null, detail: "no page, remembered from an earlier lookup" };
+      return {
+        url: null,
+        answered: true,
+        detail: "no page, remembered from an earlier lookup",
+      };
     }
   }
 
   const apiKey = process.env.SCRAPERAPI_KEY;
-  if (!apiKey) return { url: null, detail: "no scraping key configured" };
+  if (!apiKey) return { url: null, answered: false, detail: "no scraping key configured" };
   try {
     const { attempt, body, tried } = await fetchAutocomplete(
       autocompleteUrlFor(`${place.address}, ${place.city}, ${place.stateCode}`),
-      apiKey
+      apiKey,
+      { budgetMs: LOOKUP_BUDGET_MS }
     );
     if (body === null) {
+      // Not remembered: time running out says nothing about the address.
+      const why = attempt.status === 408 ? attempt.text : `HTTP ${attempt.status}`;
       return {
         url: null,
-        detail: `lookup did not answer (HTTP ${attempt.status} on ${tried.join(", ")})`,
+        answered: false,
+        detail: `lookup did not answer (${why} on ${tried.join(", ")})`,
       };
     }
     const rows = extractAddressRows(body);
@@ -182,11 +204,16 @@ export async function resolveListingPage(place: {
     void writeKeyed(key, { url }).catch(() => undefined);
     return {
       url,
+      answered: true,
       detail: url
         ? null
         : `lookup answered with ${rows.length} property page${rows.length === 1 ? "" : "s"}, none for this address`,
     };
   } catch (e) {
-    return { url: null, detail: e instanceof Error ? e.message : "lookup failed" };
+    return {
+      url: null,
+      answered: false,
+      detail: e instanceof Error ? e.message : "lookup failed",
+    };
   }
 }
