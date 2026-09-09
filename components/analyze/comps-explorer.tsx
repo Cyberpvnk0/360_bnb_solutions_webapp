@@ -44,7 +44,15 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
       );
     },
     sortValue: (c) => c.name,
-    className: "max-w-64",
+    // The one column that gives. Every numeric column is as wide as
+    // its header and no wider; this one takes whatever is left and
+    // truncates the name into it. `max-w-0` is the table-layout idiom
+    // that lets a cell shrink below its text (a cell's minimum is
+    // otherwise its longest word), and `min-w-32` keeps it from
+    // shrinking into nothing on a phone, where the table scrolls
+    // sideways instead. Without this the table was as wide as its
+    // longest row and the Distance column fell off the right edge.
+    className: "w-full min-w-32 max-w-0",
   },
   {
     key: "bedrooms",
@@ -69,7 +77,7 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
   },
   {
     key: "annualRevenue",
-    header: "Annual revenue",
+    header: "Revenue/yr",
     align: "right",
     cell: (c) => fmtMoney(annualRevenueFromAdr(c.adr, c.occupancy)),
     sortValue: (c) => annualRevenueFromAdr(c.adr, c.occupancy),
@@ -156,7 +164,11 @@ export function CompsExplorer({
         )}
       </div>
 
-      <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px]">
+      {/* Side by side from xl up, where the map takes 42% of the row
+          and stays put while the table scrolls; stacked below that,
+          each at full width, rather than squeezed into two columns
+          neither could fill. */}
+      <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,42%)]">
         <div className="min-w-0">
           {/* Rows are the pins' twins: hovering one fills it the pins'
               red and lifts the pin; clicking docks that comp's card on
@@ -200,7 +212,7 @@ export function CompsExplorer({
           onHover={setHoveredId}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          className="lg:sticky lg:top-24 lg:self-start"
+          className="xl:sticky xl:top-24 xl:self-start"
         />
       </div>
     </section>

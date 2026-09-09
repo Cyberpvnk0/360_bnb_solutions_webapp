@@ -311,7 +311,15 @@ export function CompsStreetMap({
   return (
     <figure className={cn("min-w-0", className)}>
       <div className="relative overflow-hidden rounded-lg border border-border bg-secondary/60">
-        <div ref={containerRef} className="h-[440px] w-full" />
+        {/* As tall as the viewport allows beside the table (it is
+            sticky there), within sane bounds; a fixed height when it
+            sits above the table on narrower screens. MapLibre re-reads
+            the container on window resize, which is the only time this
+            height changes. */}
+        <div
+          ref={containerRef}
+          className="h-[480px] w-full xl:h-[clamp(560px,calc(100vh-8rem),840px)]"
+        />
 
         {tileError ? (
           <p className="pointer-events-none absolute left-3 top-3 z-20 max-w-[min(28rem,90%)] rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[11px] text-muted-foreground">
