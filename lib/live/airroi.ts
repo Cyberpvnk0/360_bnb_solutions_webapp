@@ -34,6 +34,7 @@
  */
 
 import type { StrComp } from "@/lib/mock/types";
+import { looksRoundedId } from "./listing-id";
 import { writeKeyed } from "@/lib/db/market-store";
 
 const BASE = "https://api.airroi.com";
@@ -321,13 +322,16 @@ function pickFirstPhoto(row: Row): string | null {
  */
 export function airbnbRoomUrl(id: string | number | null | undefined): string | null {
   const s = String(id ?? "").trim();
-  return /^\d{5,}$/.test(s) ? `https://www.airbnb.com/rooms/${s}` : null;
+  // An id that passed through a double names nothing (lib/live/listing-id).
+  if (!/^\d{5,}$/.test(s) || looksRoundedId(s)) return null;
+  return `https://www.airbnb.com/rooms/${s}`;
 }
 
 /** Vrbo's listing pages are likewise built from a numeric id. */
 export function vrboListingUrl(id: string | number | null | undefined): string | null {
   const s = String(id ?? "").trim();
-  return /^\d{4,}$/.test(s) ? `https://www.vrbo.com/${s}` : null;
+  if (!/^\d{4,}$/.test(s) || looksRoundedId(s)) return null;
+  return `https://www.vrbo.com/${s}`;
 }
 
 const PLATFORM_KEYS = ["platform", "source", "channel", "site", "provider", "ota", "marketplace"];
@@ -403,10 +407,30 @@ export function rememberCompShape(rows: unknown[]): void {
         ? Object.keys(v as Row).sort()
         : [Array.isArray(v) ? `array(${v.length})` : typeof v];
   }
+  // How the first comp's id ARRIVED — its type and digit count, never
+  // its value — under a key no payload field can collide with. An id
+  // past 2^53 that came through a double is a link to nothing, and
+  // whether the vendor sends it rounded or this process rounded it is
+  // the difference between a fallback and a fix. "exact" here means it
+  // survived as an integer that is not the printed form of a double.
+  shape.$id = idShapeOf(first as Row);
   lastCompShape = shape;
   // Names only, never values; a failed write is a missing diagnostic,
   // not a missing feature.
   void writeKeyed(COMP_SHAPE_KEY, shape).catch(() => undefined);
+}
+
+function idShapeOf(row: Row): string[] {
+  const src = group(row, "listing_info") ?? row;
+  for (const k of [...ID_KEYS, "airbnb_id", "airbnbId"]) {
+    const v = src[k];
+    if (typeof v === "number" || (typeof v === "string" && v.trim() !== "")) {
+      const digits = String(v).trim();
+      const exact = /^\d+$/.test(digits) && !looksRoundedId(digits);
+      return [typeof v, `${digits.length} digits`, exact ? "exact" : "rounded"];
+    }
+  }
+  return ["missing"];
 }
 
 export function compFieldsSeen(): Record<string, string[]> | null {

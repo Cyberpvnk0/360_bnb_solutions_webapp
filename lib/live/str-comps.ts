@@ -27,6 +27,7 @@ import {
   writeEstimate,
 } from "@/lib/db/market-store";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
+import { compIdLooksRounded } from "@/lib/live/listing-id";
 import type { Analysis, StrComp } from "@/lib/mock/types";
 
 /** Below this a comp set can't carry a projection honestly. */
@@ -42,6 +43,22 @@ export interface CompsResolution {
  *  move week to week, and every day of TTL is an address nobody pays
  *  for twice. */
 const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The format a stored comp set was written in.
+ *
+ *   1 (unmarked)  ids parsed as numbers, so any past 2^53 were rounded
+ *                 and their links opened nothing.
+ *   2             ids kept exact through the parse (parseJsonKeepingBigIds).
+ *
+ * A set from before the change is bought again ONLY when it actually
+ * holds a rounded id — most sets are old-style short ids and are fine
+ * as they are — and never more than once: a set written since carries
+ * the mark, and if its ids still look rounded then the vendor sent
+ * them that way and buying again would only buy the same. The links
+ * for those are dropped at render instead (lib/live/comp-links).
+ */
+export const ESTIMATE_VERSION = 2;
 
 /** The vendor spec for an analysis at a point — the thing a comp set
  *  is bought for. One builder, so the plan meter and the cache agree
@@ -89,7 +106,9 @@ export async function withLiveComps(
   const cached = await readEstimate(estimateKey(spec)).catch(() => null);
   if (cached && isFresh(cached.at, ESTIMATE_TTL_MS)) {
     const comps = cached.estimate.comps as StrComp[];
-    if (comps.length >= MIN_COMPS) {
+    const roundedIds =
+      cached.estimate.v !== ESTIMATE_VERSION && comps.some(compIdLooksRounded);
+    if (comps.length >= MIN_COMPS && !roundedIds) {
       return {
         analysis: {
           ...analysis,
@@ -126,6 +145,7 @@ export async function withLiveComps(
     // visitor buys the same address again, so it is not ignored
     // silently the way a pure cache write would be.
     await writeEstimate(estimateKey(spec), {
+      v: ESTIMATE_VERSION,
       comps: estimate.comps,
       monthlyRevenue: estimate.monthlyRevenue,
       revenue: estimate.revenue,

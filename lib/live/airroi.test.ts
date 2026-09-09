@@ -273,3 +273,23 @@ describe("ids past 2^53 survive the parse", () => {
     expect(() => parseJsonKeepingBigIds("<html>nope</html>")).toThrow();
   });
 });
+
+describe("a room link is never built from a rounded id", () => {
+  const ROUNDED = "1482756537092586000";
+  const EXACT = "1482756537092586123";
+
+  it("refuses the printed form of a double and keeps a real id", () => {
+    expect(airbnbRoomUrl(ROUNDED)).toBeNull();
+    expect(airbnbRoomUrl(Number(EXACT))).toBeNull();
+    expect(airbnbRoomUrl(EXACT)).toBe(`https://www.airbnb.com/rooms/${EXACT}`);
+    expect(airbnbRoomUrl(41234567)).toBe("https://www.airbnb.com/rooms/41234567");
+    expect(vrboListingUrl(ROUNDED)).toBeNull();
+  });
+
+  it("maps a comp whose id arrived rounded with no link at all", () => {
+    // The card then offers the area on the platform — real inventory —
+    // rather than a room page that does not exist.
+    const c = mapComp(realComp({ listing_info: { listing_id: Number(EXACT), listing_name: "Loft" } }), 0);
+    expect(c?.listingUrl).toBeUndefined();
+  });
+});

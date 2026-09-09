@@ -75,7 +75,7 @@ export async function GET() {
     compsPayloadShapeNote:
       compsShape === null
         ? "No comp set has been bought since this was added. Cached analyses never reach the vendor; analyze a NEW address (or change a property's size) once, then reload this."
-        : "Field names of the vendor's last comp payload, one level deep. Names only.",
+        : "Field names of the vendor's last comp payload, one level deep. Names only. $id is how the first comp's id arrived: its type, its digit count, and whether it survived as an exact integer rather than the printed form of a double — a rounded id here means the vendor sends them rounded.",
 
     usage,
     /**

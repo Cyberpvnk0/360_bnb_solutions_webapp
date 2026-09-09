@@ -82,6 +82,9 @@ const WRITE_TIMEOUT_MS = 8_000;
  * thousands of students the same address gets bought again and again.
  */
 export interface StoredEstimate {
+  /** The writer's format version — see ESTIMATE_VERSION in
+   *  lib/live/str-comps. Absent on sets stored before it existed. */
+  v?: number;
   comps: unknown[];
   monthlyRevenue: number[] | null;
   revenue: number | null;
