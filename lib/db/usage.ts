@@ -20,6 +20,11 @@
  * at the same market, is free — the vendor charged nothing for it and
  * the plan shouldn't either.
  *
+ * ONE POOL. Analyses and market searches draw on the same monthly
+ * credits, and both may draw on a pack once the plan is spent. The two
+ * are still recorded on their own lists, so the count of each is known,
+ * but the cap is the sum.
+ *
  * FAILS OPEN. If the store is unreachable the account is allowed
  * through and the reason is reported, because a student being refused
  * an analysis they paid for is a worse outcome than a vendor call the
@@ -67,9 +72,10 @@ export { currentPeriod } from "./usage-period";
 /** The plan's cap for one meter. A tier this code does not know — a
  *  value nothing here wrote — gets the smallest plan, never the default:
  *  a missing profile is a new account, a corrupt one is not. */
-export function capFor(tier: TierId, kind: Kind): number {
-  const t = TIERS[tier] ?? TIERS.free;
-  return kind === "analysis" ? t.pullLimit : t.marketLimit;
+/** One pool for both kinds: the plan's credits. An unknown tier gets
+ *  the free plan, never a bigger one. */
+export function capFor(tier: TierId): number {
+  return (TIERS[tier] ?? TIERS.free).creditLimit;
 }
 
 function config(): { url: string; key: string } | null {
@@ -96,10 +102,11 @@ export async function consumeUsage(
   key: string,
   now = new Date()
 ): Promise<UsageCheck> {
-  const cap = capFor(tier, kind);
-  // A plan with none still has to ask, for an analysis: a pack may
-  // cover it. A market never draws on a pack, so a zero cap is final.
-  if (cap <= 0 && kind === "market") return { allowed: false, used: 0, cap, kind, source: "none" };
+  const cap = capFor(tier);
+  // A plan with no credits touches nothing that costs money, and packs
+  // are only sold to plans that have some — so a zero cap is final,
+  // with no round trip to the store.
+  if (cap <= 0) return { allowed: false, used: 0, cap, kind, source: "none" };
 
   const cfg = config();
   if (!cfg) {
@@ -266,7 +273,7 @@ export async function grantPack(
       },
       body: JSON.stringify({
         p_user: userId,
-        p_amount: pack.analyses,
+        p_amount: pack.credits,
         p_reason: `pack:${pack.id}`,
         p_ref: ref,
       }),

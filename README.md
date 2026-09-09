@@ -46,7 +46,8 @@ sees it) and responses cache for 24 hours per market, so the free
 markets — one request per market per day, shared by every user.
 
 **No app-wide cap unless you set one.** The only limits a student meets
-are their plan's — analyses and markets a month, per account. An
+are their plan's — credits a month, per account, one spent the first
+time a market is searched or a property analyzed. An
 operator who wants a brake on the feed's bill states the plan in
 `RENTCAST_MONTHLY_REQUESTS`, and the feed gets that many spread over 31
 days, never under one a day; `RENTCAST_DAILY_CAP` overrides the

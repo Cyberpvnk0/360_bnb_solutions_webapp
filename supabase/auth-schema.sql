@@ -214,7 +214,7 @@ revoke insert, update, delete on public.usage from authenticated, anon;
 grant select, insert, update, delete on public.usage to service_role;
 
 /* ------------------------------------------------------------------ */
-/* Top-up credits: analyses bought outright, spent after the plan      */
+/* Top-up credits: bought outright, spent after the plan's own         */
 /* ------------------------------------------------------------------ */
 
 /* A BALANCE THE ACCOUNT CAN SEE AND NEVER TOUCH. Same posture as
@@ -330,7 +330,7 @@ create or replace function public.consume_usage(
   p_period text,
   p_kind   text,      -- 'analysis' | 'market'
   p_key    text,
-  p_cap    integer
+  p_cap    integer    -- the plan's credits for the month, both kinds together
 )
 returns table (allowed boolean, used integer, cap integer, source text, balance integer)
 language plpgsql
@@ -338,8 +338,11 @@ security definer
 set search_path = public
 as $$
 declare
-  v_keys    text[];
-  v_balance integer := 0;
+  v_analyses text[];
+  v_markets  text[];
+  v_keys     text[];
+  v_used     integer;
+  v_balance  integer := 0;
 begin
   if p_kind not in ('analysis', 'market') then
     raise exception 'consume_usage: unknown kind %', p_kind;
@@ -350,23 +353,27 @@ begin
   on conflict (user_id, period) do nothing;
 
   -- Lock the usage row for the rest of this transaction.
-  select case when p_kind = 'analysis' then analysis_keys else market_slugs end
-    into v_keys
+  select analysis_keys, market_slugs
+    into v_analyses, v_markets
     from public.usage
    where user_id = p_user and period = p_period
-   for update;
+     for update;
 
-  if p_kind = 'analysis' then
-    select coalesce(b.balance, 0) into v_balance
-      from public.credit_balance b where b.user_id = p_user;
-  end if;
+  -- ONE POOL: a credit is a credit whether it bought an analysis or a
+  -- market. Each kind keeps its own list so a repeat is recognised and
+  -- the two can be told apart, but the cap is the sum of both.
+  v_keys := case when p_kind = 'analysis' then v_analyses else v_markets end;
+  v_used := cardinality(v_analyses) + cardinality(v_markets);
+
+  select coalesce(b.balance, 0) into v_balance
+    from public.credit_balance b where b.user_id = p_user;
 
   if p_key = any (v_keys) then
-    return query select true, cardinality(v_keys), p_cap, 'cached'::text, v_balance;
+    return query select true, v_used, p_cap, 'cached'::text, v_balance;
     return;
   end if;
 
-  if cardinality(v_keys) < p_cap then
+  if v_used < p_cap then
     v_keys := array_append(v_keys, p_key);
     if p_kind = 'analysis' then
       update public.usage set analysis_keys = v_keys, updated_at = now()
@@ -375,12 +382,12 @@ begin
       update public.usage set market_slugs = v_keys, updated_at = now()
        where user_id = p_user and period = p_period;
     end if;
-    return query select true, cardinality(v_keys), p_cap, 'plan'::text, v_balance;
+    return query select true, v_used + 1, p_cap, 'plan'::text, v_balance;
     return;
   end if;
 
-  -- The plan is spent. An analysis may draw on a pack; a market may not.
-  if p_kind = 'analysis' and v_balance > 0 then
+  -- The plan is spent. Either kind may draw on a pack.
+  if v_balance > 0 then
     -- Lock and spend the balance; the check constraint refuses negative.
     update public.credit_balance
        set balance = credit_balance.balance - 1, updated_at = now()
@@ -390,14 +397,19 @@ begin
       insert into public.credit_ledger (user_id, delta, reason, ref)
       values (p_user, -1, 'spend', p_key);
       v_keys := array_append(v_keys, p_key);
-      update public.usage set analysis_keys = v_keys, updated_at = now()
-       where user_id = p_user and period = p_period;
-      return query select true, cardinality(v_keys), p_cap, 'pack'::text, v_balance;
+      if p_kind = 'analysis' then
+        update public.usage set analysis_keys = v_keys, updated_at = now()
+         where user_id = p_user and period = p_period;
+      else
+        update public.usage set market_slugs = v_keys, updated_at = now()
+         where user_id = p_user and period = p_period;
+      end if;
+      return query select true, v_used + 1, p_cap, 'pack'::text, v_balance;
       return;
     end if;
   end if;
 
-  return query select false, cardinality(v_keys), p_cap, 'none'::text, v_balance;
+  return query select false, v_used, p_cap, 'none'::text, v_balance;
 end;
 $$;
 

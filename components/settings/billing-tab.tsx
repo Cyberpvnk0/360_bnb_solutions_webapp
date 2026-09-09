@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function BillingTab() {
-  const { ready, user, tier, pullsUsed, pullLimit, credits, upgradeTo, openUpgrade } =
+  const { ready, user, tier, creditsUsed, creditLimit, credits, upgradeTo, openUpgrade } =
     useSession();
   const [billing, setBilling] = React.useState<BillingCycle>("annual");
 
@@ -47,8 +47,8 @@ export function BillingTab() {
         ? `${fmtMoneyCents(annualEffectiveMonthly(tier))}/mo, billed annually at ${fmtMoneyCents(tier.priceAnnual)}`
         : `${fmtMoneyCents(tier.priceMonthly)}/mo, billed monthly`;
 
-  const usedFraction = pullLimit > 0 ? Math.min(1, pullsUsed / pullLimit) : 0;
-  const exhausted = pullLimit > 0 && pullsUsed >= pullLimit;
+  const usedFraction = creditLimit > 0 ? Math.min(1, creditsUsed / creditLimit) : 0;
+  const exhausted = creditLimit > 0 && creditsUsed >= creditLimit;
 
   const handleSelect = async (tierId: TierId) => {
     const result = await upgradeTo(tierId);
@@ -86,15 +86,15 @@ export function BillingTab() {
         </div>
       </section>
 
-      {/* Pull usage */}
+      {/* Credit usage */}
       <section className="rounded-sm border border-border bg-card">
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">
-            Property analyses this month
+            Credits this month
           </h2>
         </div>
         <div className="p-6">
-          {pullLimit > 0 ? (
+          {creditLimit > 0 ? (
             <>
               <div className="h-1.5 w-full overflow-hidden rounded-sm bg-secondary">
                 <div
@@ -106,12 +106,12 @@ export function BillingTab() {
                 />
               </div>
               <p className="mt-3 text-xs text-muted-foreground tabular">
-                {fmtNum(Math.min(pullsUsed, pullLimit))} of {fmtNum(pullLimit)} used
+                {fmtNum(Math.min(creditsUsed, creditLimit))} of {fmtNum(creditLimit)} used
                 {user.periodEnd ? <> · resets {fmtDate(user.periodEnd)}</> : null}
                 {credits > 0 ? (
                   <>
                     {" "}· <span className="text-gold">{fmtNum(credits)} pack</span>{" "}
-                    {credits === 1 ? "analysis" : "analyses"} on your account, never expire
+                    {credits === 1 ? "credit" : "credits"} on your account, never expire
                   </>
                 ) : null}
               </p>
@@ -120,10 +120,10 @@ export function BillingTab() {
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
-                The Free plan includes no pulls.
+                The Free plan includes no credits.
               </p>
-              <Button onClick={() => openUpgrade({ reason: "pulls" })}>
-                Upgrade for pulls
+              <Button onClick={() => openUpgrade({ reason: "credits" })}>
+                Upgrade for credits
               </Button>
             </div>
           )}

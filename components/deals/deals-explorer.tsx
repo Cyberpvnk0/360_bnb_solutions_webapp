@@ -161,7 +161,7 @@ export function matchesFilters(row: Row, f: DealFilters): boolean {
  *  never read as "no listings here". */
 function liveFailureLabel(
   reason: LiveFailureReason | null | undefined,
-  marketLimit = 0
+  creditLimit = 0
 ): string {
   switch (reason) {
     case "no-key":
@@ -175,8 +175,8 @@ function liveFailureLabel(
     case "monthly-cap":
       // A plan with none was never at a limit; it is looking at the
       // paid feature from outside, and the label should say so.
-      return marketLimit > 0
-        ? "Monthly market limit reached"
+      return creditLimit > 0
+        ? "This month's credits are used up"
         : "Live listings are on paid plans";
     case "http":
     case "network":
@@ -227,7 +227,7 @@ export function DealsExplorer({
   const [dockId, setDockId] = React.useState<string | null>(null);
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(initialList);
-  const { ready, lists, openUpgrade, marketLimit, tier, recordExport } = useSession();
+  const { ready, lists, openUpgrade, creditLimit, tier, recordExport } = useSession();
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -263,7 +263,7 @@ export function DealsExplorer({
         market: result.market,
         listings: result.listings,
       });
-      if (result.reason === "monthly-cap") openUpgrade({ reason: "markets" });
+      if (result.reason === "monthly-cap") openUpgrade({ reason: "credits" });
     });
     return () => {
       cancelled = true;
@@ -336,7 +336,7 @@ export function DealsExplorer({
       // The plan, not the feed, said no. The rows on screen are the
       // market's preview set; the way to the real ones is a bigger plan,
       // and the modal says which and how many.
-      if (result.reason === "monthly-cap") openUpgrade({ reason: "markets" });
+      if (result.reason === "monthly-cap") openUpgrade({ reason: "credits" });
     });
     return () => {
       cancelled = true;
@@ -395,7 +395,7 @@ export function DealsExplorer({
    * was promised today's inventory, and a stand-in that looks like it
    * is worse than an empty grid that says why; it gets nothing.
    */
-  const previewStandIn = marketLimit === 0;
+  const previewStandIn = creditLimit === 0;
   const marketRows = React.useMemo(
     () =>
       liveTarget && live?.slug === liveTarget.slug
@@ -883,7 +883,7 @@ export function DealsExplorer({
             </span>
           ) : liveTarget ? (
             <span className="flex h-8 shrink-0 items-center rounded-full border border-border px-3.5 text-xs text-muted-foreground">
-              {liveFailureLabel(liveReason, marketLimit)}
+              {liveFailureLabel(liveReason, creditLimit)}
               {previewStandIn ? " · showing preview" : ""}
             </span>
           ) : null}
@@ -1080,7 +1080,7 @@ export function DealsExplorer({
                     : zipFailed
                     ? liveFailureLabel(zipResult?.reason)
                     : liveFailed
-                      ? liveFailureLabel(liveReason, marketLimit)
+                      ? liveFailureLabel(liveReason, creditLimit)
                     : listFilter && !liveTarget && !zip
                       ? lists.some((l) => l.id === listFilter)
                         ? `${lists.find((l) => l.id === listFilter)?.name ?? "This list"} is empty`

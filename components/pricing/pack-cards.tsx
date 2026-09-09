@@ -58,7 +58,7 @@ export function PackCards({
               {fmtMoney(pack.price)}
             </span>
             <span className="mt-2 text-sm font-medium text-foreground">
-              {pack.analyses} analyses
+              {pack.credits} credits
             </span>
             <span className="mt-3 text-xs font-medium text-gold">
               {busy ? "Adding…" : ctaLabel}

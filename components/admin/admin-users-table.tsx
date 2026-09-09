@@ -39,29 +39,21 @@ const COLUMNS: DataTableColumn<AdminAccount>[] = [
     sortValue: (row) => TIER_ORDER.indexOf(row.tier),
   },
   {
-    key: "analyses",
-    header: "Analyses",
-    align: "right",
-    cell: (row) => (
-      <span className="tabular">
-        {fmtNum(row.analysesUsed)} / {fmtNum(TIERS[row.tier].pullLimit)}
-      </span>
-    ),
-    sortValue: (row) => row.analysesUsed,
-  },
-  {
-    key: "markets",
-    header: "Markets",
-    align: "right",
-    cell: (row) => (
-      <span className="tabular">
-        {fmtNum(row.marketsUsed)} / {fmtNum(TIERS[row.tier].marketLimit)}
-      </span>
-    ),
-    sortValue: (row) => row.marketsUsed,
-  },
-  {
     key: "credits",
+    header: "Credits",
+    align: "right",
+    cell: (row) => (
+      <span
+        className="tabular"
+        title={`${fmtNum(row.analysesUsed)} analyses · ${fmtNum(row.marketsUsed)} markets`}
+      >
+        {fmtNum(row.analysesUsed + row.marketsUsed)} / {fmtNum(TIERS[row.tier].creditLimit)}
+      </span>
+    ),
+    sortValue: (row) => row.analysesUsed + row.marketsUsed,
+  },
+  {
+    key: "packCredits",
     header: "Pack credits",
     align: "right",
     cell: (row) => (

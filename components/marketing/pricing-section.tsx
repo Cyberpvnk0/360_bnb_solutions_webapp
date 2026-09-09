@@ -24,8 +24,8 @@ export function PricingSection() {
           Pricing that doesn&apos;t eat the spread
         </h2>
         <p className="mt-3 max-w-md text-sm text-muted-foreground">
-          You pay for property analyses — the live comps behind a breakeven
-          read — not for looking around.
+          You pay in credits — one for a market search, one for a property
+          analysis, each only the first time — not for looking around.
         </p>
         <BillingToggle billing={billing} onChange={setBilling} className="mt-10" />
       </div>
@@ -49,7 +49,7 @@ export function PricingSection() {
           Run short mid-month? Top up.
         </h3>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          One-time packs of analyses for any paid plan. They never expire and
+          One-time packs of credits for any paid plan. They never expire and
           are spent only after your plan&apos;s monthly allowance.
         </p>
       </div>

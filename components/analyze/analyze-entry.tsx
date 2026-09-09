@@ -63,7 +63,7 @@ export function AnalyzeEntry({
   prefill?: AddressMatch | null;
 }) {
   const router = useRouter();
-  const { ready, tier, canPull, pullsRemaining, consumePull, openUpgrade, activity } =
+  const { ready, tier, canSpend, creditsRemaining, spendCredit, openUpgrade, activity } =
     useSession();
 
   const [query, setQuery] = React.useState(
@@ -158,12 +158,12 @@ export function AnalyzeEntry({
 
   const submit = () => {
     if (!place?.point) return;
-    if (!canPull) {
-      openUpgrade({ reason: "pulls" });
+    if (!canSpend) {
+      openUpgrade({ reason: "credits" });
       return;
     }
     setPulling(true);
-    consumePull();
+    spendCredit();
     // The parameters are the analysis: shareable, reloadable, and no
     // row to write or migration to run.
     //
@@ -200,39 +200,39 @@ export function AnalyzeEntry({
     <div className="mx-auto max-w-3xl px-4 py-8 md:px-10">
       <PageHeader
         title="Analyze an address"
-        description="One pull turns an address into a breakeven read backed by the comps around it."
+        description="One credit turns an address into a breakeven read backed by the comps around it."
       />
 
-      {/* Pull cost notice */}
+      {/* Credit cost notice */}
       <div
         className={cn(
           "mt-8 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border px-5 py-4",
-          !ready || canPull
+          !ready || canSpend
             ? "border-gold-fill/40 bg-gold-fill/5"
             : "border-neg/40 bg-neg/5"
         )}
       >
         <Coins
           aria-hidden
-          className={cn("size-4", canPull ? "text-gold" : "text-neg")}
+          className={cn("size-4", canSpend ? "text-gold" : "text-neg")}
         />
         {!ready ? (
           <Skeleton className="h-4 w-64" />
-        ) : canPull ? (
+        ) : canSpend ? (
           <p className="text-sm text-foreground">
-            Submitting consumes <span className="font-semibold">1 pull</span>.
+            Submitting spends <span className="font-semibold">1 credit</span>.
             You have{" "}
-            <span className="font-semibold tabular">{pullsRemaining}</span>{" "}
-            remaining this period.
+            <span className="font-semibold tabular">{creditsRemaining}</span>{" "}
+            left this month.
           </p>
         ) : (
           <p className="text-sm text-foreground">
             {tier.id === "free"
-              ? "The Free plan includes no address pulls."
-              : "You've used every pull this period."}{" "}
+              ? "The Free plan includes no credits."
+              : "You've used every credit this month."}{" "}
             <button
               type="button"
-              onClick={() => openUpgrade({ reason: "pulls" })}
+              onClick={() => openUpgrade({ reason: "credits" })}
               className="font-medium text-gold underline-offset-2 transition-colors duration-150 hover:text-gold-bright hover:underline"
             >
               See plans

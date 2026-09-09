@@ -23,7 +23,7 @@ import {
  * same question asked twice. "/" focuses it from anywhere.
  *
  * The plan is checked here, as the entry form checks it: an account
- * with no analyses left gets the upgrade prompt and keeps its typing.
+ * with no credits left gets the upgrade prompt and keeps its typing.
  * An address that cannot be placed goes to the entry form, which can
  * say so and take a second run at it.
  *
@@ -32,7 +32,7 @@ import {
  */
 export function AddressSearch({ className }: { className?: string }) {
   const router = useRouter();
-  const { canPull, consumePull, openUpgrade } = useSession();
+  const { canSpend, spendCredit, openUpgrade } = useSession();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState("");
@@ -87,13 +87,13 @@ export function AddressSearch({ className }: { className?: string }) {
       router.push(`/analyze?${new URLSearchParams({ address: place.address })}`);
       return;
     }
-    if (!canPull) {
+    if (!canSpend) {
       // The typing stays, so the address is still there after the
       // upgrade rather than needing to be found again.
-      openUpgrade({ reason: "pulls" });
+      openUpgrade({ reason: "credits" });
       return;
     }
-    consumePull();
+    spendCredit();
     setQuery("");
     router.push(analyzeSearchHref({ ...place, point: place.point }));
   };

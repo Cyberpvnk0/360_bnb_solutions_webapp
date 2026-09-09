@@ -80,7 +80,7 @@ export async function requirePaid(): Promise<Gate<{ user: SessionUser; tier: Tie
   const user = await currentUser();
   if (!user) return { ok: false, response: refuse(401, "signed-out") };
   const tier = await resolveTier(user.id);
-  if (TIERS[tier].pullLimit <= 0) {
+  if (TIERS[tier].creditLimit <= 0) {
     return { ok: false, response: refuse(403, "plan-required", { tier }) };
   }
   return { ok: true, user, tier };

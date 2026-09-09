@@ -27,22 +27,16 @@ export interface Tier {
   /** Price per year when billed annually, in dollars. */
   priceAnnual: number;
   /**
-   * Property analyses included per month — clicks on "Run the numbers",
-   * counted as DISTINCT properties, so a reload is not a second one.
-   * This is the only thing in the product that costs the vendor money
-   * per user, so it is the thing the plan meters.
-   */
-  pullLimit: number;
-  /**
-   * Distinct markets an account may open per month.
+   * Credits included per month — the one thing the plan meters.
    *
-   * Browsing a market is shared and cached, so across a class of
-   * students it costs almost nothing — but a lone account in a market
-   * nobody else looks at re-buys that market's feed daily. The cap
-   * bounds that exposure; for a real user on a paid plan it never
-   * binds.
+   * A credit is spent on the FIRST of something: the first analysis of
+   * a property at a size, the first search of a market or a ZIP.
+   * Repeats in the same month are free, and the count resets on the
+   * 1st. Analyses and market searches used to have separate
+   * allowances; one pool is simpler to understand and to sell, so the
+   * plans carry a little more than the two added up to.
    */
-  marketLimit: number;
+  creditLimit: number;
   /** Max saved deals in the pipeline. Infinity = unlimited. */
   savedDealLimit: number;
   /** Feature flags. */
@@ -83,8 +77,7 @@ export const TIERS: Record<TierId, Tier> = {
     name: "Free",
     priceMonthly: 0,
     priceAnnual: 0,
-    pullLimit: 0,
-    marketLimit: 0,
+    creditLimit: 0,
     savedDealLimit: 3,
     pdfExport: false,
     csvExport: false,
@@ -94,7 +87,7 @@ export const TIERS: Record<TierId, Tier> = {
       "Preview inventory in every market",
       "Unlimited calculator",
       "3 saved deals",
-      "Upgrade for live listings and analyses",
+      "Upgrade for credits: live listings and property analyses",
     ],
   },
   starter: {
@@ -102,16 +95,15 @@ export const TIERS: Record<TierId, Tier> = {
     name: "Starter",
     priceMonthly: 17,
     priceAnnual: 170,
-    pullLimit: 25,
-    marketLimit: 15,
+    creditLimit: 45,
     savedDealLimit: 25,
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
     blurb: "For your first market and your first few landlord calls.",
     features: [
-      "25 property analyses / month",
-      "15 markets / month",
+      "45 credits / month",
+      "Credits cover market searches and property analyses",
       "Unlimited calculator",
       "25 saved deals",
     ],
@@ -121,8 +113,7 @@ export const TIERS: Record<TierId, Tier> = {
     name: "Pro",
     priceMonthly: 47,
     priceAnnual: 470,
-    pullLimit: 75,
-    marketLimit: 40,
+    creditLimit: 125,
     savedDealLimit: Infinity,
     pdfExport: true,
     csvExport: false,
@@ -130,8 +121,8 @@ export const TIERS: Record<TierId, Tier> = {
     recommended: true,
     blurb: "For operators underwriting deals every week.",
     features: [
-      "75 property analyses / month",
-      "40 markets / month",
+      "125 credits / month",
+      "Credits cover market searches and property analyses",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -142,16 +133,15 @@ export const TIERS: Record<TierId, Tier> = {
     name: "Scale",
     priceMonthly: 97,
     priceAnnual: 970,
-    pullLimit: 175,
-    marketLimit: 100,
+    creditLimit: 300,
     savedDealLimit: Infinity,
     pdfExport: true,
     csvExport: true,
     prioritySupport: true,
     blurb: "For teams running a portfolio across markets.",
     features: [
-      "175 property analyses / month",
-      "100 markets / month",
+      "300 credits / month",
+      "Credits cover market searches and property analyses",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -186,8 +176,8 @@ export interface CreditPack {
   id: PackId;
   /** One-time price, dollars. */
   price: number;
-  /** Property analyses the pack adds to the account's balance. */
-  analyses: number;
+  /** Credits the pack adds to the account's balance. Never expire. */
+  credits: number;
   /** Shown on the pick list. */
   label: string;
   /** Marks the pack the pick list leads with. */
@@ -216,18 +206,18 @@ export interface CreditPack {
  * cost, and a pack is for the thing that costs money.
  */
 export const CREDIT_PACKS: Record<PackId, CreditPack> = {
-  p5:   { id: "p5",   price: 5,   analyses: 5,   label: "5 analyses" },
-  p10:  { id: "p10",  price: 10,  analyses: 12,  label: "12 analyses" },
-  p25:  { id: "p25",  price: 25,  analyses: 35,  label: "35 analyses", recommended: true },
-  p50:  { id: "p50",  price: 50,  analyses: 75,  label: "75 analyses" },
-  p100: { id: "p100", price: 100, analyses: 170, label: "170 analyses" },
+  p5:   { id: "p5",   price: 5,   credits: 5,   label: "5 credits" },
+  p10:  { id: "p10",  price: 10,  credits: 12,  label: "12 credits" },
+  p25:  { id: "p25",  price: 25,  credits: 35,  label: "35 credits", recommended: true },
+  p50:  { id: "p50",  price: 50,  credits: 75,  label: "75 credits" },
+  p100: { id: "p100", price: 100, credits: 170, label: "170 credits" },
 };
 
 export const PACK_ORDER: PackId[] = ["p5", "p10", "p25", "p50", "p100"];
 
-/** Dollars per analysis, for the "you'd save" line on the pick list. */
+/** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {
-  return Math.round((pack.price / pack.analyses) * 100) / 100;
+  return Math.round((pack.price / pack.credits) * 100) / 100;
 }
 
 /** Effective monthly price when billed annually (two months free).

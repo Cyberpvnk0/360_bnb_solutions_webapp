@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const pack = CREDIT_PACKS[packId as PackId];
 
   const tier = await resolveTier(user.id);
-  if (TIERS[tier].pullLimit <= 0) {
+  if (TIERS[tier].creditLimit <= 0) {
     return NextResponse.json({ ok: false, reason: "plan-required", tier }, { status: 403 });
   }
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     pack: pack.id,
-    analyses: pack.analyses,
+    credits: pack.credits,
     balance: result.balance,
     granted: result.granted,
   });

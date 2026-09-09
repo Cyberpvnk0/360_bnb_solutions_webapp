@@ -608,7 +608,7 @@ export function AnalyzeResult({
             <p className="text-sm font-medium text-foreground">
               {quota.cap === 0
                 ? `Property analyses aren’t included on the ${TIERS[quota.tier].name} plan.`
-                : `You’ve used ${quota.used} of ${quota.cap} property analyses this month.`}
+                : `You’ve used ${quota.used} of ${quota.cap} credits this month.`}
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               The read below is modelled from the market, not measured from
@@ -619,7 +619,7 @@ export function AnalyzeResult({
           </div>
           <Button
             size="sm"
-            onClick={() => openUpgrade({ reason: "pulls", analysis })}
+            onClick={() => openUpgrade({ reason: "credits", analysis })}
             className="shrink-0"
           >
             Plans &amp; packs

@@ -38,7 +38,7 @@ export function PackPicker({
       return;
     }
     const pack = CREDIT_PACKS[id];
-    toast.success(`${pack.analyses} analyses added`, {
+    toast.success(`${pack.credits} credits added`, {
       description: `${result.balance} on your account, on top of your plan.`,
     });
     onBought?.(result.balance);
@@ -50,7 +50,7 @@ export function PackPicker({
         <p className="text-sm font-medium text-foreground">Or top up this month</p>
         {credits > 0 ? (
           <p className="text-xs text-muted-foreground tabular">
-            {credits} pack {credits === 1 ? "analysis" : "analyses"} on your account
+            {credits} pack {credits === 1 ? "credit" : "credits"} on your account
           </p>
         ) : null}
       </div>

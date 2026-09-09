@@ -50,7 +50,7 @@ import type {
   SessionUser,
 } from "@/lib/mock/types";
 
-export type UpgradeReason = "pulls" | "markets" | "deals" | "export" | "generic";
+export type UpgradeReason = "credits" | "deals" | "export" | "generic";
 
 interface UpgradeState {
   open: boolean;
@@ -73,13 +73,14 @@ interface SessionContextValue {
   ready: boolean;
   user: SessionUser | null;
   tier: Tier;
-  pullsUsed: number;
-  pullLimit: number;
-  pullsRemaining: number;
-  canPull: boolean;
-  marketsUsed: number;
-  marketLimit: number;
-  /** Pack analyses on the account, spent after the month's plan. */
+  /** Credits spent this month: first analyses and first market or ZIP
+   *  searches, together. */
+  creditsUsed: number;
+  creditLimit: number;
+  creditsRemaining: number;
+  /** Whether one more credit can be spent — from the plan or a pack. */
+  canSpend: boolean;
+  /** Pack credits on the account, spent after the month's plan. */
   credits: number;
   /** Re-read the plan meter from the account. The server settles the
    *  count when a page spends one, so a page that just did asks once. */
@@ -95,8 +96,8 @@ interface SessionContextValue {
    *  hunting, before any of them are worth spending a pull on. */
   lists: DealList[];
 
-  /** Spend one pull. Returns false (and opens nothing) if none remain. */
-  consumePull: () => boolean;
+  /** Spend one credit. Returns false (and opens nothing) if none remain. */
+  spendCredit: () => boolean;
   /** `href` is the analyzer URL that reopens this exact property — a
    *  typed address lives in its query string, not in any table, so the
    *  pipeline has to be told how to get back to it. */
@@ -126,7 +127,7 @@ interface SessionContextValue {
    *  update so the header cannot skip it. */
   upgradeTo: (
     tier: TierId,
-    opts?: { consumePull?: boolean }
+    opts?: { spendCredit?: boolean }
   ) => Promise<{ ok: true } | { error: string }>;
 
   /** Change the display name — written by the server, mirrored here
@@ -415,14 +416,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, bootNonce]);
 
   const tier = TIERS[user?.tier ?? DEFAULT_TIER] ?? TIERS.free;
-  const pullsUsed = user?.pullsUsed ?? 0;
-  const pullLimit = tier.pullLimit;
-  const pullsRemaining = Math.max(0, pullLimit - pullsUsed);
+  // One pool: analyses and market searches, added up.
+  const creditsUsed = (user?.pullsUsed ?? 0) + (user?.marketsUsed ?? 0);
+  const creditLimit = tier.creditLimit;
+  const creditsRemaining = Math.max(0, creditLimit - creditsUsed);
   const credits = user?.credits ?? 0;
   // The plan, then the packs: an account is out only when both are.
-  const canPull = pullsRemaining > 0 || credits > 0;
-  const marketsUsed = user?.marketsUsed ?? 0;
-  const marketLimit = tier.marketLimit;
+  const canSpend = creditsRemaining > 0 || credits > 0;
 
   const refreshUsage = React.useCallback(async () => {
     if (!supabase || !userId) return;
@@ -530,9 +530,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
    * refreshUsage and the true figure replaces it. Nothing is written
    * from here, and nothing here is trusted.
    */
-  const consumePull = React.useCallback((): boolean => {
+  const spendCredit = React.useCallback((): boolean => {
     if (!user) return false;
-    const planLeft = TIERS[user.tier].pullLimit - user.pullsUsed > 0;
+    const planLeft = TIERS[user.tier].creditLimit - (user.pullsUsed + user.marketsUsed) > 0;
     if (!planLeft && user.credits <= 0) return false;
     // Mirror the server's order of spend: plan first, then a pack.
     setUser((prev) =>
@@ -827,7 +827,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const upgradeTo = React.useCallback(
     async (
       tierId: TierId,
-      opts?: { consumePull?: boolean }
+      opts?: { spendCredit?: boolean }
     ): Promise<{ ok: true } | { error: string }> => {
       if (!user) return { error: "Sign in to choose a plan." };
       try {
@@ -854,20 +854,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
       setUser((prev) => {
         if (!prev) return prev;
-        const limit = TIERS[tierId].pullLimit;
-        // Clamp usage into the new limit, and spend the promised pull in
-        // the same update so no stale closure can skip it. The server
-        // settles the true count on the next page; this keeps the header
-        // honest in the meantime.
-        const clamped = Math.min(prev.pullsUsed, limit);
+        const limit = TIERS[tierId].creditLimit;
+        // Spend the promised credit in the same update so no stale
+        // closure can skip it. The server settles the true count on the
+        // next page; this keeps the header honest in the meantime.
+        const used = prev.pullsUsed + prev.marketsUsed;
         const pullsUsed =
-          opts?.consumePull && limit - clamped > 0 ? clamped + 1 : clamped;
-        return {
-          ...prev,
-          tier: tierId,
-          pullsUsed,
-          marketsUsed: Math.min(prev.marketsUsed, TIERS[tierId].marketLimit),
-        };
+          opts?.spendCredit && limit - used > 0 ? prev.pullsUsed + 1 : prev.pullsUsed;
+        return { ...prev, tier: tierId, pullsUsed };
       });
       return { ok: true };
     },
@@ -944,21 +938,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     ready,
     user,
     tier,
-    pullsUsed,
-    marketsUsed,
-    marketLimit,
+    creditsUsed,
+    creditLimit,
+    creditsRemaining,
+    canSpend,
     credits,
     refreshUsage,
     buyPack,
-    pullLimit,
-    pullsRemaining,
-    canPull,
     deals,
     landlords,
     activity,
     watchedMarketSlugs: user?.watchedMarketSlugs ?? [],
     lists,
-    consumePull,
+    spendCredit,
     saveDeal,
     isAnalysisSaved,
     moveDeal,

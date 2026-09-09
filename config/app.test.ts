@@ -32,9 +32,9 @@ describe("pricing math", () => {
 
 describe("top-up packs", () => {
   const paidRates = [
-    TIERS.starter.priceMonthly / TIERS.starter.pullLimit,
-    TIERS.pro.priceMonthly / TIERS.pro.pullLimit,
-    TIERS.scale.priceMonthly / TIERS.scale.pullLimit,
+    TIERS.starter.priceMonthly / TIERS.starter.creditLimit,
+    TIERS.pro.priceMonthly / TIERS.pro.creditLimit,
+    TIERS.scale.priceMonthly / TIERS.scale.creditLimit,
   ];
   const cheapestPlanRate = Math.min(...paidRates);
 
@@ -59,11 +59,12 @@ describe("top-up packs", () => {
   });
 
   it("clears its worst-case cost on every pack", () => {
-    // About twenty-five cents an analysis when every one is a fresh
-    // purchase. The thinnest pack keeps three-quarters.
+    // About twenty-five cents a credit when every one is a fresh
+    // purchase — a comp set or a market's first read. The thinnest
+    // pack keeps three-quarters.
     for (const id of PACK_ORDER) {
       const pack = CREDIT_PACKS[id];
-      const margin = (pack.price - pack.analyses * 0.25) / pack.price;
+      const margin = (pack.price - pack.credits * 0.25) / pack.price;
       expect(margin).toBeGreaterThan(0.5);
     }
   });

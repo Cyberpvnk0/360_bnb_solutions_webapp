@@ -10,27 +10,29 @@ describe("the plan month", () => {
 });
 
 describe("what each plan is owed", () => {
-  it("reads the caps off the same config the prices live in", () => {
-    // One source of truth: the cap beside the price it was priced for.
-    expect(capFor("starter", "analysis")).toBe(TIERS.starter.pullLimit);
-    expect(capFor("scale", "market")).toBe(TIERS.scale.marketLimit);
+  it("reads one cap off the same config the prices live in", () => {
+    // One source of truth: the credits beside the price they were
+    // priced for — and one pool, whichever kind is spending.
+    expect(capFor("starter")).toBe(TIERS.starter.creditLimit);
+    expect(capFor("scale")).toBe(TIERS.scale.creditLimit);
   });
 
   it("gives an unknown tier the free plan, never a bigger one", () => {
-    expect(capFor("nonsense" as never, "analysis")).toBe(TIERS.free.pullLimit);
+    expect(capFor("nonsense" as never)).toBe(TIERS.free.creditLimit);
   });
 
   it("clears its cost in the worst case on every paid tier", () => {
-    // The guarantee the caps were sized for: every analysis a fresh
-    // $0.18 purchase plus ~$0.07 of contacts and images, every market
-    // bought once for this account alone at ~$0.10, and the tier still
-    // keeps more than forty percent. That case never happens — it is
-    // zero cache sharing at full utilisation — which is why the bar is
-    // a floor and not the plan.
+    // The worst case for one pool: every credit a fresh analysis — a
+    // $0.18 purchase plus ~$0.07 of contacts and images — with zero
+    // cache sharing at full utilisation. That never happens, and the
+    // plans were widened a little when the two allowances became one,
+    // so the floor here is that the tier still clears its cost by a
+    // fifth. The old split kept forty percent; the difference is the
+    // price of the simpler plan.
     for (const id of ["starter", "pro", "scale"] as const) {
       const t = TIERS[id];
-      const worst = t.pullLimit * 0.25 + t.marketLimit * 0.1;
-      expect(t.priceMonthly - worst).toBeGreaterThan(t.priceMonthly * 0.4);
+      const worst = t.creditLimit * 0.25;
+      expect(t.priceMonthly - worst).toBeGreaterThan(t.priceMonthly * 0.2);
     }
   });
 });
@@ -45,27 +47,19 @@ describe("claiming against the plan", () => {
     vi.restoreAllMocks();
   });
 
-  it("refuses a market on Free outright, without a round trip", async () => {
-    // Free touches nothing that costs money. A market never draws on a
-    // pack, so a zero cap is final and there is nothing to ask the
-    // store — the reply is immediate and the client falls back to
-    // preview rows.
+  it("refuses anything on Free outright, without a round trip", async () => {
+    // Free touches nothing that costs money, and packs are only sold to
+    // plans with credits — so a zero cap is final for both kinds and
+    // there is nothing to ask the store.
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const r = await consumeUsage("u1", "free", "market", "market:tampa");
-    expect(TIERS.free.marketLimit).toBe(0);
-    expect(r.allowed).toBe(false);
-    expect(r.cap).toBe(0);
-    expect(r.source).toBe("none");
+    expect(TIERS.free.creditLimit).toBe(0);
+    for (const [kind, key] of [["market", "market:tampa"], ["analysis", "estimate:x"]] as const) {
+      const r = await consumeUsage("u1", "free", kind, key);
+      expect(r.allowed).toBe(false);
+      expect(r.cap).toBe(0);
+      expect(r.source).toBe("none");
+    }
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("still asks the store for an analysis on a plan with none, because a pack may cover it", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ allowed: true, used: 1, cap: 0, source: "pack", balance: 4 }]), { status: 200 })
-    );
-    const r = await consumeUsage("u1", "free", "analysis", "k");
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(r).toMatchObject({ allowed: true, source: "pack", balance: 4 });
   });
 
   it("reports which pot paid and what is left", async () => {
@@ -81,7 +75,7 @@ describe("claiming against the plan", () => {
   it("passes the plan's cap to the store and returns its verdict", async () => {
     // The mocked store echoes whatever cap it was handed, so this test
     // follows the config rather than pinning a number the plan may move.
-    const cap = TIERS.starter.pullLimit;
+    const cap = TIERS.starter.creditLimit;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([{ allowed: false, used: cap, cap }]), { status: 200 })
     );
@@ -93,7 +87,7 @@ describe("claiming against the plan", () => {
       p_period: "2026-09",
       p_kind: "analysis",
       p_key: "estimate:x",
-      p_cap: TIERS.starter.pullLimit,
+      p_cap: TIERS.starter.creditLimit,
     });
   });
 

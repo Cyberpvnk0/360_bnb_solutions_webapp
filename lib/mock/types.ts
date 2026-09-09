@@ -397,11 +397,12 @@ export interface SessionUser {
   email: string;
   tier: TierId;
   /** Distinct property analyses this month. Read from the server-owned
-   *  meter, never written from the browser. */
+   *  meter, never written from the browser. With marketsUsed, the
+   *  credits spent. */
   pullsUsed: number;
-  /** Distinct markets opened this month, from the same meter. */
+  /** Distinct markets and ZIPs opened this month, from the same meter. */
   marketsUsed: number;
-  /** Pack analyses bought outright and not yet spent. Never expire. */
+  /** Pack credits bought outright and not yet spent. Never expire. */
   credits: number;
   /** ISO date the current billing period resets. */
   /**

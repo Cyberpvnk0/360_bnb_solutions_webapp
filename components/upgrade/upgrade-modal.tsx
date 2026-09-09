@@ -49,51 +49,45 @@ export function UpgradeModal() {
   }, [analysis]);
 
   const heading =
-    upgrade.reason === "pulls"
+    upgrade.reason === "credits"
       ? analysis
         ? "Your projection is ready. Unlock it."
         : tier.id === "free"
-          ? "Property analyses are a paid feature."
-          : "You've used every analysis this month."
-      : upgrade.reason === "markets"
-        ? tier.marketLimit === 0
-          ? "Live listings are a paid feature."
+          ? "Live listings and analyses are a paid feature."
           : tier.id === "scale"
-            ? `You've opened every one of this month's ${tier.marketLimit} markets.`
-            : `You've opened ${tier.marketLimit} markets this month.`
-        : upgrade.reason === "deals"
+            ? `You've used every one of this month's ${tier.creditLimit} credits.`
+            : `You've used this month's ${tier.creditLimit} credits.`
+      : upgrade.reason === "deals"
           ? "You've hit your saved deal limit."
           : upgrade.reason === "export"
             ? "Spreadsheet export is on the Scale plan."
             : "Get more room to run.";
 
   const subheading =
-    upgrade.reason === "pulls"
+    upgrade.reason === "credits"
       ? analysis
         ? `${analysis.address}, ${analysis.city} has a full breakeven read waiting — comps included.`
-        : "Every analysis turns an address into a breakeven read backed by live comps."
-      : upgrade.reason === "markets"
-        ? tier.marketLimit === 0
-          ? "What you're looking at is preview inventory. Paid plans open today's actual listings in every market, with live comps behind every analysis."
+        : tier.id === "free"
+          ? "What you're looking at is preview inventory. A credit opens a market's live listings or turns an address into a breakeven read backed by live comps."
           : tier.id === "scale"
-            ? `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month, and that is the largest plan there is. The markets you've already opened stay open; the count resets on the 1st.`
-            : `The ${tier.name} plan opens ${tier.marketLimit} distinct markets a month. Move up to keep browsing — the ones you've opened stay open.`
+            ? `The ${tier.name} plan includes ${tier.creditLimit} credits a month, and that is the largest plan there is. Markets and analyses you've already opened stay open; the count resets on the 1st, and a pack adds credits now.`
+            : `The ${tier.name} plan includes ${tier.creditLimit} credits a month. Move up, or add a pack — what you've already opened stays open.`
       : upgrade.reason === "deals"
         ? `The ${tier.name} plan holds ${
             Number.isFinite(tier.savedDealLimit) ? tier.savedDealLimit : "unlimited"
           } deals. Move up to keep building your pipeline.`
         : upgrade.reason === "export"
           ? "Take your lead list, pipeline and landlord book with you as a CSV that opens in any spreadsheet. Scale includes it."
-          : "The calculator stays unlimited on every plan. Paid plans add property analyses, more markets, and pipeline capacity.";
+          : "The calculator stays unlimited on every plan. Paid plans add credits for live listings and property analyses, and pipeline capacity.";
 
   const [switching, setSwitching] = React.useState<TierId | null>(null);
 
   const handleSelect = async (tierId: TierId) => {
-    const completesPull = upgrade.reason === "pulls" && Boolean(analysis);
+    const completesPull = upgrade.reason === "credits" && Boolean(analysis);
     setSwitching(tierId);
     // The tier is written server-side first; the toast reports what
     // actually happened rather than what was hoped for.
-    const result = await upgradeTo(tierId, { consumePull: completesPull });
+    const result = await upgradeTo(tierId, { spendCredit: completesPull });
     setSwitching(null);
     if ("error" in result) {
       toast.error(result.error);
@@ -179,8 +173,8 @@ export function UpgradeModal() {
 
           {/* A paid plan that has run dry can top up instead. Free
               cannot: a pack is for the month a plan runs out, and
-              selling Free analyses by the dozen would undercut Starter. */}
-          {upgrade.reason === "pulls" && tier.pullLimit > 0 ? (
+              selling Free credits by the dozen would undercut Starter. */}
+          {upgrade.reason === "credits" && tier.creditLimit > 0 ? (
             <PackPicker
               className="mt-6 border-t border-border pt-6"
               onBought={() => {
