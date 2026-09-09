@@ -64,6 +64,16 @@ const NOTHING: GeoJSON = { type: "FeatureCollection", features: [] };
  * Only ever called once the style has loaded — a source added before
  * that is thrown away with the placeholder style.
  */
+/** drawBoundary, with a failure named in the console rather than thrown
+ *  into an event handler where nobody sees it. */
+function safeDrawBoundary(map: maplibregl.Map, boundary: ZipBoundary | null): void {
+  try {
+    drawBoundary(map, boundary);
+  } catch (e) {
+    console.warn("ZIP outline could not be drawn:", e);
+  }
+}
+
 function drawBoundary(map: maplibregl.Map, boundary: ZipBoundary | null): void {
   const data: GeoJSON = boundary ? (boundary.feature as GeoJSON) : NOTHING;
   const source = map.getSource(BOUNDARY_SOURCE) as maplibregl.GeoJSONSource | undefined;
@@ -201,10 +211,18 @@ export function RentalsMap({
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right"
     );
-    map.on("load", () => {
+    // Sources and layers may be added once the STYLE is in — not once
+    // the map is "loaded", which also waits on every sprite, glyph and
+    // tile and never arrives when one of those quietly fails, while the
+    // map itself draws fine. Gating the outline on "load" is why it
+    // never showed. "style.load" fires on the style alone; "load" is
+    // kept as a second chance, and drawing twice is harmless.
+    const ready = () => {
       styleReadyRef.current = true;
-      drawBoundary(map, boundaryRef.current);
-    });
+      safeDrawBoundary(map, boundaryRef.current);
+    };
+    map.on("style.load", ready);
+    map.on("load", ready);
 
     // Tiles can't load in offline previews — pins still place to scale.
     // Report, never intervene. An earlier cut swapped in an empty
@@ -362,7 +380,7 @@ export function RentalsMap({
     boundaryRef.current = boundary;
     const map = mapRef.current;
     if (!map || !styleReadyRef.current) return;
-    drawBoundary(map, boundary);
+    safeDrawBoundary(map, boundary);
   }, [boundary]);
 
   // Card hover / pill click → pin highlight (map hover feeds back
