@@ -59,7 +59,8 @@ function reasonOf(error: unknown): { reason: string; detail?: string } {
   if (error instanceof Anthropic.AuthenticationError) return { reason: "auth" };
   if (error instanceof Anthropic.RateLimitError) return { reason: "busy" };
   if (error instanceof Anthropic.APIError) {
-    return { reason: "http", detail: `${error.status ?? ""} ${error.message}`.trim().slice(0, 400) };
+    const cause = error.cause instanceof Error ? ` (${error.cause.message})` : "";
+    return { reason: "http", detail: `${error.status ?? ""} ${error.message}${cause}`.trim().slice(0, 400) };
   }
   if (error instanceof Error && error.name === "AbortError") return { reason: "aborted" };
   return { reason: "network", detail: error instanceof Error ? error.message.slice(0, 200) : undefined };
@@ -82,7 +83,7 @@ export async function GET(request: Request) {
   if (!assistantConfigured()) {
     return NextResponse.json({ ok: false, reason: "not-configured", model: MODEL, hint: "ANTHROPIC_API_KEY is not set on this deployment" }, { status: 503 });
   }
-  const client = new Anthropic({ maxRetries: 0 });
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim(), maxRetries: 0 });
   const started = Date.now();
   try {
     const message = await client.messages.create({
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const client = new Anthropic();
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim() });
   // The frozen instructions, then the page's context: two cache
   // breakpoints, so a thread's second message pays for neither again.
   const system: Anthropic.TextBlockParam[] = [
