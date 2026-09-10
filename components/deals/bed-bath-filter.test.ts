@@ -31,7 +31,13 @@ function row(bedrooms: number, bathrooms: number) {
   } as unknown as RentalListing;
   return {
     listing,
-    deal: { cushionPts: 0, netCashFlow: 0, nightlyRate: 0, breakeven: 0 },
+    deal: {
+      cushionPts: 0,
+      netCashFlow: 0,
+      nightlyRate: 0,
+      breakeven: 0,
+      basis: { kind: "modelled" as const, area: null, occupancy: 0, at: null },
+    },
     haystack: "tampa florida fl",
   };
 }

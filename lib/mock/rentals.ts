@@ -277,6 +277,45 @@ export function estimateCushionPts(
  * panel that opens when you click the card. This runs the same engine
  * on the same inputs and hands back everything a card prints.
  */
+/**
+ * What a read stands on, finest grain first.
+ *
+ *   comps     the property's own comp set — an analysis has been run,
+ *             and these are the analyzer's exact figures.
+ *   zip       the feed's measured figures for the property's ZIP.
+ *   city      the feed's measured figures for the whole city.
+ *   pending   measured figures are being fetched; the modelled ones
+ *             stand in and a card shows nothing rather than a number
+ *             about to change.
+ *   modelled  the seeded catalogue's figures: plausible and invented.
+ *             Only when the feed has nothing for the area.
+ */
+export type DealBasisKind = "comps" | "zip" | "city" | "pending" | "modelled";
+
+export interface DealBasis {
+  kind: DealBasisKind;
+  /** The area the figures cover — a ZIP, a city — or null for comps. */
+  area: string | null;
+  /** The occupancy the read assumed, as a fraction. */
+  occupancy: number;
+  /** When the figures were measured, ISO; null for modelled. */
+  at: string | null;
+  /** How many comps, on the comps grain. */
+  comps?: number;
+}
+
+/** Measured figures for a read, from lib/live/market-figures or
+ *  lib/live/property-figures. `adr` is this size's own nightly rate on
+ *  the comps grain, and the area's average across sizes otherwise. */
+export interface DealFigures {
+  adr: number;
+  occupancy: number;
+  kind: Exclude<DealBasisKind, "pending" | "modelled">;
+  area: string | null;
+  at: string | null;
+  comps?: number;
+}
+
 export interface DealRead {
   /** Whole points: the market's occupancy minus this rent's breakeven. */
   cushionPts: number;
@@ -286,23 +325,67 @@ export interface DealRead {
   nightlyRate: number;
   /** The share of nights that only pays the bills, as a fraction. */
   breakeven: number;
+  /** What the figures above stand on. */
+  basis: DealBasis;
 }
 
+/**
+ * The read for one listing, from measured figures when there are any.
+ *
+ * The property's own comps are already this size's rate; an area's
+ * average is across every size and is scaled to this one the way the
+ * catalogue's benchmark always was. Without figures the catalogue's
+ * modelled ones stand in, and the read says so.
+ */
 export function estimateDeal(
   listing: RentalListing,
-  market: Market
+  market: Market,
+  figures: DealFigures | null = null,
+  opts: { pending?: boolean } = {}
 ): DealRead {
-  const nightlyRate = Math.round(market.adr * adrFactorFor(listing.bedrooms));
+  const nightlyRate = figures
+    ? figures.kind === "comps"
+      ? Math.round(figures.adr)
+      : Math.round(figures.adr * adrFactorFor(listing.bedrooms))
+    : Math.round(market.adr * adrFactorFor(listing.bedrooms));
+  const occupancy = figures ? figures.occupancy : market.occupancy;
   const projection = projectDeal(benchmark2brInputs(listing.rentMonthly), {
     adr: nightlyRate,
-    marketOccupancy: market.occupancy,
+    marketOccupancy: occupancy,
   });
+  const basis: DealBasis = figures
+    ? {
+        kind: figures.kind,
+        area: figures.area,
+        occupancy,
+        at: figures.at,
+        ...(figures.comps !== undefined ? { comps: figures.comps } : {}),
+      }
+    : { kind: opts.pending ? "pending" : "modelled", area: market.name, occupancy, at: null };
   return {
     cushionPts: Math.round(projection.marginOfSafety * 100),
     netCashFlow: Math.round(projection.netCashFlow),
     nightlyRate,
     breakeven: projection.breakevenOccupancy,
+    basis,
   };
+}
+
+/** One line saying what a read stands on, for a title or a caption. */
+export function basisLabel(basis: DealBasis): string {
+  const occ = `${Math.round(basis.occupancy * 100)}% occupancy`;
+  switch (basis.kind) {
+    case "comps":
+      return `This property's own comps${basis.comps ? ` (${basis.comps} listings)` : ""} · ${occ}`;
+    case "zip":
+      return `Measured for ZIP ${basis.area ?? ""} · ${occ}`;
+    case "city":
+      return `Measured for ${basis.area ?? "the market"} · ${occ}`;
+    case "pending":
+      return "Measuring this area…";
+    default:
+      return `Modelled for ${basis.area ?? "the market"} · ${occ} · no measured figures yet`;
+  }
 }
 
 /* ------------------------------------------------------------------ */

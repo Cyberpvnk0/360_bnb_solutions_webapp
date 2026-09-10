@@ -1,58 +1,163 @@
-import { describe, expect, it } from "vitest";
-import type { StoredMarketStats } from "@/lib/db/market-store";
-import { displayFigures } from "@/lib/live/market-figures";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  figuresFrom,
+  marketFigures,
+  resetMarketFiguresMemory,
+  zipFigures,
+  zipFiguresSlug,
+} from "./market-figures";
+import { fetchMarketIdentity, fetchMarketSummary, hasAirRoiKey } from "./airroi";
+import { fetchLiveMarket } from "./market-live";
+import { readMarketStatsFor, writeMarketStats } from "@/lib/db/market-store";
+import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
-/**
- * The substitution rule every market surface runs on, asserted against
- * the real implementation so a refactor cannot quietly start blending
- * the two sources.
- */
-const SEEDED = { adr: 139, occupancy: 0.6 };
-const full: StoredMarketStats = {
-  adr: 212.1, occupancy: 0.33, revpar: 69.9, revenue: 17_676,
-  activeListings: 51, bookingLeadTime: 42.4, lengthOfStay: 3.2,
-  fullName: "32202, Jacksonville, Florida, United States",
-};
+vi.mock("./airroi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./airroi")>()),
+  fetchMarketIdentity: vi.fn(),
+  fetchMarketSummary: vi.fn(),
+  hasAirRoiKey: vi.fn(() => true),
+}));
+vi.mock("./market-live", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./market-live")>()),
+  fetchLiveMarket: vi.fn(),
+}));
+vi.mock("@/lib/db/market-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/db/market-store")>()),
+  readMarketStatsFor: vi.fn(),
+  writeMarketStats: vi.fn(),
+}));
 
-describe("measured figures replace seeded ones together", () => {
-  it("uses the feed when it carries both", () => {
-    const d = displayFigures(SEEDED, full);
-    expect(d.measured).toBe(true);
-    expect(d.adr).toBe(212.1);
-    expect(d.occupancy).toBe(0.33);
-  });
+const summary = (adr: number, occupancy: number) => ({
+  adr,
+  occupancy,
+  revpar: null,
+  revenue: null,
+  activeListings: null,
+  bookingLeadTime: null,
+  lengthOfStay: null,
+});
+const NOW = new Date().toISOString();
+const LONG_AGO = "2020-01-01T00:00:00Z";
+const columbus = MARKET_BY_SLUG.get("columbus")!;
 
-  it("falls back whole when either is missing", () => {
-    // A real rate beside an invented occupancy reads as one measurement
-    // and is two. Half a summary is no summary.
-    const d = displayFigures(SEEDED, { ...full, occupancy: null });
-    expect(d.measured).toBe(false);
-    expect(d.adr).toBe(139);
-    expect(d.occupancy).toBe(0.6);
-  });
+const stored = vi.mocked(readMarketStatsFor);
+const keep = vi.mocked(writeMarketStats);
+const byName = vi.mocked(fetchMarketSummary);
+const byPoint = vi.mocked(fetchMarketIdentity);
+const liveMarket = vi.mocked(fetchLiveMarket);
 
-  it("falls back when there is no live row at all", () => {
-    expect(displayFigures(SEEDED, null).measured).toBe(false);
+describe("figures out of a stored row", () => {
+  it("rounds, keeps the row's own scope, and refuses a row missing either figure", () => {
+    expect(figuresFrom({ ...summary(171.4, 0.3149), fullName: "43224, Columbus", scope: "zip" }, NOW, "city")).toEqual({
+      adr: 171,
+      occupancy: 0.31,
+      scope: "zip",
+      area: "43224, Columbus",
+      at: NOW,
+    });
+    expect(figuresFrom({ ...summary(0, 0.5), fullName: null }, NOW, "city")).toBeNull();
+    expect(figuresFrom({ ...summary(150, null as never), fullName: null }, NOW, "city")).toBeNull();
+    expect(figuresFrom(null, NOW, "city")).toBeNull();
   });
 });
 
-describe("RevPAR and provenance", () => {
-  it("prefers the feed's own RevPAR over multiplying the summaries", () => {
-    // 212.1 x 0.33 is 70.0; the feed says 69.9. Its figure is computed
-    // over the nights that produced the rate, so it wins.
-    expect(displayFigures(SEEDED, full).revpar).toBe(69.9);
+describe("the city's figures", () => {
+  beforeEach(() => {
+    resetMarketFiguresMemory();
+    stored.mockResolvedValue(new Map());
+    keep.mockResolvedValue({ ok: true, detail: null });
+    vi.mocked(hasAirRoiKey).mockReturnValue(true);
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("serves a fresh stored row without a call", async () => {
+    stored.mockResolvedValue(new Map([[columbus.slug, { stats: { ...summary(160, 0.52), fullName: "Columbus, Ohio" }, at: NOW }]]));
+    const f = await marketFigures(columbus);
+    expect(f).toMatchObject({ adr: 160, occupancy: 0.52, scope: "city" });
+    expect(liveMarket).not.toHaveBeenCalled();
   });
 
-  it("multiplies when the feed left RevPAR out", () => {
-    const d = displayFigures(SEEDED, { ...full, revpar: null });
-    expect(d.revpar).toBeCloseTo(212.1 * 0.33, 6);
+  it("buys the city by name, once, and keeps it", async () => {
+    liveMarket.mockResolvedValue({
+      summary: summary(166, 0.48),
+      monthly: [],
+      fullName: "Columbus, Ohio, United States",
+      ref: { country: "United States", region: "Ohio", locality: "Columbus" },
+      calls: 1,
+      asOf: NOW,
+    });
+    const [a, b] = await Promise.all([marketFigures(columbus), marketFigures(columbus)]);
+    expect(liveMarket).toHaveBeenCalledTimes(1);
+    expect(liveMarket).toHaveBeenCalledWith(columbus, { identity: "catalogue", history: false });
+    expect(a).toEqual({ adr: 166, occupancy: 0.48, scope: "city", area: "Columbus, Ohio, United States", at: NOW });
+    expect(b).toEqual(a);
+    expect(keep).toHaveBeenCalledWith(columbus.slug, expect.objectContaining({ adr: 166, scope: "city" }));
   });
 
-  it("carries the measurement date, and never invents one", () => {
-    const at = "2026-08-26T04:00:00.000Z";
-    expect(displayFigures(SEEDED, full, at).asOf).toBe(at);
-    // A modelled figure has no date. Giving it one would be the same
-    // lie in a different font.
-    expect(displayFigures(SEEDED, null, at).asOf).toBeNull();
+  it("keeps a stale measurement over nothing when the feed does not answer", async () => {
+    stored.mockResolvedValue(new Map([[columbus.slug, { stats: { ...summary(150, 0.5), fullName: null }, at: LONG_AGO }]]));
+    liveMarket.mockResolvedValue(null);
+    const f = await marketFigures(columbus);
+    expect(f).toMatchObject({ adr: 150, at: LONG_AGO });
+  });
+});
+
+describe("a ZIP's figures", () => {
+  beforeEach(() => {
+    resetMarketFiguresMemory();
+    stored.mockResolvedValue(new Map());
+    keep.mockResolvedValue({ ok: true, detail: null });
+    vi.mocked(hasAirRoiKey).mockReturnValue(true);
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("asks by name — the city and the ZIP as its district — and keeps the answer a month", async () => {
+    byName.mockResolvedValue({ summary: summary(158.4, 0.41), fullName: "43224, Columbus, Ohio, United States" });
+    const f = await zipFigures("43224", columbus);
+    expect(byName).toHaveBeenCalledWith({
+      country: "United States",
+      region: columbus.state,
+      locality: columbus.name,
+      district: "43224",
+    });
+    expect(f).toMatchObject({ adr: 158, occupancy: 0.41, scope: "zip", area: "43224, Columbus, Ohio, United States" });
+    expect(keep).toHaveBeenCalledWith(zipFiguresSlug("43224"), expect.objectContaining({ scope: "zip", adr: 158.4 }));
+    expect(byPoint).not.toHaveBeenCalled();
+  });
+
+  it("serves a fresh stored ZIP without a call", async () => {
+    stored.mockResolvedValue(new Map([[zipFiguresSlug("43224"), { stats: { ...summary(150, 0.4), fullName: null, scope: "zip" }, at: NOW }]]));
+    const f = await zipFigures("43224", columbus);
+    expect(f).toMatchObject({ adr: 150, scope: "zip" });
+    expect(byName).not.toHaveBeenCalled();
+  });
+
+  it("lets the feed name the point's own market when the name gives nothing", async () => {
+    byName
+      .mockResolvedValueOnce({ summary: summary(0, null as never), fullName: null })
+      .mockResolvedValueOnce({ summary: summary(140, 0.38), fullName: null });
+    byPoint.mockResolvedValue({
+      fullName: "43224, Columbus, Ohio, United States",
+      market: { country: "United States", region: "Ohio", locality: "Columbus", district: "43224" },
+    });
+    const f = await zipFigures("43224", columbus, { lat: 39.99, lon: -82.97 });
+    expect(byPoint).toHaveBeenCalledWith({ lat: 39.99, lon: -82.97 });
+    expect(byName).toHaveBeenCalledTimes(2);
+    expect(f).toMatchObject({ adr: 140, occupancy: 0.38, area: "43224, Columbus, Ohio, United States" });
+  });
+
+  it("answers null for a ZIP the feed has nothing on, keeps nothing, and does not ask again for a while", async () => {
+    byName.mockResolvedValue({ summary: summary(0, null as never), fullName: null });
+    expect(await zipFigures("43224", columbus)).toBeNull();
+    expect(await zipFigures("43224", columbus)).toBeNull();
+    expect(byName).toHaveBeenCalledTimes(1);
+    expect(keep).not.toHaveBeenCalled();
+  });
+
+  it("refuses anything but five digits, and asks for nothing without a key", async () => {
+    expect(await zipFigures("4322", columbus)).toBeNull();
+    vi.mocked(hasAirRoiKey).mockReturnValue(false);
+    expect(await zipFigures("43224", columbus)).toBeNull();
+    expect(byName).not.toHaveBeenCalled();
   });
 });

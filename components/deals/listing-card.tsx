@@ -25,6 +25,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, TrendingDown } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
+import { basisLabel } from "@/lib/mock/rentals";
 import { gradeDeal } from "@/lib/calc/deal-grade";
 import type { DealRead } from "@/lib/mock/rentals";
 import type { RentalListing } from "@/lib/mock/types";
@@ -219,19 +220,35 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           ) : null}
         </div>
 
-        {/* The part a rental portal does not have. */}
-        <div className="grid grid-cols-3 divide-x divide-border border-t border-border bg-secondary/40">
-          <Stat
-            label="Cushion"
-            value={`${deal.cushionPts < 0 ? "−" : "+"}${Math.abs(deal.cushionPts)} pts`}
-            tone={deal.cushionPts < 0 ? "bad" : deal.cushionPts >= 8 ? "good" : "plain"}
-          />
-          <Stat
-            label="Cash flow"
-            value={`${fmtMoney(deal.netCashFlow)}/mo`}
-            tone={deal.netCashFlow < 0 ? "bad" : "good"}
-          />
-          <Stat label="Nightly" value={fmtMoney(deal.nightlyRate)} />
+        {/* The part a rental portal does not have. Projected from the
+            measured figures for the row's ZIP or city (the title says
+            which); held blank while those are still on their way, so
+            a number about to change is not the one that was read. */}
+        <div
+          className="grid grid-cols-3 divide-x divide-border border-t border-border bg-secondary/40"
+          title={basisLabel(deal.basis)}
+        >
+          {deal.basis.kind === "pending" ? (
+            <>
+              <Stat label="Cushion" value="—" />
+              <Stat label="Cash flow" value="—" />
+              <Stat label="Nightly" value="—" />
+            </>
+          ) : (
+            <>
+              <Stat
+                label="Cushion"
+                value={`${deal.cushionPts < 0 ? "−" : "+"}${Math.abs(deal.cushionPts)} pts`}
+                tone={deal.cushionPts < 0 ? "bad" : deal.cushionPts >= 8 ? "good" : "plain"}
+              />
+              <Stat
+                label="Cash flow"
+                value={`${fmtMoney(deal.netCashFlow)}/mo`}
+                tone={deal.netCashFlow < 0 ? "bad" : "good"}
+              />
+              <Stat label="Nightly" value={fmtMoney(deal.nightlyRate)} />
+            </>
+          )}
         </div>
 
         <div

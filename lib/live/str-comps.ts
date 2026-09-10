@@ -30,7 +30,7 @@ import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import type { Analysis, StrComp } from "@/lib/mock/types";
 
 /** Below this a comp set can't carry a projection honestly. */
-const MIN_COMPS = 4;
+export const MIN_COMPS = 4;
 
 export interface CompsResolution {
   analysis: Analysis;
@@ -41,7 +41,7 @@ export interface CompsResolution {
 /** A month of freshness. A property's trailing-twelve comps do not
  *  move week to week, and every day of TTL is an address nobody pays
  *  for twice. */
-const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * The format a stored comp set was written in.

@@ -47,6 +47,7 @@ import { EmptyState } from "@/components/primitives/empty-state";
 import { FurnishedSearching } from "./furnished-searching";
 import { collapseDuplicateListings } from "@/lib/live/dedupe-listings";
 import { inZip } from "@/lib/live/zip";
+import { dealFiguresFor, figuresWanted, useMarketFigures } from "./use-market-figures";
 import { getZipBoundary } from "@/lib/data/zip-boundary";
 import type { ZipBoundary } from "@/lib/map/zip-boundary";
 import { useSession } from "@/components/providers/session-provider";
@@ -417,19 +418,16 @@ export function DealsExplorer({
     liveTarget && liveChecked !== liveTarget.slug
   );
 
-  // Join listings with their market once — cushion comes through
-  // lib/mock/rentals (lib/calc underneath), never an inline formula.
-  const rows = React.useMemo<Row[]>(() => {
-    const bySlug = new Map(markets.map((m) => [m.slug, m]));
-    // Search-first: a ZIP is answered by the feed alone, a market by its
-    // live rows (or its preview set when the feed can't answer), a saved
-    // list by what's in it. With no search and no list, nothing shows.
-    // Furnished swaps the source outright: Redfin answers that question
-    // at its own search, so the result set IS the furnished set rather
-    // than a general set we then guess our way through.
-    // A live set is shown with its duplicates folded — the same house
-    // under two lines, see lib/live/dedupe-listings. A saved list is
-    // what was saved.
+  // The rows on screen: search-first. A ZIP is answered by the feed
+  // alone, a market by its live rows (or its preview set when the feed
+  // can't answer), a saved list by what's in it. With no search and no
+  // list, nothing shows. Furnished swaps the source outright: Redfin
+  // answers that question at its own search, so the result set IS the
+  // furnished set rather than a general set we then guess our way
+  // through. A live set is shown with its duplicates folded — the same
+  // house under two lines, see lib/live/dedupe-listings. A saved list
+  // is what was saved.
+  const scoped = React.useMemo<RentalListing[]>(() => {
     const source = redfinActive
       ? collapseDuplicateListings(redfin!.listings)
       : zip
@@ -444,30 +442,36 @@ export function DealsExplorer({
     // A ZIP search shows that ZIP and nothing else, whatever the source:
     // the furnished set above is a whole city's, and even the feed's own
     // ZIP answer is checked row by row. See lib/live/zip.
-    const scoped = zip ? source.filter((l) => inZip(l, zip)) : source;
+    return zip ? source.filter((l) => inZip(l, zip)) : source;
+  }, [marketRows, zip, zipActive, zipResult, listFilter, lists, redfinActive, redfin]);
+
+  // The measured figures the cards are projected from — the feed's own
+  // ADR and occupancy for each row's ZIP, and for its city until the
+  // ZIP is known. The catalogue's modelled figures stand in only when
+  // the feed has none, and the card says so. Preview inventory is
+  // modelled through and through and asks for nothing. See
+  // lib/live/market-figures.
+  const wanted = React.useMemo(() => figuresWanted(scoped), [scoped]);
+  const figures = useMarketFigures(wanted, !previewStandIn);
+
+  // Join listings with their market once — cushion comes through
+  // lib/mock/rentals (lib/calc underneath), never an inline formula.
+  const rows = React.useMemo<Row[]>(() => {
+    const bySlug = new Map(markets.map((m) => [m.slug, m]));
     return scoped.flatMap((raw) => {
       const market = bySlug.get(raw.marketSlug);
       if (!market) return [];
       const listing = raw;
+      const basis = dealFiguresFor(listing, market, figures);
       return [
         {
           listing,
-          deal: estimateDeal(listing, market),
+          deal: estimateDeal(listing, market, basis.figures, { pending: basis.pending }),
           haystack: marketSearchText(market),
         },
       ];
     });
-  }, [
-    markets,
-    marketRows,
-    zip,
-    zipActive,
-    zipResult,
-    listFilter,
-    lists,
-    redfinActive,
-    redfin,
-  ]);
+  }, [markets, scoped, figures]);
 
   const applyFilters = React.useCallback((patch: Partial<DealFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -1170,6 +1174,7 @@ export function DealsExplorer({
       <ListingDetailDialog
         listing={detailRow?.listing ?? null}
         market={detailMarket}
+        deal={detailRow?.deal ?? null}
         open={detailId !== null}
         onOpenChange={(next) => {
           if (!next) setDetailId(null);

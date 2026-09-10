@@ -28,9 +28,9 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Mail, Phone, TriangleAlert, User, X } from "lucide-react";
 import { projectDeal } from "@/lib/calc/arbitrage";
-import { fmtMoney, fmtNum, fmtPct, localityLine } from "@/lib/format";
+import { fmtMoney, fmtMonth, fmtNum, fmtPct, localityLine } from "@/lib/format";
 import { benchmark2brInputs } from "@/lib/mock/markets";
-import { adrFactorFor } from "@/lib/mock/markets";
+import { basisLabel, estimateDeal, type DealRead } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
@@ -49,7 +49,31 @@ import { PropertyImage } from "./property-image";
 import { analyzeHref } from "@/lib/live/analyze-href";
 import { hasOwnListingPage, webLookupHref } from "@/lib/live/listing-links";
 import { useListingContact } from "./use-listing-contact";
+import { usePropertyFigures } from "./use-property-figures";
 import { cn } from "@/lib/utils";
+
+/**
+ * The line under "If you ran this as a short-term rental": what the
+ * figures stand on, in the reader's terms. Never a blend, always said.
+ */
+function basisLine(read: DealRead, bedrooms: number, marketName: string): string {
+  const b = read.basis;
+  const occ = `${fmtPct(b.occupancy)} occupancy`;
+  const rate = `${fmtMoney(read.nightlyRate)}/night`;
+  const when = b.at ? ` ${fmtMonth(b.at)}` : "";
+  switch (b.kind) {
+    case "comps":
+      return `This property's own comps${b.comps ? ` · ${b.comps} listings` : ""} · ${occ} · ${rate}`;
+    case "zip":
+      return `ZIP ${b.area ?? ""} · ${occ} · ${rate} for a ${bedrooms} bd · measured${when}`;
+    case "city":
+      return `${b.area ?? marketName} · ${occ} · ${rate} for a ${bedrooms} bd · measured${when}`;
+    case "pending":
+      return `${marketName} · measuring…`;
+    default:
+      return `${marketName} · ${occ} · ${rate} for a ${bedrooms} bd · modelled`;
+  }
+}
 
 /** One white surface on the overlay's grey ground. */
 function Panel({ className, ...props }: React.ComponentProps<"section">) {
@@ -196,21 +220,44 @@ function ContactRow({
 export function ListingDetailDialog({
   listing,
   market,
+  deal = null,
   open,
   onOpenChange,
 }: {
   listing: RentalListing | null;
   market: Market | null;
+  /** The row's read from the grid, so the panel shows the same numbers
+   *  the card did — and the same grain. */
+  deal?: DealRead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const projection = React.useMemo(() => {
+  // The property's own comps when an analysis has been run — the
+  // analyzer's exact figures — otherwise the grain the row was
+  // projected from on the grid. Never a blend; the line under the
+  // heading says which. See lib/live/property-figures.
+  const own = usePropertyFigures(listing, open);
+  const read = React.useMemo<DealRead | null>(() => {
     if (!listing || !market) return null;
+    if (own.figures) {
+      return estimateDeal(listing, market, {
+        adr: own.figures.adr,
+        occupancy: own.figures.occupancy,
+        kind: "comps",
+        area: null,
+        at: own.figures.at,
+        comps: own.figures.comps,
+      });
+    }
+    return deal ?? estimateDeal(listing, market);
+  }, [listing, market, deal, own.figures]);
+  const projection = React.useMemo(() => {
+    if (!listing || !read) return null;
     return projectDeal(benchmark2brInputs(listing.rentMonthly), {
-      adr: Math.round(market.adr * adrFactorFor(listing.bedrooms)),
-      marketOccupancy: market.occupancy,
+      adr: read.nightlyRate,
+      marketOccupancy: read.basis.occupancy,
     });
-  }, [listing, market]);
+  }, [listing, read]);
 
   const cushionPts = projection
     ? Math.round(projection.marginOfSafety * 100)
@@ -369,12 +416,11 @@ export function ListingDetailDialog({
                 <h3 className="text-sm font-semibold text-foreground">
                   If you ran this as a short-term rental
                 </h3>
-                <p className="text-xs text-muted-foreground tabular">
-                  {market.name} · {fmtPct(market.occupancy)} occupancy ·{" "}
-                  {fmtMoney(
-                    Math.round(market.adr * adrFactorFor(listing.bedrooms))
-                  )}
-                  /night for a {listing.bedrooms} bd
+                <p
+                  className="text-xs text-muted-foreground tabular"
+                  title={read ? basisLabel(read.basis) : undefined}
+                >
+                  {read ? basisLine(read, listing.bedrooms, market.name) : null}
                 </p>
               </div>
 
