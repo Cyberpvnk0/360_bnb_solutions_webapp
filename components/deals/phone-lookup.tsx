@@ -68,6 +68,7 @@ export function PhoneLookup({
   const [, rerender] = React.useReducer((n: number) => n + 1, 0);
   const state = answers.get(listing.id) ?? IDLE;
   const affordable = creditsRemaining + credits >= PHONE_LOOKUP_CREDITS;
+  const price = `${PHONE_LOOKUP_CREDITS} ${PHONE_LOOKUP_CREDITS === 1 ? "credit" : "credits"}`;
 
   const settle = (next: State) => {
     answers.set(listing.id, next);
@@ -126,7 +127,7 @@ export function PhoneLookup({
       type="button"
       onClick={() => void run()}
       disabled={busy}
-      title={`Searches public records for the owner's phone number. ${PHONE_LOOKUP_CREDITS} credits, charged only when a number is found.`}
+      title={`Searches public records for the owner's phone number. ${price}, charged only when a number is found.`}
       className={cn(
         "inline-flex h-8 w-fit items-center gap-1.5 rounded-sm border border-gold/60 bg-gold-fill/10 px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-gold-fill/20 disabled:cursor-default disabled:opacity-80",
         className
@@ -139,7 +140,7 @@ export function PhoneLookup({
       )}
       {label}
       {!busy ? (
-        <span className="text-xs text-muted-foreground">· {PHONE_LOOKUP_CREDITS} credits</span>
+        <span className="text-xs text-muted-foreground">· {price}</span>
       ) : null}
     </button>
   );
