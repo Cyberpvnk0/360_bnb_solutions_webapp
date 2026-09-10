@@ -5,11 +5,12 @@ const DAY = 24 * 60 * 60 * 1000;
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 describe("listings and market figures age at different rates", () => {
-  it("keeps a market summary for a week", () => {
-    // Their own cache header for market endpoints is seven days against
-    // one for comps. This is that, in our store.
+  it("keeps a market summary for a month", () => {
+    // The one row the Deal Finder's cards ever buy: a city's average,
+    // which barely moves in a month and says when it was measured.
     expect(isFresh(ago(3 * DAY), STATS_TTL_MS)).toBe(true);
     expect(isFresh(ago(6 * DAY), STATS_TTL_MS)).toBe(true);
+    expect(isFresh(ago(29 * DAY), STATS_TTL_MS)).toBe(true);
   });
 
   it("expires listings in a day", () => {
@@ -28,6 +29,6 @@ describe("listings and market figures age at different rates", () => {
   it("still expires eventually", () => {
     // Not permanent: occupancy does drift over a season, and a figure
     // that never refreshes is a figure nobody can trust.
-    expect(isFresh(ago(30 * DAY), STATS_TTL_MS)).toBe(false);
+    expect(isFresh(ago(31 * DAY), STATS_TTL_MS)).toBe(false);
   });
 });

@@ -1,14 +1,26 @@
 /**
  * The market's comp pool: every real short-term listing a comp set has
  * ever carried, kept so the Deal Finder can project a card from the
- * listings around it rather than from an average of the whole city.
+ * listings around it rather than from an average of the whole city —
+ * and at no cost, because every listing here was bought for an
+ * analysis somebody's plan already paid for.
  *
  * Every comp set bought for the analyzer is a couple of dozen real
  * listings with a rate, an occupancy, a size and a place. A market's
- * sets together are a map of what actually books there. A card for a
- * property is projected from the listings within a mile of it when
- * there are enough, within two when there are not, and from nothing
- * here otherwise — never from listings further off than that.
+ * sets together are a map of what actually books there, and the map
+ * fills in as the platform is used: each analysis anywhere in a city
+ * makes every card within two miles of it more exact.
+ *
+ * A CARD IS PROJECTED THE WAY THE ANALYZER WOULD PROJECT IT. The
+ * analyzer stands on a set bought for the property's size within two
+ * miles, the one-mile subset when there are enough; its rate and
+ * occupancy are the set's means. A card mimics that set out of the
+ * pool: the listings of the property's own size first, then those
+ * within a bedroom of it with each rate brought to the property's
+ * size, then any size the same way; the nearest couple of dozen; the
+ * one-mile subset when there are enough. So a card's figures are the
+ * closest free reading of what an analysis of it would say — and the
+ * analysis, once run, replaces them (lib/live/property-figures).
  *
  * A LISTING WITHOUT COORDINATES STILL HAS A PLACE. The feed blurs, and
  * sometimes withholds, a listing's position; what it always gives is
@@ -18,33 +30,23 @@
  * counted closer than it can be, and never further than two miles
  * when it is counted at all.
  *
- * SEEDED, SO A MARKET NOBODY HAS ANALYZED STILL HAS A POOL. The first
- * time a card sits in a patch of the map (a cell about a mile and a
- * half across) with no listings near it, one comp set is bought at
- * that card's point and size — the same purchase the analyzer would
- * make, under the same key, so that card's own figures are exact from
- * then on and a later analysis of it is free. One set a month per
- * cell, at eighteen cents; ZIP_FIGURES_DAILY_CAP is the brake.
+ * THE ANALYSES THEMSELVES CALIBRATE THE CITY AVERAGE. A card with no
+ * listings within two miles falls to the city's measured average, and
+ * a city's average across every listing is not what a whole home in
+ * the parts of town students actually analyze earns. Each analysis
+ * leaves an anchor here — its point, its size, the figures it stood
+ * on — and the ratio of those figures to the city's, over the market's
+ * anchors, corrects the average for every card that falls to it.
  *
  * The pool is a cache of facts about listings, not about people: an id,
  * a place, a rate, an occupancy, a bedroom count, a date. A listing
- * older than six weeks in the pool is dropped on the next write.
+ * older than three months in the pool is dropped on the next write.
  */
 
 import { COMPS_RADIUS_MAX_MILES, MIN_COMPS, selectNearbyComps } from "@/lib/calc/comps";
-import {
-  estimateKey,
-  isFresh,
-  readEstimate,
-  readKeyedBlob,
-  writeEstimate,
-  writeKeyed,
-} from "@/lib/db/market-store";
+import { readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
 import { adrFactorFor } from "@/lib/mock/markets";
-import type { Market, StrComp } from "@/lib/mock/types";
-import { fetchEstimate, hasAirRoiKey } from "./airroi";
-import { checkLiveSearch, commitLiveSearch } from "./quota";
-import { compsSpecFor, ESTIMATE_TTL_MS, ESTIMATE_VERSION } from "./str-comps";
+import type { StrComp } from "@/lib/mock/types";
 
 export interface PoolComp {
   id: string;
@@ -61,32 +63,42 @@ export interface PoolComp {
   dist?: number;
 }
 
+/** One analysis's footing: where it was, what size, what it stood on. */
+export interface PoolAnchor {
+  lat: number;
+  lon: number;
+  bd: number;
+  adr: number;
+  /** Fraction. */
+  occ: number;
+  /** When the analysis was run, ISO. */
+  at: string;
+}
+
+export interface Pool {
+  comps: PoolComp[];
+  anchors: PoolAnchor[];
+}
+
 const POOL_CAP = 3000;
-const COMP_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
+const COMP_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const ANCHOR_CAP = 400;
+const ANCHOR_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 /** How long a read pool is held in memory before the store is asked
  *  again: a page of cards is one read, not twenty-four. */
 const MEMORY_MS = 2 * 60 * 1000;
-/** A seed stands for its cell for a month. */
-const SEED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-/** Cells about a mile and a half across: a set bought within two miles
- *  of a cell's card reaches every other card in it. */
-const CELL_DEGREES = 0.02;
-
-const SEED_DAILY_CAP = (() => {
-  const raw = Number(process.env.ZIP_FIGURES_DAILY_CAP);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : Number.POSITIVE_INFINITY;
-})();
+/** A comp set is a couple of dozen listings; a card's mimicked set is
+ *  the nearest that many, never the whole pool around it. */
+export const SET_SIZE = 25;
+/** Anchors before the city's average is corrected by them: a median of
+ *  fewer says more about the analyses than about the city. */
+export const MIN_ANCHORS = 5;
+/** The correction is a nudge, never a rewrite. */
+const CALIBRATION_FLOOR = 0.5;
+const CALIBRATION_CEILING = 2;
 
 function poolKey(marketSlug: string): string {
   return `comp-pool:v1:${marketSlug}`;
-}
-
-/** The patch of map a point falls in. */
-export function seedCell(point: { lat: number; lon: number }): string {
-  return `${Math.round(point.lat / CELL_DEGREES)}:${Math.round(point.lon / CELL_DEGREES)}`;
-}
-function seedKey(cell: string): string {
-  return `seed:v2:${cell}`;
 }
 
 export function isPoolComp(value: unknown): value is PoolComp {
@@ -105,16 +117,36 @@ export function isPoolComp(value: unknown): value is PoolComp {
   );
 }
 
-const memory = new Map<string, { at: number; comps: PoolComp[] }>();
+export function isPoolAnchor(value: unknown): value is PoolAnchor {
+  const a = value as PoolAnchor | null;
+  return (
+    !!a &&
+    typeof a === "object" &&
+    typeof a.lat === "number" &&
+    typeof a.lon === "number" &&
+    typeof a.bd === "number" &&
+    typeof a.adr === "number" &&
+    a.adr > 0 &&
+    typeof a.occ === "number" &&
+    a.occ >= 0 &&
+    a.occ <= 1 &&
+    typeof a.at === "string"
+  );
+}
 
-export async function readPool(marketSlug: string): Promise<PoolComp[]> {
+const memory = new Map<string, { at: number; pool: Pool }>();
+
+export async function readPool(marketSlug: string): Promise<Pool> {
   const held = memory.get(marketSlug);
-  if (held && Date.now() - held.at < MEMORY_MS) return held.comps;
+  if (held && Date.now() - held.at < MEMORY_MS) return held.pool;
   const stored = await readKeyedBlob(poolKey(marketSlug)).catch(() => null);
-  const raw = (stored?.value as { comps?: unknown } | undefined)?.comps;
-  const comps = Array.isArray(raw) ? raw.filter(isPoolComp) : [];
-  memory.set(marketSlug, { at: Date.now(), comps });
-  return comps;
+  const raw = stored?.value as { comps?: unknown; anchors?: unknown } | undefined;
+  const pool: Pool = {
+    comps: Array.isArray(raw?.comps) ? raw.comps.filter(isPoolComp) : [],
+    anchors: Array.isArray(raw?.anchors) ? raw.anchors.filter(isPoolAnchor) : [],
+  };
+  memory.set(marketSlug, { at: Date.now(), pool });
+  return pool;
 }
 
 /**
@@ -169,17 +201,54 @@ export function mergePool(
   return [...byId.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, POOL_CAP);
 }
 
+/** One anchor per point and size: a property analyzed twice is one
+ *  footing, the newer one. */
+function anchorId(a: { lat: number; lon: number; bd: number }): string {
+  return `${a.lat.toFixed(3)},${a.lon.toFixed(3)}:${a.bd}`;
+}
+
+/** The anchors after an analysis joins them: newest wins on a point
+ *  and size, the old are dropped, and the cap holds. */
+export function mergeAnchors(
+  existing: readonly PoolAnchor[],
+  incoming: readonly PoolAnchor[],
+  now = Date.now()
+): PoolAnchor[] {
+  const byId = new Map<string, PoolAnchor>();
+  for (const a of existing) {
+    const age = now - Date.parse(a.at);
+    if (Number.isFinite(age) && age < ANCHOR_MAX_AGE_MS) byId.set(anchorId(a), a);
+  }
+  for (const a of incoming) byId.set(anchorId(a), a);
+  return [...byId.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, ANCHOR_CAP);
+}
+
+/**
+ * A comp set, and the analysis that stood on it, join the market's
+ * pool. The anchor is what the analysis projected from — its size and
+ * the figures its comps gave — and is left out when the set was too
+ * thin to project from.
+ */
 export async function addToPool(
   marketSlug: string,
   comps: readonly StrComp[],
-  subject: { lat: number; lon: number }
+  subject: { lat: number; lon: number },
+  anchor: { bd: number; adr: number; occ: number } | null = null
 ): Promise<void> {
-  const incoming = toPoolComps(comps, subject);
-  if (incoming.length === 0) return;
+  const at = new Date().toISOString();
+  const incoming = toPoolComps(comps, subject, at);
+  const footing: PoolAnchor[] =
+    anchor && anchor.adr > 0 && anchor.occ >= 0 && anchor.occ <= 1
+      ? [{ lat: subject.lat, lon: subject.lon, bd: Math.round(anchor.bd), adr: Math.round(anchor.adr), occ: Math.round(anchor.occ * 1000) / 1000, at }]
+      : [];
+  if (incoming.length === 0 && footing.length === 0) return;
   const existing = await readPool(marketSlug);
-  const merged = mergePool(existing, incoming);
-  memory.set(marketSlug, { at: Date.now(), comps: merged });
-  await writeKeyed(poolKey(marketSlug), { comps: merged }).catch(() => undefined);
+  const pool: Pool = {
+    comps: mergePool(existing.comps, incoming),
+    anchors: mergeAnchors(existing.anchors, footing),
+  };
+  memory.set(marketSlug, { at: Date.now(), pool });
+  await writeKeyed(poolKey(marketSlug), pool).catch(() => undefined);
 }
 
 const EARTH_RADIUS_MILES = 3958.8;
@@ -203,40 +272,61 @@ export function poolDistance(comp: PoolComp, point: { lat: number; lon: number }
   return milesBetween(point, comp) + (comp.dist ?? 0);
 }
 
+/**
+ * How the listings a reading stands on relate to the property's size.
+ *
+ *   exact   its own bedroom count, rates taken as they are.
+ *   close   within a bedroom of it, each rate brought to its size.
+ *   scaled  any size within reach, each rate brought to its size.
+ */
+export type Sizing = "exact" | "close" | "scaled";
+
 export interface NearbyFigures {
-  /** This size's nightly rate, from listings of about this size when
-   *  there are enough, else the pool's rate scaled to this size. */
+  /** This size's nightly rate: the set's mean. */
   adr: number;
-  /** Fraction. */
+  /** Fraction: the set's mean. */
   occupancy: number;
   comps: number;
   radiusMiles: number;
+  sizing: Sizing;
 }
 
+const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+
 /**
- * What the listings around a point say, or null when too few are
- * within two miles to say anything.
+ * What the listings around a point say for a property of this size —
+ * the set the analyzer would buy for it, mimicked out of the pool —
+ * or null when too few are within two miles to say anything.
  */
 export function nearbyFigures(
   pool: readonly PoolComp[],
   point: { lat: number; lon: number },
   bedrooms: number
 ): NearbyFigures | null {
-  const placed = pool.map((c) => ({ ...c, distanceMiles: poolDistance(c, point) }));
-  const { comps, radiusMiles } = selectNearbyComps(placed);
-  if (comps.length < MIN_COMPS) return null;
-  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
-  const alike = comps.filter((c) => Math.abs(c.bd - bedrooms) <= 1);
-  let adr: number;
-  if (alike.length >= 3) {
-    adr = Math.round(mean(alike.map((c) => c.adr)));
-  } else {
-    // Scale the pool's rate from its typical size to this one.
-    const typical = Math.round(mean(comps.map((c) => c.bd)));
-    adr = Math.round(mean(comps.map((c) => c.adr)) * (adrFactorFor(bedrooms) / adrFactorFor(typical)));
+  const placed = pool
+    .map((c) => ({ ...c, distanceMiles: poolDistance(c, point) }))
+    .filter((c) => c.distanceMiles <= COMPS_RADIUS_MAX_MILES)
+    .sort((a, b) => a.distanceMiles - b.distanceMiles);
+  const tiers: { sizing: Sizing; fits: (c: PoolComp) => boolean }[] = [
+    { sizing: "exact", fits: (c) => c.bd === bedrooms },
+    { sizing: "close", fits: (c) => Math.abs(c.bd - bedrooms) <= 1 },
+    { sizing: "scaled", fits: () => true },
+  ];
+  for (const tier of tiers) {
+    const set = placed.filter(tier.fits).slice(0, SET_SIZE);
+    if (set.length < MIN_COMPS) continue;
+    const { comps, radiusMiles } = selectNearbyComps(set);
+    const rate = (c: PoolComp) =>
+      tier.sizing === "exact" ? c.adr : c.adr * (adrFactorFor(bedrooms) / adrFactorFor(c.bd));
+    return {
+      adr: Math.round(mean(comps.map(rate))),
+      occupancy: Math.round(mean(comps.map((c) => c.occ)) * 100) / 100,
+      comps: comps.length,
+      radiusMiles,
+      sizing: tier.sizing,
+    };
   }
-  const occupancy = Math.round(mean(comps.map((c) => c.occ)) * 100) / 100;
-  return { adr, occupancy, comps: comps.length, radiusMiles };
+  return null;
 }
 
 /** A read of the pool around a point, for a diagnostic: how many
@@ -254,93 +344,62 @@ export function poolAround(
   };
 }
 
-let seedDay = "";
-let seedCalls = 0;
-function seedSlot(): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  if (today !== seedDay) {
-    seedDay = today;
-    seedCalls = 0;
-  }
-  if (seedCalls >= SEED_DAILY_CAP) return false;
-  seedCalls += 1;
-  return true;
+/** How the market's analyses compare with its city-wide average. */
+export interface Calibration {
+  /** Analyses the correction stands on. */
+  n: number;
+  /** Multiply the city's rate, scaled to a size, by this. */
+  adr: number;
+  /** Multiply the city's occupancy by this. */
+  occupancy: number;
 }
 
-const seeding = new Map<string, Promise<SeedResult>>();
-export type SeedOutcome = "seeded" | "kept" | "skipped" | "failed";
-export interface SeedResult {
-  outcome: SeedOutcome;
-  /** For the person reading a diagnostic: what happened, in words. */
-  detail: string;
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
+
+const clamp = (x: number) =>
+  Math.min(CALIBRATION_CEILING, Math.max(CALIBRATION_FLOOR, x));
 
 /**
- * Make sure the patch of map around a point has a comp set in the
- * pool: one bought at the given card's point and size, the analyzer's
- * own purchase under the analyzer's own key, once a month per cell.
- * "kept" means the cell already had one, or the set was already on
- * file.
+ * The correction the market's analyses put on its city-wide average:
+ * the median, over the anchors, of what an analysis stood on against
+ * what the average scaled to its size would have said. Null until
+ * enough analyses have been run here to say anything.
  */
-export async function ensureSeed(
-  market: Market,
-  point: { lat: number; lon: number },
-  size: { bedrooms: number; bathrooms: number }
-): Promise<SeedResult> {
-  const cell = seedCell(point);
-  const running = seeding.get(cell);
-  if (running) return running;
-  const job = (async (): Promise<SeedResult> => {
-    const seed = await readKeyedBlob(seedKey(cell)).catch(() => null);
-    if (seed && isFresh(seed.at, SEED_TTL_MS)) {
-      return { outcome: "kept", detail: `cell ${cell} was seeded ${seed.at ?? "earlier"}` };
-    }
+export function cityCalibration(
+  anchors: readonly PoolAnchor[],
+  city: { adr: number; occupancy: number } | null
+): Calibration | null {
+  if (!city || !(city.adr > 0) || !(city.occupancy > 0)) return null;
+  const usable = anchors.filter((a) => a.adr > 0 && a.occ > 0);
+  if (usable.length < MIN_ANCHORS) return null;
+  const adr = clamp(median(usable.map((a) => a.adr / (city.adr * adrFactorFor(a.bd)))));
+  const occupancy = clamp(median(usable.map((a) => a.occ / city.occupancy)));
+  return {
+    n: usable.length,
+    adr: Math.round(adr * 1000) / 1000,
+    occupancy: Math.round(occupancy * 1000) / 1000,
+  };
+}
 
-    const spec = compsSpecFor(size, point);
-    const key = estimateKey(spec);
-    const existing = await readEstimate(key).catch(() => null);
-    if (existing && isFresh(existing.at, ESTIMATE_TTL_MS) && existing.estimate.v === ESTIMATE_VERSION) {
-      await addToPool(market.slug, existing.estimate.comps as StrComp[], point);
-      void writeKeyed(seedKey(cell), { key }).catch(() => undefined);
-      return { outcome: "kept", detail: `the set at ${key} was already on file and joined the pool` };
-    }
-
-    if (!hasAirRoiKey()) return { outcome: "skipped", detail: "no AIRROI_API_KEY" };
-    if (!seedSlot()) return { outcome: "skipped", detail: "ZIP_FIGURES_DAILY_CAP reached" };
-    const ledger = `seed:${cell}`;
-    if (!checkLiveSearch(ledger).allowed) {
-      return { outcome: "skipped", detail: "the daily live-search ledger refused" };
-    }
-    try {
-      const estimate = await fetchEstimate({ ...spec, radiusMiles: COMPS_RADIUS_MAX_MILES });
-      commitLiveSearch(ledger);
-      await writeEstimate(key, {
-        v: ESTIMATE_VERSION,
-        comps: estimate.comps,
-        monthlyRevenue: estimate.monthlyRevenue,
-        revenue: estimate.revenue,
-        adr: estimate.adr,
-        occupancy: estimate.occupancy,
-      }).catch(() => ({ ok: false, detail: "write threw" }));
-      await addToPool(market.slug, estimate.comps, point);
-      void writeKeyed(seedKey(cell), { key }).catch(() => undefined);
-      const placed = estimate.comps.filter((c) => typeof c.lat === "number").length;
-      return {
-        outcome: "seeded",
-        detail: `bought ${estimate.comps.length} comps at ${key} (${placed} with coordinates)`,
-      };
-    } catch (e) {
-      return { outcome: "failed", detail: e instanceof Error ? e.message : "purchase failed" };
-    }
-  })().finally(() => seeding.delete(cell));
-  seeding.set(cell, job);
-  return job;
+/** The city's figures with the market's correction on them. */
+export function calibrate<T extends { adr: number; occupancy: number }>(
+  city: T,
+  calibration: Calibration | null
+): T & { calibration: Calibration | null } {
+  if (!calibration) return { ...city, calibration: null };
+  return {
+    ...city,
+    adr: Math.round(city.adr * calibration.adr),
+    occupancy: Math.min(1, Math.round(city.occupancy * calibration.occupancy * 100) / 100),
+    calibration,
+  };
 }
 
 /** Tests only. */
 export function resetCompPoolMemory(): void {
   memory.clear();
-  seeding.clear();
-  seedDay = "";
-  seedCalls = 0;
 }

@@ -64,9 +64,9 @@ function basisLine(read: DealRead, bedrooms: number, marketName: string): string
   const reach = b.radiusMiles ? ` within ${b.radiusMiles} mi` : "";
   switch (b.kind) {
     case "comps":
-      return `This property's own comps${b.comps ? ` · ${b.comps} listings${reach}` : ""} · ${occ} · ${rate}`;
+      return `Analyzed${when}${b.comps ? ` · ${b.comps} listings${reach}` : ""} · ${occ} · ${rate}`;
     case "nearby":
-      return `${b.comps ?? "The"} listings${reach} · ${occ} · ${rate} for a ${bedrooms} bd`;
+      return `Nearby · ${b.comps ?? "the"} listings${reach} · ${occ} · ${rate} for a ${bedrooms} bd`;
     case "zip":
       return `ZIP ${b.area ?? ""} · ${occ} · ${rate} for a ${bedrooms} bd · measured${when}`;
     case "city":

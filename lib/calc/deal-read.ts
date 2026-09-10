@@ -25,11 +25,14 @@ import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
  * What a read stands on, finest grain first.
  *
  *   comps     the property's own comp set — an analysis has been run,
- *             and these are the analyzer's exact figures.
+ *             by anyone, and these are the analyzer's exact figures,
+ *             kept until a newer analysis replaces them.
  *   nearby    real listings within two miles of the property, from
- *             the market's comp pool (lib/live/comp-pool).
+ *             the market's comp pool: the set the analyzer would buy
+ *             for it, mimicked (lib/live/comp-pool).
  *   zip       the feed's measured figures for the property's ZIP.
- *   city      the feed's measured figures for the whole city.
+ *   city      the feed's measured figures for the whole city, corrected
+ *             by what the city's analyses stood on.
  *   pending   measured figures are being fetched; a card shows nothing
  *             rather than a number about to change.
  *   modelled  the seeded catalogue's figures: plausible and invented.
@@ -150,9 +153,9 @@ export function basisLabel(basis: DealBasis): string {
   const reach = basis.radiusMiles ? ` within ${basis.radiusMiles} mi` : "";
   switch (basis.kind) {
     case "comps":
-      return `This property's own comps${basis.comps ? ` (${basis.comps} listings${reach})` : ""} · ${occ}`;
+      return `Analyzed${basis.comps ? ` (${basis.comps} listings${reach})` : ""} · ${occ}`;
     case "nearby":
-      return `Measured from ${basis.comps ?? "the"} listings${reach} · ${occ}`;
+      return `Nearby listings${basis.comps ? ` (${basis.comps}${reach})` : ""} · ${occ}`;
     case "zip":
       return `Measured for ZIP ${basis.area ?? ""} · ${occ}`;
     case "city":

@@ -3,12 +3,19 @@
 /**
  * The measured figures the cards on screen are projected from.
  *
- * Asks app/api/market-figures, a page of rows at a time, what the real
- * listings around each row say — and for the city's figures, which a
- * row falls to when nothing stands near it. Every answer is kept for
- * the session, a null answer included: a row nothing stands near is
- * not asked about again on every render. The rows are re-read as
- * answers land, so a card held blank a moment ago is projected now.
+ * Asks app/api/market-figures, a page of rows at a time, what each row
+ * stands on — its own analysis, the real listings around it — and for
+ * the city's figures, which a row falls to when nothing stands near
+ * it. Every answer is kept for the session, a null answer included,
+ * and the rows are re-read as answers land, so a card held blank a
+ * moment ago is projected now.
+ *
+ * ASKED AGAIN, BEHIND WHAT IS ALREADY SHOWN. An analysis anyone runs
+ * puts its set on file for every account's card, so a row that does
+ * not yet stand on its own analysis is asked about again each time
+ * the grid mounts or the tab comes back into view. The last answer
+ * stays on the card meanwhile; nothing is asked twice for a row that
+ * already stands on an analysis. Every ask is a read, never a purchase.
  *
  * Nothing is asked for while the grid shows preview inventory: those
  * rows are modelled through and through, and the figures are a paid
@@ -16,9 +23,8 @@
  */
 
 import * as React from "react";
-import type { RowFigures } from "@/app/api/market-figures/route";
+import type { CityFigures, RowFigures } from "@/app/api/market-figures/route";
 import type { DealFigures } from "@/lib/calc/deal-read";
-import type { Figures } from "@/lib/live/market-figures";
 import type { Market, RentalListing } from "@/lib/mock/types";
 
 export interface WantedRow {
@@ -27,6 +33,8 @@ export interface WantedRow {
   lon: number;
   bd: number;
   ba: number;
+  address: string;
+  st: string;
   marketSlug: string;
 }
 
@@ -47,6 +55,8 @@ export function figuresWanted(listings: readonly RentalListing[]): WantedFigures
       lon: l.lon,
       bd: l.bedrooms,
       ba: l.bathrooms,
+      address: l.address,
+      st: l.stateCode,
       marketSlug: l.marketSlug,
     });
   }
@@ -54,8 +64,11 @@ export function figuresWanted(listings: readonly RentalListing[]): WantedFigures
 }
 
 /** null: asked, and there was nothing to be had. */
-const marketCache = new Map<string, Figures | null>();
+const marketCache = new Map<string, CityFigures | null>();
+/** The last answer for a row, kept while a newer one is fetched. */
 const rowCache = new Map<string, RowFigures | null>();
+/** Rows answered since the last time the grid asked again. */
+const answered = new Set<string>();
 /** Markets with a request under way. */
 const inFlight = new Set<string>();
 
@@ -63,7 +76,7 @@ const BATCH = 24;
 
 export interface FigureSet {
   /** undefined: not asked yet. null: asked, nothing to be had. */
-  market: (slug: string) => Figures | null | undefined;
+  market: (slug: string) => CityFigures | null | undefined;
   row: (id: string) => RowFigures | null | undefined;
   /** A request is under way somewhere. */
   pending: boolean;
@@ -72,7 +85,10 @@ export interface FigureSet {
 async function ask(marketSlug: string, rows: WantedRow[]): Promise<void> {
   const nothing = () => {
     if (!marketCache.has(marketSlug)) marketCache.set(marketSlug, null);
-    for (const r of rows) rowCache.set(r.id, null);
+    for (const r of rows) {
+      if (!rowCache.has(r.id)) rowCache.set(r.id, null);
+      answered.add(r.id);
+    }
   };
   try {
     const res = await fetch("/api/market-figures", {
@@ -80,12 +96,12 @@ async function ask(marketSlug: string, rows: WantedRow[]): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         market: marketSlug,
-        rows: rows.map(({ id, lat, lon, bd, ba }) => ({ id, lat, lon, bd, ba })),
+        rows: rows.map(({ id, lat, lon, bd, ba, address, st }) => ({ id, lat, lon, bd, ba, address, st })),
       }),
     });
     const body = (await res.json().catch(() => null)) as {
       ok?: boolean;
-      market?: Figures | null;
+      market?: CityFigures | null;
       rows?: Record<string, RowFigures | null>;
     } | null;
     if (!res.ok || !body?.ok) {
@@ -93,10 +109,25 @@ async function ask(marketSlug: string, rows: WantedRow[]): Promise<void> {
       return;
     }
     marketCache.set(marketSlug, body.market ?? null);
-    for (const r of rows) rowCache.set(r.id, body.rows?.[r.id] ?? null);
+    for (const r of rows) {
+      rowCache.set(r.id, body.rows?.[r.id] ?? null);
+      answered.add(r.id);
+    }
   } catch {
     nothing();
   }
+}
+
+/** Every row not standing on its own analysis is asked about again;
+ *  its last answer stays on the card until the new one lands. */
+function askAgain(): boolean {
+  let dropped = false;
+  for (const id of answered) {
+    if (rowCache.get(id)?.kind === "comps") continue;
+    answered.delete(id);
+    dropped = true;
+  }
+  return dropped;
 }
 
 export function useMarketFigures(wanted: WantedFigures, enabled: boolean): FigureSet {
@@ -110,20 +141,14 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
     ? `${wanted.markets.join("|")}#${wanted.rows.map((r) => r.id).join("|")}`
     : "";
 
-  // A row that had nothing to stand on is asked about again when the
-  // tab comes back into view: an analysis run in another tab meanwhile
-  // put its comp set on file, and the card should stand on it.
+  // Once on mount, and whenever the tab comes back into view: an
+  // analysis run meanwhile — in another tab, by anyone — put its set
+  // on file, and the card should stand on it.
   React.useEffect(() => {
+    if (askAgain()) revisit();
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      let dropped = false;
-      for (const [id, figures] of rowCache) {
-        if (figures === null) {
-          rowCache.delete(id);
-          dropped = true;
-        }
-      }
-      if (dropped) revisit();
+      if (askAgain()) revisit();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -138,11 +163,11 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
         inFlight.add(slug);
         try {
           // The city's figures ride along with the first page of rows;
-          // whatever is still missing when a page lands — the rows may
-          // have grown meanwhile — goes in the next.
+          // whatever is still unanswered when a page lands — the rows
+          // may have grown meanwhile — goes in the next.
           for (;;) {
             const missing = latest.current.rows.filter(
-              (r) => r.marketSlug === slug && !rowCache.has(r.id)
+              (r) => r.marketSlug === slug && !answered.has(r.id)
             );
             if (marketCache.has(slug) && missing.length === 0) break;
             await ask(slug, missing.slice(0, BATCH));
@@ -170,10 +195,10 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
 }
 
 /**
- * The figures a row is projected from: the listings around it, else
- * its city's, else none — with `pending` true while an answer is still
- * on its way, so the card can hold its numbers rather than show ones
- * about to change.
+ * The figures a row is projected from: its own analysis, else the
+ * listings around it, else its city's, else none — with `pending` true
+ * while an answer is still on its way, so the card can hold its
+ * numbers rather than show ones about to change.
  */
 export function dealFiguresFor(
   listing: RentalListing,
@@ -215,5 +240,6 @@ export function dealFiguresFor(
 export function resetFigureCaches(): void {
   marketCache.clear();
   rowCache.clear();
+  answered.clear();
   inFlight.clear();
 }

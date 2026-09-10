@@ -157,8 +157,10 @@ export default async function AnalyzeResultPage({
     // The plan before the wallet: no comps are bought for an account
     // that has none left, and the page says which it is.
     const { check, tier } = await claimAnalysis(skeleton, point);
+    // The point is the property itself, so the set is filed under its
+    // address too — for the Deal Finder card of the same listing.
     const { analysis, liveComps } = check?.allowed
-      ? await withLiveComps(skeleton, point)
+      ? await withLiveComps(skeleton, point, { atProperty: true })
       : { analysis: skeleton, liveComps: false };
 
     // No live comps means an empty set, and every derived figure would

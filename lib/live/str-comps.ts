@@ -19,7 +19,13 @@
  * said so.
  */
 
-import { COMPS_RADIUS_MAX_MILES, MIN_COMPS, selectNearbyComps } from "@/lib/calc/comps";
+import {
+  COMPS_RADIUS_MAX_MILES,
+  deriveMarketAssumptions,
+  MIN_COMPS,
+  selectNearbyComps,
+} from "@/lib/calc/comps";
+import { addressKey } from "@/lib/live/address";
 import { fetchEstimate, hasAirRoiKey } from "@/lib/live/airroi";
 import { addToPool } from "@/lib/live/comp-pool";
 import {
@@ -101,9 +107,50 @@ export function analysisUsageKey(
   return estimateKey(compsSpecFor(analysis, point));
 }
 
+/**
+ * The store's key for the same set by the property's address — so an
+ * analysis of an address somebody typed, geocoded a few doors off the
+ * listing's own coordinates, still reaches the listing's Deal Finder
+ * card (lib/live/property-figures). Null when the address cannot be
+ * keyed.
+ */
+export function addressEstimateKey(spec: {
+  address?: string | null;
+  stateCode?: string | null;
+  bedrooms: number;
+  bathrooms: number;
+}): string | null {
+  const st = spec.stateCode?.trim().toLowerCase();
+  if (!st || !/^[a-z]{2}$/.test(st)) return null;
+  const key = spec.address ? addressKey(spec.address) : null;
+  if (!key) return null;
+  return `estimate:addr:v1:${st}:${key}:${spec.bedrooms}:${spec.bathrooms}`;
+}
+
+/** What an analysis stood on, for the market's comp pool: its size
+ *  and the figures its comps gave — or null for a set too thin to
+ *  have stood on. */
+function anchorFor(
+  analysis: Pick<Analysis, "bedrooms">,
+  comps: readonly StrComp[]
+): { bd: number; adr: number; occ: number } | null {
+  if (comps.length < MIN_COMPS) return null;
+  const { adr, marketOccupancy } = deriveMarketAssumptions([...comps]);
+  return { bd: analysis.bedrooms, adr, occ: marketOccupancy };
+}
+
 export async function withLiveComps(
   analysis: Analysis,
-  point: { lat: number; lon: number } | null
+  point: { lat: number; lon: number } | null,
+  opts: {
+    /**
+     * True when the point IS the property — an address somebody typed
+     * or a listing handed over with its coordinates — rather than a
+     * market's centre standing in for one. Only then is the set also
+     * filed under the property's address, for its Deal Finder card.
+     */
+    atProperty?: boolean;
+  } = {}
 ): Promise<CompsResolution> {
   if (!point || !hasAirRoiKey()) return { analysis, liveComps: false };
 
@@ -125,8 +172,11 @@ export async function withLiveComps(
     const held = (cached.estimate.comps as StrComp[]).filter((c) => c.active !== false);
     const comps = selectNearbyComps(held).comps;
     // Every real listing in the set feeds the market's comp pool, which
-    // is what the Deal Finder's cards are projected from.
-    void addToPool(analysis.marketSlug, held, point).catch(() => undefined);
+    // is what the Deal Finder's cards are projected from — and so does
+    // what this analysis stood on.
+    void addToPool(analysis.marketSlug, held, point, anchorFor(analysis, comps)).catch(
+      () => undefined
+    );
     if (comps.length >= MIN_COMPS) {
       return {
         analysis: {
@@ -166,16 +216,23 @@ export async function withLiveComps(
     // write failure is survivable — the answer still renders — but it
     // means the next visitor buys the same address again, so it is not
     // ignored silently the way a pure cache write would be.
-    await writeEstimate(estimateKey(spec), {
+    const stored = {
       v: ESTIMATE_VERSION,
       comps: estimate.comps,
       monthlyRevenue: estimate.monthlyRevenue,
       revenue: estimate.revenue,
       adr: estimate.adr,
       occupancy: estimate.occupancy,
-    }).catch(() => ({ ok: false, detail: "write threw" }));
-    void addToPool(analysis.marketSlug, estimate.comps, point).catch(() => undefined);
+    };
+    await writeEstimate(estimateKey(spec), stored).catch(() => ({ ok: false, detail: "write threw" }));
+    // Under the property's address as well, when the point is the
+    // property: its Deal Finder card reads the set back by either.
+    const byAddress = opts.atProperty ? addressEstimateKey(analysis) : null;
+    if (byAddress) void writeEstimate(byAddress, stored).catch(() => undefined);
     const comps = selectNearbyComps(estimate.comps).comps;
+    void addToPool(analysis.marketSlug, estimate.comps, point, anchorFor(analysis, comps)).catch(
+      () => undefined
+    );
     if (comps.length < MIN_COMPS) return { analysis, liveComps: false };
     return {
       analysis: {

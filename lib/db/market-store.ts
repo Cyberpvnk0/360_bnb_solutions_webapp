@@ -60,11 +60,15 @@ export const STORE_TTL_MS = (() => {
  * re-bought it at full price. A day of measured figures for $13.50, and
  * then the same bill again tomorrow.
  *
- * STATS_TTL_HOURS overrides it. Capped at 30 days, like its sibling.
+ * A month now, not a week: the Deal Finder falls to a city's figures
+ * for every card with no analyzed listings near it, and that one row
+ * is the only thing its cards ever buy. A city's trailing-twelve
+ * average barely moves in a month, and the row says when it was
+ * measured. STATS_TTL_HOURS overrides it, capped at the same month.
  */
 export const STATS_TTL_MS = (() => {
   const raw = Number(process.env.STATS_TTL_HOURS);
-  const hours = Number.isFinite(raw) && raw > 0 ? Math.min(24 * 30, raw) : 24 * 7;
+  const hours = Number.isFinite(raw) && raw > 0 ? Math.min(24 * 30, raw) : 24 * 30;
   return hours * 60 * 60 * 1000;
 })();
 

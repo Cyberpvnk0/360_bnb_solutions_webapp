@@ -14,8 +14,10 @@
  * then — labelled — on the catalogue.
  *
  * The city's figures are the feed's market addressed by name from our
- * catalogue: one call, eighteen cents, kept a week — the same row the
- * market backfill writes.
+ * catalogue: one call, eighteen cents, kept a month — the same row the
+ * market backfill writes, and the one thing the Deal Finder's cards
+ * ever buy. The correction the city's own analyses put on the figures
+ * is applied where the cards are answered (lib/live/comp-pool).
  */
 
 import { hasAirRoiKey } from "./airroi";
@@ -76,7 +78,7 @@ const inFlight = new Map<string, Promise<Figures | null>>();
 
 /**
  * The city's measured figures: from the store when fresh, otherwise
- * bought by name (one call) and stored for the week. A stale row beats
+ * bought by name (one call) and stored for the month. A stale row beats
  * nothing — it is still a measurement, and it says when it was made.
  */
 export async function marketFigures(market: Market): Promise<Figures | null> {

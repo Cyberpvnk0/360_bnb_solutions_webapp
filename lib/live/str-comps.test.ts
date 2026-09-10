@@ -129,3 +129,26 @@ describe("a comp set stored in the current format", () => {
     );
   });
 });
+
+describe("where a bought set is filed", () => {
+  it("is filed under the property's address too, when the point is the property", async () => {
+    store.readEstimate.mockResolvedValue(null);
+    const analysis = { ...ANALYSES[0], address: "1804 E Sitka St", stateCode: "FL" };
+
+    await withLiveComps(analysis, POINT, { atProperty: true });
+
+    const keys = store.writeEstimate.mock.calls.map((c) => String((c as unknown[])[0]));
+    expect(keys).toHaveLength(2);
+    expect(keys).toContain(
+      `estimate:addr:v1:fl:1804 sitka st e:${analysis.bedrooms}:${analysis.bathrooms}`
+    );
+  });
+
+  it("is filed by point alone when the point is a market's centre standing in for one", async () => {
+    store.readEstimate.mockResolvedValue(null);
+
+    await withLiveComps(ANALYSES[0], POINT);
+
+    expect(store.writeEstimate).toHaveBeenCalledTimes(1);
+  });
+});

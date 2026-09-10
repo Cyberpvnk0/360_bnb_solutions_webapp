@@ -53,7 +53,7 @@ describe("a card's read stands where the analyzer stands", () => {
     expect(card.netCashFlow).toBe(Math.round(page.netCashFlow));
     expect(card.cushionPts).toBe(Math.round(page.marginOfSafety * 100));
     expect(card.nightlyRate).toBe(assumptions.adr);
-    expect(basisLabel(card.basis)).toBe("This property's own comps (5 listings within 2 mi) · 31% occupancy");
+    expect(basisLabel(card.basis)).toBe("Analyzed (5 listings within 2 mi) · 31% occupancy");
   });
 });
 
@@ -70,7 +70,7 @@ describe("what a read stands on", () => {
     });
     expect(read.nightlyRate).toBe(171);
     expect(read.basis).toMatchObject({ kind: "nearby", comps: 9, radiusMiles: 1 });
-    expect(basisLabel(read.basis)).toBe("Measured from 9 listings within 1 mi · 31% occupancy");
+    expect(basisLabel(read.basis)).toBe("Nearby listings (9 within 1 mi) · 31% occupancy");
   });
 
   it("scales an area's average across sizes to this size, and says so", () => {

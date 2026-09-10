@@ -106,9 +106,9 @@ function basisCaption(basis: DealRead["basis"]): string {
   const reach = basis.radiusMiles ? ` within ${basis.radiusMiles} mi` : "";
   switch (basis.kind) {
     case "comps":
-      return `This property's own comps · ${basis.comps ?? "—"} listings${reach}`;
+      return `Analyzed · ${basis.comps ?? "—"} listings${reach}`;
     case "nearby":
-      return `${basis.comps ?? "—"} listings${reach}`;
+      return `Nearby · ${basis.comps ?? "—"} listings${reach}`;
     case "zip":
       return `ZIP ${basis.area ?? ""} average · measured`;
     case "city":

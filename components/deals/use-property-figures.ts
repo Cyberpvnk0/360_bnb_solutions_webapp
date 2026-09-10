@@ -2,8 +2,10 @@
 
 /**
  * A property's own figures, for the panel: what the analyzer projects
- * from, when somebody has run it. Asked on open, kept for the session
- * by listing. A read of the store on the server, never a purchase.
+ * from, when somebody has run it. Asked each time the panel opens —
+ * an analysis run since the last look should show — and answered from
+ * the last answer meanwhile. A read of the store on the server, never
+ * a purchase.
  */
 
 import * as React from "react";
@@ -30,6 +32,8 @@ async function lookup(listing: RentalListing): Promise<PropertyRead> {
         lon: String(listing.lon),
         bd: String(listing.bedrooms),
         ba: String(listing.bathrooms),
+        address: listing.address,
+        st: listing.stateCode,
       });
       const res = await fetch(`/api/property-figures?${params}`);
       const body = (await res.json().catch(() => null)) as {
@@ -54,7 +58,7 @@ export function usePropertyFigures(listing: RentalListing | null, enabled: boole
   const [, settled] = React.useReducer((n: number) => n + 1, 0);
 
   React.useEffect(() => {
-    if (!id || !listing || answers.has(id)) return;
+    if (!id || !listing) return;
     let live = true;
     void lookup(listing).then(() => {
       if (live) settled();
