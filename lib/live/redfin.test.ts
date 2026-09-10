@@ -13,7 +13,7 @@ import {
   looksSpent,
   redfinRentalsUrlFor,
   siteRowsFrom,
-  zipRentalsUrl,
+  zipRentalsUrls,
 } from "./redfin";
 import { streetPartOf } from "./address";
 
@@ -413,8 +413,11 @@ describe("siteRowsFrom — what the join reads, and only that", () => {
   });
 });
 
-describe("zipRentalsUrl", () => {
-  it("is the site's own ZIP rentals path, with no id to resolve", () => {
-    expect(zipRentalsUrl("33604")).toBe("https://www.redfin.com/zipcode/33604/rentals");
+describe("zipRentalsUrls", () => {
+  it("is the site's own ZIP rentals path in both shapes, with no id to resolve", () => {
+    expect(zipRentalsUrls("33604")).toEqual([
+      "https://www.redfin.com/zipcode/33604/rentals",
+      "https://www.redfin.com/zipcode/33604/apartments-for-rent",
+    ]);
   });
 });

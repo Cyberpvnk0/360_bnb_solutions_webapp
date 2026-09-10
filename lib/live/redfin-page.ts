@@ -240,10 +240,11 @@ async function lookupOnce(place: Place, key: string): Promise<PageLookup> {
   if (!zip) {
     notes.push("no ZIP to search");
   } else {
-    const pages = await readZipPages(zip);
-    if (!pages) {
-      notes.push(`${zip}'s rentals could not be read`);
+    const read = await readZipPages(zip);
+    if (!read.ok) {
+      notes.push(`${zip}: ${read.detail}`);
     } else {
+      const { pages } = read;
       const url = pageInZip(pages, place.address);
       if (url) {
         remember(url);

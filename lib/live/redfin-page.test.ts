@@ -30,8 +30,14 @@ vi.mock("@/lib/db/market-store", () => ({
 }));
 
 /** A ZIP's rows as lib/live/zip-pages hands them back. */
-function zipPages(rows: { address: string; sourceUrl: string }[], complete = true): ZipPages {
-  return { zip: "33604", index: indexBySite(rows), rows: rows.length, pages: 1, complete, from: "site" };
+function zipPages(
+  rows: { address: string; sourceUrl: string }[],
+  complete = true
+): { ok: true; pages: ZipPages } {
+  return {
+    ok: true,
+    pages: { zip: "33604", index: indexBySite(rows), rows: rows.length, pages: 1, complete, from: "site" },
+  };
 }
 
 const PAYLOAD = {
@@ -142,7 +148,7 @@ describe("resolving a page from an address", () => {
     vi.stubEnv("SCRAPERAPI_KEY", "k");
     stored.mockResolvedValue(null);
     remember.mockResolvedValue(undefined as never);
-    zipSearch.mockResolvedValue(null);
+    zipSearch.mockResolvedValue({ ok: false, detail: "rentals: http 500: Failed to scrape" });
     zipAt.mockResolvedValue(null);
   });
   afterEach(() => {
@@ -284,5 +290,24 @@ describe("resolving a page from an address", () => {
     expect(r.answered).toBe(true);
     expect(r.detail).toMatch(/remembered/);
     expect(lookup).not.toHaveBeenCalled();
+  });
+});
+
+describe("what a failed ZIP read leaves in the answer", () => {
+  it("names the ZIP and what the site said, before the lookup's own verdict", async () => {
+    vi.stubEnv("SCRAPERAPI_KEY", "k");
+    vi.mocked(readKeyedBlob).mockResolvedValue(null);
+    vi.mocked(readZipPages).mockResolvedValue({ ok: false, detail: "rentals: quota 429: too many" });
+    vi.mocked(fetchAutocomplete).mockResolvedValue({
+      attempt: { tier: "premium", status: 408, text: "no answer in 50s" },
+      body: null,
+      tried: ["premium"],
+    });
+    const r = await resolveListingPage({ ...TAMPA, zip: "33604" });
+    expect(r.answered).toBe(false);
+    expect(r.detail).toBe(
+      "33604: rentals: quota 429: too many; lookup did not answer (no answer in 50s on premium)"
+    );
+    vi.unstubAllEnvs();
   });
 });

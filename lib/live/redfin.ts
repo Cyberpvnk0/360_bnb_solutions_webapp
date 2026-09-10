@@ -81,12 +81,17 @@ export function nextPageUrls(body: unknown): string[] {
 }
 
 /**
- * The site's rentals search for one ZIP. No id to resolve: the ZIP is
- * the path. The fast way from an address to its page — a ZIP is a few
- * pages where a city is dozens — see lib/live/zip-pages.
+ * The site's rentals search for one ZIP, in the two shapes the site
+ * writes it: the path the city search uses, then the older slug. No id
+ * to resolve — the ZIP is the path. The fast way from an address to
+ * its page: a ZIP is a few pages where a city is dozens. See
+ * lib/live/zip-pages, which tries them in order.
  */
-export function zipRentalsUrl(zip: string): string {
-  return `https://www.redfin.com/zipcode/${zip}/rentals`;
+export function zipRentalsUrls(zip: string): string[] {
+  return [
+    `https://www.redfin.com/zipcode/${zip}/rentals`,
+    `https://www.redfin.com/zipcode/${zip}/apartments-for-rent`,
+  ];
 }
 
 /**
@@ -768,6 +773,7 @@ export async function fetchRedfinSearchRows(
   let parsed = true;
   let pages = 0;
   const failed: string[] = [];
+  let retriedOpening = false;
 
   const absorbPage = (page: Awaited<ReturnType<typeof fetchPage>>) => {
     pages += 1;
@@ -795,7 +801,18 @@ export async function fetchRedfinSearchRows(
     // A later page lost to a throttle costs its rows, not the pass:
     // all-or-nothing here is how one 429 turned into "no houses".
     if (pages === 0 && settled.every((r) => r.status === "rejected")) {
-      throw (settled[0] as PromiseRejectedResult).reason;
+      const why = (settled[0] as PromiseRejectedResult).reason;
+      // A throttle on the opening page is the vendor counting requests
+      // in flight across the whole fleet — lookups still retrying on
+      // another instance, say — not a verdict on this search. One
+      // patient retry, as the later pages already get.
+      if (why instanceof RedfinError && why.reason === "quota" && !retriedOpening) {
+        retriedOpening = true;
+        await new Promise((r) => setTimeout(r, 2_500));
+        queue = [...wave, ...queue];
+        continue;
+      }
+      throw why;
     }
     settled.forEach((result, i) => {
       if (result.status === "rejected") failed.push(wave[i]);
