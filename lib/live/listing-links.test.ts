@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  addressSearchHref,
   findingHref,
   hasOwnListingPage,
   pageQuery,
+  photoSources,
   photosHref,
   photosLink,
   searchTerms,
+  siteSearchHref,
   usableListingPage,
   webLookupHref,
+  zillowHref,
 } from "./listing-links";
 
 const TAMPA = { address: "1234 Palm Ave", city: "Tampa", stateCode: "FL" };
@@ -30,14 +34,14 @@ describe("the listing's own page comes first", () => {
 
   it("refuses a source URL that is not https on the listing site", () => {
     // Read off a vendor payload, so not a navigation target to take on
-    // trust. Anything odd falls through to the address search.
+    // trust. Anything odd falls through to the finder.
     for (const bad of [
       "http://www.redfin.com/x",
       "https://evil.example/redfin.com",
       "javascript:alert(1)",
       "not a url",
     ]) {
-      expect(photosLink({ ...TAMPA, sourceUrl: bad })?.kind).toBe("search");
+      expect(photosLink({ ...TAMPA, sourceUrl: bad })?.kind).toBe("finding");
     }
   });
 
@@ -47,23 +51,77 @@ describe("the listing's own page comes first", () => {
     );
     expect(
       photosLink({ ...TAMPA, sourceUrl: "https://notredfin.com/a" })?.kind
-    ).toBe("search");
+    ).toBe("finding");
   });
 });
 
-describe("the fallback search, when there is no page URL", () => {
+describe("the five destinations, in order", () => {
+  it("lists Redfin, Zillow, Realtor.com, Homes.com and Google, in that order", () => {
+    const ids = photoSources({ ...TAMPA, zip: "33602" }).map((s) => `${s.id}:${s.kind}`);
+    expect(ids).toEqual([
+      "redfin:finding",
+      "zillow:search",
+      "realtor:search",
+      "homes:search",
+      "google:search",
+    ]);
+    // With the row's own page, the first is the listing itself.
+    const own = "https://www.redfin.com/FL/Tampa/1234-Palm-Ave-33602/home/123";
+    const [first] = photoSources({ ...TAMPA, sourceUrl: own });
+    expect(first).toEqual({ id: "redfin", label: "Redfin", href: own, kind: "listing" });
+    // The button opens the first; the labels are the sites' names.
+    expect(photosLink(TAMPA)?.kind).toBe("finding");
+    expect(photoSources(TAMPA).map((s) => s.label)).toEqual([
+      "Redfin",
+      "Zillow",
+      "Realtor.com",
+      "Homes.com",
+      "Google",
+    ]);
+  });
+
+  it("writes Zillow's address page the way their own search does", () => {
+    expect(zillowHref(TAMPA)).toBe("https://www.zillow.com/homes/1234-Palm-Ave-Tampa-FL_rb/");
+    expect(zillowHref({ ...TAMPA, zip: "33602" })).toBe(
+      "https://www.zillow.com/homes/1234-Palm-Ave-Tampa-FL-33602_rb/"
+    );
+    // A flat: "APT", the way their pages spell it, and never a "#".
+    const flat = zillowHref({ ...TAMPA, address: "88 W Main St #4B" })!;
+    expect(flat).toBe("https://www.zillow.com/homes/88-W-Main-St-APT-4B-Tampa-FL_rb/");
+    expect(zillowHref({ ...TAMPA, address: "12 O'Brien St. N.W.", city: "St. Petersburg" })).toBe(
+      "https://www.zillow.com/homes/12-O-Brien-St-N-W-St-Petersburg-FL_rb/"
+    );
+    expect(zillowHref({ ...TAMPA, city: "" })).toBeNull();
+  });
+
+  it("searches Realtor.com and Homes.com for the property, each on its own", () => {
+    const realtor = queryOf(siteSearchHref({ ...TAMPA, address: "1804 East Sitka Street" }, "realtor.com")!);
+    expect(realtor).toBe('"1804" "Sitka" Tampa FL site:realtor.com');
+    const homes = queryOf(siteSearchHref(TAMPA, "homes.com")!);
+    expect(homes).toBe('"1234" "Palm" Tampa FL site:homes.com');
+    expect(siteSearchHref({ ...TAMPA, city: "" }, "homes.com")).toBeNull();
+  });
+
+  it("googles the full address, as written, last", () => {
+    expect(queryOf(addressSearchHref({ ...TAMPA, zip: "33602" })!)).toBe("1234 Palm Ave, Tampa, FL 33602");
+    expect(queryOf(addressSearchHref(TAMPA)!)).toBe("1234 Palm Ave, Tampa, FL");
+    const last = photoSources({ ...TAMPA, zip: "33602" }).at(-1)!;
+    expect(last.id).toBe("google");
+    expect(queryOf(last.href)).not.toContain("site:");
+  });
+});
+
+describe("the searches, when there is no page URL", () => {
   it("quotes the house number and the street's name, and nothing with two spellings", () => {
     // The geocoder writes "1804 East Sitka Street"; the portal's page
     // says "1804 E Sitka St". Quoting the whole line matched neither
     // and the engine answered "no documents" for a listing that was
     // there. The number and the name are spelled one way everywhere.
-    const q = queryOf(photosHref({ ...TAMPA, address: "1804 East Sitka Street" })!);
+    const q = queryOf(siteSearchHref({ ...TAMPA, address: "1804 East Sitka Street" }, "realtor.com")!);
     expect(q.startsWith('"1804" "Sitka"')).toBe(true);
     expect(q).not.toContain('"1804 East Sitka Street"');
     expect(q).toContain("Tampa");
     expect(q).toContain("FL");
-    expect(q).toContain("site:redfin.com");
-    expect(q).toContain("site:realtor.com");
   });
 
   it("finds the name past a directional and before the suffix", () => {
@@ -81,50 +139,29 @@ describe("the fallback search, when there is no page URL", () => {
 
   it("quotes a line with no number whole, since nothing else holds it", () => {
     expect(searchTerms("Palm Ave")).toEqual({ number: null, name: "Palm" });
-    expect(queryOf(photosHref({ ...TAMPA, address: "The Palms" })!)).toContain('"The Palms"');
+    expect(queryOf(siteSearchHref({ ...TAMPA, address: "The Palms" }, "realtor.com")!)).toContain('"The Palms"');
   });
 
-  it("scopes the search rather than turning an address loose on the web", () => {
-    // A bare address search returns lead-generation pages that exist to
-    // harvest a phone number, not the listing.
-    const url = new URL(photosHref(TAMPA)!);
-    expect(url.hostname).toBe("www.google.com");
-    expect(queryOf(url.toString())).toContain("(site:redfin.com OR site:realtor.com)");
-  });
-
-  it("never sends anybody to Zillow", () => {
-    // Their address search resolves often enough to look like it works
-    // and misses often enough to be untrustworthy, which is the worst
-    // of both: nobody learns to check it.
-    for (const place of [
-      TAMPA,
-      { ...TAMPA, sourceUrl: "https://evil.example/redfin.com" },
-      { ...TAMPA, address: "88 W Main St #4B" },
-    ]) {
-      expect(photosHref(place)).not.toContain("zillow");
-    }
-  });
-
-  it("drops a unit marker rather than letting it start a fragment", () => {
+  it("never lets a unit marker start a fragment, on any destination", () => {
     // "#4B" starts a fragment in a browser, which would truncate the
-    // query to everything before the unit.
-    const href = photosHref({ ...TAMPA, address: "88 W Main St #4B" })!;
-    expect(href).not.toContain("#");
-    expect(queryOf(href)).toContain('"88" "Main"');
+    // link to everything before the unit.
+    for (const source of photoSources({ ...TAMPA, address: "88 W Main St #4B" })) {
+      expect(source.href).not.toContain("#");
+    }
+    expect(queryOf(siteSearchHref({ ...TAMPA, address: "88 W Main St #4B" }, "homes.com")!)).toContain('"88" "Main"');
   });
 
   it("keeps the punctuation a real address carries", () => {
-    const href = photosHref({
-      address: "12 O'Brien St. N.W.",
-      city: "St. Petersburg",
-      stateCode: "FL",
-    })!;
+    const href = siteSearchHref(
+      { address: "12 O'Brien St. N.W.", city: "St. Petersburg", stateCode: "FL" },
+      "realtor.com"
+    )!;
     expect(queryOf(href)).toContain(`"12" "O'Brien" St. Petersburg FL`);
   });
 
   it("collapses runs of whitespace instead of emitting empty segments", () => {
-    expect(photosHref({ ...TAMPA, address: "1234   Palm    Ave" })).toBe(
-      photosHref(TAMPA)
+    expect(photoSources({ ...TAMPA, address: "1234   Palm    Ave" }).map((s) => s.href)).toEqual(
+      photoSources(TAMPA).map((s) => s.href)
     );
   });
 
@@ -134,6 +171,7 @@ describe("the fallback search, when there is no page URL", () => {
     expect(photosLink({ ...TAMPA, city: "" })).toBeNull();
     expect(photosLink({ ...TAMPA, address: "" })).toBeNull();
     expect(photosLink({ ...TAMPA, address: "  " })).toBeNull();
+    expect(photoSources({ ...TAMPA, city: "" })).toEqual([]);
   });
 
   it("survives an address made entirely of punctuation", () => {

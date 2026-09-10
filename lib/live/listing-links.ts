@@ -11,48 +11,31 @@
  * A link is not a copy. It is what a search engine does, it never goes
  * stale, and it puts the traffic back where the photos came from.
  *
- * TWO DESTINATIONS, IN ORDER:
+ * FIVE DESTINATIONS, IN ORDER. The button opens the first; the menu
+ * beside it offers the rest in this order, and the finder page lists
+ * them while it looks.
  *
- *   1. The listing's OWN page on Redfin. That is the exact property, on
- *      the site that published it, one click away. Nothing beats it,
- *      and lib/live/listing-join exists to make this the case for as
- *      many rows as possible rather than only the ones that arrived
- *      with a URL attached.
+ *   1. Redfin — the listing's OWN page: the exact property, on the site
+ *      that published it. When the row arrived without its URL, the
+ *      finder page (/go/listing) asks the site for it by address
+ *      (lib/live/redfin-page) and lands on it when the answer comes.
  *
- *   2. A web search for the address, scoped to those two sites.
+ *   2. Zillow — its address page: zillow.com/homes/<address>_rb/, the
+ *      one portal URL that takes a street address. It lands on the
+ *      property for nearly every US address, including ones no longer
+ *      listed; when it does not, it shows the area, and the reader is
+ *      one menu click from the next.
  *
- * And a way from two to one: on a surface that shows a single property
- * (the analyzer, the detail panel), a row without a page asks the
- * portal for it by address — lib/live/redfin-page, through
- * app/api/listing-page — and the link becomes the listing when the
- * answer lands. See components/deals/photos-link.
+ *   3. Realtor.com and 4. Homes.com — a search of that site for the
+ *      address. Neither exposes a URL that takes an address: they key a
+ *      property by an internal id, and a guessed URL does not 404 but
+ *      silently degrades into the market's page. A quoted, site-scoped
+ *      search is correct by construction — the engine holds the
+ *      address-to-URL index the portals decline to expose, and the
+ *      result titles show the reader whether it found the right place.
  *
- * WHY SLOT TWO IS A SEARCH ENGINE AND NOT A PORTAL URL.
- *
- * Both portals key a property by an internal id — Redfin by a city id
- * and a home id, Realtor by an `M…` property id — and neither exposes a
- * URL that takes a street address and resolves it. A guessed one does
- * not 404, which would at least be honest; it silently degrades into
- * that market's for-rent page. Twenty properties clicked in Jacksonville
- * landed on the same Jacksonville page, which is the exact failure this
- * module's header has warned about since the Zillow removal: a link that
- * goes somewhere plausible and is not this property.
- *
- * A quoted-address, site-scoped search is correct by construction rather
- * than by guess. The engine holds the address-to-URL index the portals
- * decline to expose, the query is built from facts we hold, and there is
- * no id to be wrong about. It costs one extra click, and it shows the
- * reader the address in the result titles so they can see whether it
- * found the right place — which is the property a guessed URL lacks.
- * Redfin is named first in the query and Realtor is the fallback within
- * it, so the ranking follows the same order this module already states.
- *
- * NO ZILLOW. It used to hold slot two, on the reasoning that it was the
- * only portal addressable by address alone. That was true and beside the
- * point: their address search resolves to the property often enough to
- * look like it works and misses often enough to be untrustworthy, and a
- * link that is usually right is worse than one that is either right or
- * absent, because nobody learns to check it.
+ *   5. Google — the full address, unscoped. Every other place the
+ *      property is advertised.
  */
 
 export interface Addressed {
@@ -119,13 +102,18 @@ function parts(
   return { street, city, state };
 }
 
+/** The ZIP, when the place carries a real one. */
+function zipOf(place: Addressed): string | null {
+  return place.zip && /^\d{5}$/.test(place.zip) ? place.zip : null;
+}
+
 /**
  * A source URL we will actually send somebody to.
  *
  * Only ever https, and only ever to the listing site itself: this
  * string was read off a vendor payload, and a payload is not a place to
  * take a navigation target from on trust. Anything else falls through
- * to the address search.
+ * to the finder and the portals behind it.
  *
  * Exported for the two places a listing's page crosses a trust
  * boundary on its way to the analyzer: going INTO the analyze link, and
@@ -147,21 +135,13 @@ export function usableListingPage(url: string | undefined): string | null {
 
 /**
  * Whether the row carries its own page at the source — the one place
- * the lister's details are certain to be. The search that stands in
- * otherwise finds the property rather than opening it, so copy that
+ * the lister's details are certain to be. The finder that stands in
+ * otherwise looks for the property rather than opening it, so copy that
  * promises the lister must check this first.
  */
 export function hasOwnListingPage(place: Addressed): boolean {
   return usableListingPage(place.sourceUrl) !== null;
 }
-
-/**
- * The sites a fallback search is allowed to find, in preference order.
- * Redfin is the product's source of record; Realtor covers what Redfin
- * does not carry. Nothing else — a general web search for an address
- * returns lead-generation pages that exist to harvest a phone number.
- */
-const SEARCH_SITES = ["redfin.com", "realtor.com"] as const;
 
 /**
  * The words of a street line that have more than one spelling, and so
@@ -210,43 +190,66 @@ export function searchTerms(street: string): { number: string | null; name: stri
 }
 
 /**
- * A search that finds this exact property on one of those two sites.
- *
- * QUOTE THE TWO WORDS THAT HAVE ONE SPELLING, AND NOTHING ELSE. An
- * earlier cut quoted the whole street line, and the line it was handed
- * came from a geocoder that writes "1804 East Sitka Street" while the
- * portal's page says "1804 E Sitka St": an exact-phrase search for the
- * one cannot match the other, and the engine answered that no page on
- * either site matched — for a listing that was there. The house number
- * and the street's own name are written the same way everywhere, so
- * they go in quoted and pin the result to this property; the rest of
- * the line (the directional, the suffix, the unit) is what has two
- * spellings, so it stays out. The site filter keeps the results to
- * pages that actually hold the listing and its photos.
- *
- * A line with no number — a named building — is quoted whole, since
- * there is nothing else to hold it to.
+ * The two words that pin a search to this property, quoted, and
+ * nothing else. An earlier cut quoted the whole street line, and the
+ * line it was handed came from a geocoder that writes "1804 East Sitka
+ * Street" while the portal's page says "1804 E Sitka St": an
+ * exact-phrase search for the one cannot match the other, and the
+ * engine answered that nothing matched — for a listing that was there.
+ * The house number and the street's own name are written the same way
+ * everywhere; the directional, the suffix and the unit are not, so
+ * they stay out. A line with no number — a named building — is quoted
+ * whole, since there is nothing else to hold it to.
  */
-export function listingSearchHref(place: Addressed): string | null {
-  const p = parts(place);
-  if (!p) return null;
+function pin(street: string): string {
+  const { number, name } = searchTerms(street);
+  return number && name ? `"${number}" "${name}"` : `"${street}"`;
+}
 
-  const { number, name } = searchTerms(p.street);
-  const pin =
-    number && name
-      ? `"${number}" "${name}"`
-      : `"${p.street}"`;
-  const sites = SEARCH_SITES.map((s) => `site:${s}`).join(" OR ");
-  const query = `${pin} ${p.city} ${p.state} (${sites})`.trim();
-  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+function googleHref(query: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(query.trim())}`;
 }
 
 /**
- * The finder page for an address whose listing page is still being
- * looked up: /go/listing opens at once, asks the listing site, and
- * lands on the listing when the answer comes — or on the search when
- * there is no page. A click during the lookup lands where the link
- * would have, rather than on a search because it came early.
+ * The property's address page on Zillow: the words of the address, the
+ * town, the state and the ZIP, joined with dashes, the way their own
+ * search writes it. A unit marked "#4B" is written "APT 4B", which is
+ * how their pages spell a flat; a "#" would start a fragment anyway.
+ */
+export function zillowHref(place: Addressed): string | null {
+  const p = parts(place);
+  if (!p) return null;
+  const street = (place.address ?? "").replace(/#\s*([\p{L}\p{N}-]+)/gu, "APT $1");
+  const words = [street, p.city, p.state, zipOf(place) ?? ""]
+    .join(" ")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length < 3) return null;
+  return `https://www.zillow.com/homes/${words.join("-")}_rb/`;
+}
+
+/** A search of one listing site for this exact property. */
+export function siteSearchHref(place: Addressed, site: "realtor.com" | "homes.com"): string | null {
+  const p = parts(place);
+  if (!p) return null;
+  return googleHref(`${pin(p.street)} ${p.city} ${p.state} site:${site}`);
+}
+
+/** A search of the whole web for the full address, as written. */
+export function addressSearchHref(place: Addressed): string | null {
+  const p = parts(place);
+  if (!p) return null;
+  const zip = zipOf(place);
+  return googleHref(`${p.street}, ${p.city}, ${p.state}${zip ? ` ${zip}` : ""}`);
+}
+
+/**
+ * The finder page for an address whose listing page is not in hand:
+ * /go/listing opens at once, asks the listing site, and lands on the
+ * listing when the answer comes — or on the next destination in order
+ * when there is no page. A click during the lookup lands where the
+ * link would have, rather than somewhere else because it came early.
  */
 export function findingHref(place: Addressed): string | null {
   const p = parts(place);
@@ -264,18 +267,15 @@ export function findingHref(place: Addressed): string | null {
  * A web search for the property's rental, for a panel that could get
  * no contact off a listing page: not among the listing site's rentals,
  * or a page that could not be read, or one that publishes none. Not
- * scoped to the two sites — the point is every other place the rental
- * is advertised, where the number usually is — and biased to rental
+ * scoped to a site — the point is every other place the rental is
+ * advertised, where the number usually is — and biased to rental
  * pages by the phrase. The reader was going to search anyway; this
  * types it for them.
  */
 export function webLookupHref(place: Addressed): string | null {
   const p = parts(place);
   if (!p) return null;
-  const { number, name } = searchTerms(p.street);
-  const pin = number && name ? `"${number}" "${name}"` : `"${p.street}"`;
-  const query = `${pin} ${p.city} ${p.state} for rent`.trim();
-  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  return googleHref(`${pin(p.street)} ${p.city} ${p.state} for rent`);
 }
 
 /** Which destination a link goes to, so the label can say so. A
@@ -284,26 +284,57 @@ export function webLookupHref(place: Addressed): string | null {
  *  is the listing, by way of the finder page. */
 export type PhotosLinkKind = "listing" | "search" | "finding";
 
+export type PhotoSourceId = "redfin" | "zillow" | "realtor" | "homes" | "google";
+
+export interface PhotoSource {
+  id: PhotoSourceId;
+  /** The name on the menu. */
+  label: string;
+  href: string;
+  kind: PhotosLinkKind;
+}
+
 export interface PhotosDestination {
   href: string;
   kind: PhotosLinkKind;
 }
 
 /**
- * Where to see this property's photos, and whether that is the listing
- * itself or a search for it. Null when we have too little of an address
- * to send anyone anywhere.
- *
- * Null is a real answer and callers must render nothing for it: a
- * search for half an address returns other people's houses, which looks
- * like a bug and wastes a click.
+ * Where to see this property's photos: every destination we can build,
+ * in the order of preference the module header sets out. Empty when we
+ * have too little of an address to send anyone anywhere — and empty is
+ * a real answer that callers must render nothing for: a search for half
+ * an address returns other people's houses, which looks like a bug and
+ * wastes a click.
+ */
+export function photoSources(place: Addressed): PhotoSource[] {
+  const out: PhotoSource[] = [];
+  const own = usableListingPage(place.sourceUrl);
+  if (own) {
+    out.push({ id: "redfin", label: "Redfin", href: own, kind: "listing" });
+  } else {
+    const finding = findingHref(place);
+    if (finding) out.push({ id: "redfin", label: "Redfin", href: finding, kind: "finding" });
+  }
+  const zillow = zillowHref(place);
+  if (zillow) out.push({ id: "zillow", label: "Zillow", href: zillow, kind: "search" });
+  const realtor = siteSearchHref(place, "realtor.com");
+  if (realtor) out.push({ id: "realtor", label: "Realtor.com", href: realtor, kind: "search" });
+  const homes = siteSearchHref(place, "homes.com");
+  if (homes) out.push({ id: "homes", label: "Homes.com", href: homes, kind: "search" });
+  const google = addressSearchHref(place);
+  if (google) out.push({ id: "google", label: "Google", href: google, kind: "search" });
+  return out;
+}
+
+/**
+ * Where a "View photos" click goes: the first of the destinations —
+ * the listing itself when the row carries it, the finder that looks
+ * for it otherwise. Null when there is nowhere to send anyone.
  */
 export function photosLink(place: Addressed): PhotosDestination | null {
-  const own = usableListingPage(place.sourceUrl);
-  if (own) return { href: own, kind: "listing" };
-
-  const search = listingSearchHref(place);
-  return search ? { href: search, kind: "search" } : null;
+  const [first] = photoSources(place);
+  return first ? { href: first.href, kind: first.kind } : null;
 }
 
 /** The href alone, for callers that don't render a label. */
