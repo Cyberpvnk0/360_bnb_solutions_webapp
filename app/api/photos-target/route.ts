@@ -6,7 +6,8 @@
  * The finder page (/go/listing) asks this and goes where it says:
  * the listing's own page when the fast places have it, Zillow's page
  * for the home when Zillow says it has one, its address page when
- * Zillow could not be asked, a search of Realtor when Zillow said no.
+ * Zillow could not be asked, pictures of the address on Google when
+ * Zillow said no.
  * See lib/live/photos-target. Bounded to a few seconds, and never a
  * billed lookup beyond the ZIP's rentals the contact path reads too.
  */

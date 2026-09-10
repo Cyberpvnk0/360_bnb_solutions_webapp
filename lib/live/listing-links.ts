@@ -34,8 +34,9 @@
  *      portal declines to expose, and the result titles show the reader
  *      whether it found the right place.
  *
- *   4. Google — the full address, unscoped. Every other place the
- *      property is advertised.
+ *   4. Google Images — pictures of the full address, as written. The
+ *      last resort, and the one that shows the house rather than a page
+ *      of links about it.
  */
 
 export interface Addressed {
@@ -242,12 +243,13 @@ export function siteSearchHref(place: Addressed, site: "realtor.com"): string | 
   return googleHref(`${pin(p.street)} ${p.city} ${p.state} site:${site}`);
 }
 
-/** A search of the whole web for the full address, as written. */
+/** Google's image search for the full address, as written. */
 export function addressSearchHref(place: Addressed): string | null {
   const p = parts(place);
   if (!p) return null;
   const zip = zipOf(place);
-  return googleHref(`${p.street}, ${p.city}, ${p.state}${zip ? ` ${zip}` : ""}`);
+  const query = `${p.street}, ${p.city}, ${p.state}${zip ? ` ${zip}` : ""}`;
+  return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`;
 }
 
 /**
@@ -327,7 +329,7 @@ export function photoSources(place: Addressed): PhotoSource[] {
   const realtor = siteSearchHref(place, "realtor.com");
   if (realtor) out.push({ id: "realtor", label: "Realtor", href: realtor, kind: "search" });
   const google = addressSearchHref(place);
-  if (google) out.push({ id: "google", label: "Google", href: google, kind: "search" });
+  if (google) out.push({ id: "google", label: "Google Images", href: google, kind: "search" });
   return out;
 }
 

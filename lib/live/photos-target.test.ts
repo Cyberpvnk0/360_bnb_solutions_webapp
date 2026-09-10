@@ -32,11 +32,13 @@ describe("where a View photos click lands", () => {
     expect(await photosTarget(TAMPA)).toMatchObject({ href: HOME, source: "zillow", verified: true });
   });
 
-  it("then a search of Realtor, when Zillow said it has no such home", async () => {
+  it("then pictures of the address on Google, when Zillow said it has no such home", async () => {
     zillow.mockResolvedValue({ kind: "none", detail: "redirected to a search (302)" });
     const out = await photosTarget(TAMPA);
-    expect(out).toMatchObject({ source: "realtor", verified: false });
-    expect(new URL(out!.href).searchParams.get("q")).toContain("site:realtor.com");
+    expect(out).toMatchObject({ source: "google", verified: false });
+    const url = new URL(out!.href);
+    expect(url.searchParams.get("tbm")).toBe("isch");
+    expect(url.searchParams.get("q")).toBe("1107 W Arch St Apt A, Tampa, FL 33607");
   });
 
   it("opens Zillow's address page when Zillow could not be asked", async () => {

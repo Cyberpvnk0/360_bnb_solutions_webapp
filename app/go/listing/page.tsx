@@ -9,10 +9,11 @@
  * A row can arrive with no listing page. This opens at once, asks
  * app/api/photos-target where the click should land — the listing's
  * own page when it can be had in a few seconds, Zillow's page for the
- * home when Zillow says it has one, its address page otherwise, a
- * search of Realtor when Zillow said no — and replaces itself with the
- * answer. Every destination is on the page too, for anyone who would
- * rather not wait the few seconds. See lib/live/photos-target.
+ * home when Zillow says it has one, its address page otherwise, and
+ * pictures of the address on Google when Zillow said no — and replaces
+ * itself with the answer. Every destination is on the page too, for
+ * anyone who would rather not wait the few seconds. See
+ * lib/live/photos-target.
  *
  * A bare page, outside the shell: it exists for a few seconds and then
  * goes away.
@@ -75,7 +76,7 @@ function Finder() {
         if (res.ok && body?.ok && typeof body.href === "string" && /^https:\/\//.test(body.href)) {
           href = body.href;
           label =
-            body.source === "redfin" ? "Redfin" : body.source === "realtor" ? "Realtor" : "Zillow";
+            body.source === "redfin" ? "Redfin" : body.source === "google" ? "Google Images" : "Zillow";
         }
       } catch {
         // No answer: the next destination in order is where the click

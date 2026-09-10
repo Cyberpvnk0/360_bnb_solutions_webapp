@@ -65,7 +65,7 @@ describe("the four destinations, in order", () => {
     expect(first).toEqual({ id: "redfin", label: "Redfin", href: own, kind: "listing" });
     // The button opens the first; the labels are the sites' names.
     expect(photosLink(TAMPA)?.kind).toBe("finding");
-    expect(photoSources(TAMPA).map((s) => s.label)).toEqual(["Redfin", "Zillow", "Realtor", "Google"]);
+    expect(photoSources(TAMPA).map((s) => s.label)).toEqual(["Redfin", "Zillow", "Realtor", "Google Images"]);
   });
 
   it("writes Zillow's address page the way their own search does", () => {
@@ -88,8 +88,10 @@ describe("the four destinations, in order", () => {
     expect(siteSearchHref({ ...TAMPA, city: "" }, "realtor.com")).toBeNull();
   });
 
-  it("googles the full address, as written, last", () => {
-    expect(queryOf(addressSearchHref({ ...TAMPA, zip: "33602" })!)).toBe("1234 Palm Ave, Tampa, FL 33602");
+  it("searches Google Images for the full address, as written, last", () => {
+    const href = addressSearchHref({ ...TAMPA, zip: "33602" })!;
+    expect(queryOf(href)).toBe("1234 Palm Ave, Tampa, FL 33602");
+    expect(new URL(href).searchParams.get("tbm")).toBe("isch");
     expect(queryOf(addressSearchHref(TAMPA)!)).toBe("1234 Palm Ave, Tampa, FL");
     const last = photoSources({ ...TAMPA, zip: "33602" }).at(-1)!;
     expect(last.id).toBe("google");

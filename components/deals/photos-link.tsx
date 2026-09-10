@@ -12,7 +12,7 @@
  * destination lib/live/listing-links can build — the listing's own
  * page when the row carries it, the finder that looks for it
  * otherwise — and the small caret beside it opens the rest in the same
- * order: Zillow, Realtor, then the address on Google.
+ * order: Zillow, Realtor, then pictures of the address on Google.
  * The label says "View photos" whichever it opens, because the button
  * is named for what the reader is after rather than for our plumbing;
  * the hover title says which it is.
@@ -75,7 +75,7 @@ function hint(source: PhotoSource): string {
     case "zillow":
       return "address page";
     case "google":
-      return "the address";
+      return "pictures of the address";
     default:
       return "search";
   }
