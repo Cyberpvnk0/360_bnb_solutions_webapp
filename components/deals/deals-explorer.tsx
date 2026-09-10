@@ -36,6 +36,7 @@ import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/cs
 import { fmtNum } from "@/lib/format";
 import { estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
+import { COURSE_MARKET_SLUGS } from "@/lib/mock/course-markets";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 import { Button } from "@/components/ui/button";
 import {
@@ -88,17 +89,6 @@ const PAGE_SIZE = 24;
  * browser to deprioritise the very thing the student is waiting on.
  */
 const EAGER_IMAGES = 6;
-
-/** One-tap starts on the opening screen — the markets a coaching
- *  student is most likely hunting first. */
-const STARTER_MARKETS = [
-  "jacksonville",
-  "tampa",
-  "austin",
-  "nashville",
-  "phoenix",
-  "charlotte",
-];
 
 type SortKey = "spread" | "potential" | "newest" | "rent-asc" | "rent-desc";
 
@@ -244,6 +234,15 @@ export function DealsExplorer({
   /** null = every listing; a list id = only that list's saved rentals. */
   const [listFilter, setListFilter] = React.useState<string | null>(initialList);
   const { ready, lists, openUpgrade, creditLimit, tier, recordExport } = useSession();
+  // One-tap starts on the opening screen: every market the course
+  // teaches, by name, so a student begins from their own list rather
+  // than from six we picked for them.
+  const starters = React.useMemo(() => {
+    const bySlug = new Map(markets.map((m) => [m.slug, m]));
+    return COURSE_MARKET_SLUGS.map((slug) => bySlug.get(slug))
+      .filter((m): m is Market => m !== undefined)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.stateCode.localeCompare(b.stateCode));
+  }, [markets]);
   const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -1106,7 +1105,7 @@ export function DealsExplorer({
         >
           {idle ? (
             /* The opening invitation — a portal asks where before what. */
-            <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="flex min-h-[60vh] shrink-0 flex-col items-center justify-center px-6 py-10 text-center">
               <span
                 aria-hidden
                 className="flex size-11 items-center justify-center rounded-full border border-border bg-secondary/60 text-gold"
@@ -1121,29 +1120,18 @@ export function DealsExplorer({
                 now, each one scored against what short-term rentals actually
                 earn in that market.
               </p>
-              <div className="mt-5 flex flex-wrap justify-center gap-1.5">
-                {STARTER_MARKETS.map((slug) => {
-                  const m = markets.find((x) => x.slug === slug);
-                  if (!m) return null;
-                  return (
-                    <button
-                      key={slug}
-                      type="button"
-                      onClick={() =>
-                        applyLocationQuery(`${m.name}, ${m.stateCode}`)
-                      }
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-select/40 hover:bg-select/5 hover:text-foreground"
-                    >
-                      {m.name}, {m.stateCode}
-                    </button>
-                  );
-                })}
+              <div className="mt-5 flex max-w-2xl flex-wrap justify-center gap-1.5">
+                {starters.map((m) => (
+                  <button
+                    key={m.slug}
+                    type="button"
+                    onClick={() => applyLocationQuery(`${m.name}, ${m.stateCode}`)}
+                    className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-select/40 hover:bg-select/5 hover:text-foreground"
+                  >
+                    {m.name}, {m.stateCode}
+                  </button>
+                ))}
               </div>
-              {lists.some((l) => l.listings.length > 0) ? (
-                <p className="mt-6 text-xs text-muted-foreground">
-                  Or open a saved list from the toolbar above.
-                </p>
-              ) : null}
             </div>
           ) : redfinChecking ? (
             /* The long wait, named: the market's listings are being
