@@ -21,7 +21,19 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-export function AddToListMenu({ listing }: { listing: RentalListing }) {
+export function AddToListMenu({
+  listing,
+  size = "sm",
+  variant = "default",
+}: {
+  listing: RentalListing;
+  /** The card's small button, or the result header's full-height one. */
+  size?: "sm" | "default";
+  /** How the unsaved state reads: filled on a card, where it is the
+   *  card's move; outlined beside a page's own main action. Saved is
+   *  always the gold outline. */
+  variant?: "default" | "outline";
+}) {
   const { lists, createList, toggleListMembership, listsWithListing, ready } =
     useSession();
   const [open, setOpen] = React.useState(false);
@@ -42,8 +54,8 @@ export function AddToListMenu({ listing }: { listing: RentalListing }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant={saved ? "outline" : "default"}
-          size="sm"
+          variant={saved ? "outline" : variant}
+          size={size}
           disabled={!ready}
           className={saved ? "border-gold/50 text-gold" : undefined}
         >

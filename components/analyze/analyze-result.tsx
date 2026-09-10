@@ -28,6 +28,7 @@ import { dealGrade, GRADE_TEXT } from "@/lib/calc/grade";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
 import { streetLine } from "@/lib/live/address";
+import { listingForAnalysis } from "@/lib/live/analysis-listing";
 import { TIERS, type TierId } from "@/config/app";
 import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
@@ -42,6 +43,7 @@ import { SizeControl } from "./size-control";
 import { CompsExplorer } from "./comps-explorer";
 import { LtrCompsTable } from "./comps-tables";
 import { CurbShot } from "./property-thumb";
+import { AddToListMenu } from "@/components/deals/add-to-list-menu";
 import { PhotosLink } from "@/components/deals/photos-link";
 import { RevenueRange } from "./revenue-range";
 import { cn } from "@/lib/utils";
@@ -96,9 +98,16 @@ export function AnalyzeResult({
   liveComps = false,
   searchedAddress = null,
   quota = null,
+  listingId = null,
 }: {
   analysis: Analysis;
   marketCenter: { lat: number; lon: number } | null;
+  /**
+   * The Deal Finder listing this analysis was opened from, when the
+   * URL carried its id — so "Add to list" here files the row the card
+   * would have, and the two surfaces agree on what is saved.
+   */
+  listingId?: string | null;
   /**
    * The PROPERTY's own coordinates, when they are known.
    *
@@ -216,6 +225,18 @@ export function AnalyzeResult({
   );
 
   const saved = isAnalysisSaved(analysis.id);
+  // The row "Add to list" files: the property at its own point when
+  // that is known, at the market's centre otherwise — the same
+  // organizing move as on a card, from the page that priced it.
+  const listing = React.useMemo(
+    () =>
+      listingForAnalysis(analysis, {
+        listingId,
+        point: propertyPoint ?? marketCenter,
+        typeKnown: !searchedAddress?.assumedType,
+      }),
+    [analysis, listingId, propertyPoint, marketCenter, searchedAddress?.assumedType]
+  );
   const neverBreaksEven = !Number.isFinite(p.breakevenOccupancy);
   const comfortable = p.marginOfSafety >= 0.02;
   const marginPts = Math.round(p.marginOfSafety * 100);
@@ -357,7 +378,8 @@ export function AnalyzeResult({
               )}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 print:hidden">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
+            {listing ? <AddToListMenu listing={listing} size="default" variant="outline" /> : null}
             <Button variant="outline" onClick={handleExport} className="gap-1.5">
               <FileDown aria-hidden className="size-4" />
               Landlord packet (PDF)

@@ -22,11 +22,23 @@
  * no portal resolves a street address to a listing. Left out of the
  * URL, every property that arrived from a card with a direct link
  * opened a result that could only search for it.
+ *
+ * AND THE LISTING'S ID. The result's own "Add to list" files the
+ * property as a listing (lib/live/analysis-listing), and the id is
+ * what makes that the same row the card would have saved rather than
+ * a second copy of the same address.
  */
 import { usableListingPage } from "./listing-links";
+
+/** A listing id as the feeds and the seeds mint them: one token, no
+ *  spaces, nothing a URL would have to think about. */
+const LISTING_ID = /^[\w.-]{1,160}$/;
 import { zipFromAddress } from "./zip";
 
 export function analyzeHref(l: {
+  /** The listing's own id, when this is a listing rather than a bare
+   *  address. The result keeps it, so its lists match the card's. */
+  id?: string;
   address: string;
   city?: string;
   stateCode?: string;
@@ -72,6 +84,7 @@ export function analyzeHref(l: {
   // anywhere else.
   const page = usableListingPage(l.sourceUrl);
   if (page) params.set("u", page);
+  if (l.id && LISTING_ID.test(l.id)) params.set("l", l.id);
   return `/analyze/new?${params}`;
 }
 

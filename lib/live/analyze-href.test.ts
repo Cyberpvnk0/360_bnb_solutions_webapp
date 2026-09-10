@@ -3,6 +3,16 @@ import { analyzeHref, analyzeSearchHref } from "./analyze-href";
 
 const paramsOf = (href: string) => new URL(href, "https://app.example").searchParams;
 
+describe("the listing's id travels into the analysis", () => {
+  const base = { address: "1804 E Sitka St", lat: 27.99, lon: -82.44, bedrooms: 2, bathrooms: 1, propertyType: "house" };
+  it("when this is a listing, and not for a bare address", () => {
+    expect(paramsOf(analyzeHref({ ...base, id: "live--tampa--rf-1804-E-Sitka" })).get("l")).toBe("live--tampa--rf-1804-E-Sitka");
+    expect(paramsOf(analyzeHref(base)).has("l")).toBe(false);
+    // Only an id shaped like one: the URL is not a place for anything else.
+    expect(paramsOf(analyzeHref({ ...base, id: "not an id" })).has("l")).toBe(false);
+  });
+});
+
 describe("the ZIP travels into the analysis", () => {
   it("from a listing's own field, or its address line", () => {
     const base = { address: "1804 E Sitka St", lat: 27.99, lon: -82.44, bedrooms: 2, bathrooms: 1, propertyType: "house" };

@@ -47,7 +47,7 @@ const MAX_RENT = 100_000;
  */
 function specFrom(
   sp: Record<string, string | string[] | undefined>
-): (AddressSpec & { assumedSize: boolean; assumedType: boolean }) | null {
+): (AddressSpec & { assumedSize: boolean; assumedType: boolean; listingId: string | null }) | null {
   const one = (k: string) => {
     const v = sp[k];
     return Array.isArray(v) ? v[0] : v;
@@ -107,6 +107,9 @@ function specFrom(
     /** True when nobody told us the size and we picked one. The result
      *  page says so rather than presenting a guess as a reading. */
     assumedSize: bd === null || ba === null,
+    // The Deal Finder listing this came from, so the result's "Add to
+    // list" files the same row the card would. One token, or nothing.
+    listingId: /^[\w.-]{1,160}$/.test(one("l") ?? "") ? one("l")! : null,
   };
 }
 
@@ -184,6 +187,7 @@ export default async function AnalyzeResultPage({
         propertyPoint={point}
         liveComps={liveComps}
         quota={check ? { ...check, tier: tier ?? DEFAULT_TIER } : null}
+        listingId={spec.listingId}
         searchedAddress={{
           market,
           milesAway,
