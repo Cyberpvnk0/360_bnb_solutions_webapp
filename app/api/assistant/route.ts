@@ -25,8 +25,8 @@ import { readContext, renderContext } from "@/lib/assistant/context";
 import { encodeEvent, type AssistantEvent } from "@/lib/assistant/events";
 import { SYSTEM_PROMPT } from "@/lib/assistant/prompt";
 import { assistantTools, runTool } from "@/lib/assistant/tools";
-import { assistantConfigured, runTurn, type StreamLike } from "@/lib/assistant/turn";
-import { requirePaid } from "@/lib/auth/gate";
+import { assistantConfigured, MODEL, runTurn, type StreamLike } from "@/lib/assistant/turn";
+import { requireOperator, requirePaid } from "@/lib/auth/gate";
 import { canCover, spendCredits } from "@/lib/db/usage";
 
 /** A research answer is several searches and reads in a row. */
@@ -59,10 +59,61 @@ function reasonOf(error: unknown): { reason: string; detail?: string } {
   if (error instanceof Anthropic.AuthenticationError) return { reason: "auth" };
   if (error instanceof Anthropic.RateLimitError) return { reason: "busy" };
   if (error instanceof Anthropic.APIError) {
-    return { reason: "http", detail: `${error.status ?? ""} ${error.message}`.trim().slice(0, 200) };
+    return { reason: "http", detail: `${error.status ?? ""} ${error.message}`.trim().slice(0, 400) };
   }
   if (error instanceof Error && error.name === "AbortError") return { reason: "aborted" };
   return { reason: "network", detail: error instanceof Error ? error.message.slice(0, 200) : undefined };
+}
+
+/**
+ * The operator's check: is this deployment able to answer at all?
+ *
+ *   GET /api/assistant            (a named admin, signed in)
+ *   GET /api/assistant?secret=…   (CRON_SECRET)
+ *
+ * One minimal request with the assistant's exact tools, and the API's
+ * own answer — or its own words for what it refused — so a key that
+ * is missing, unpaid or unable to search says which, here, verbatim.
+ * Nothing is metered: it is the operator's, and it costs a few tokens.
+ */
+export async function GET(request: Request) {
+  const op = await requireOperator(request);
+  if (!op.ok) return op.response;
+  if (!assistantConfigured()) {
+    return NextResponse.json({ ok: false, reason: "not-configured", model: MODEL, hint: "ANTHROPIC_API_KEY is not set on this deployment" }, { status: 503 });
+  }
+  const client = new Anthropic({ maxRetries: 0 });
+  const started = Date.now();
+  try {
+    const message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 32,
+      system: "Reply with the single word: ok",
+      tools: assistantTools(),
+      messages: [{ role: "user", content: "ping" }],
+    });
+    return NextResponse.json({
+      ok: true,
+      model: message.model,
+      stopReason: message.stop_reason,
+      text: message.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(""),
+      usage: message.usage,
+      ms: Date.now() - started,
+    });
+  } catch (error) {
+    const { reason, detail } = reasonOf(error);
+    return NextResponse.json(
+      {
+        ok: false,
+        reason,
+        status: error instanceof Anthropic.APIError ? error.status : null,
+        detail: detail ?? (error instanceof Error ? error.message.slice(0, 400) : String(error)),
+        model: MODEL,
+        ms: Date.now() - started,
+      },
+      { status: 502 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -154,7 +205,9 @@ export async function POST(request: Request) {
           cap: spend.cap,
         });
       } catch (error) {
-        emit({ type: "error", ...reasonOf(error) });
+        const why = reasonOf(error);
+        console.error(`[assistant] ${why.reason}${why.detail ? `: ${why.detail}` : ""}`);
+        emit({ type: "error", ...why });
       } finally {
         closed = true;
         try {

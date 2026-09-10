@@ -429,6 +429,8 @@ function failureCopy(reason: string | undefined): string {
       return "The assistant is busy right now. Try again in a moment. Nothing was charged.";
     case "empty":
       return "No answer came back. Nothing was charged.";
+    case "signed-out":
+      return "Sign in again to use the assistant.";
     default:
       return "That didn't go through. Nothing was charged.";
   }
