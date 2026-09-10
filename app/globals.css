@@ -375,17 +375,34 @@
 /*
  * Dark mode for the maps.
  *
- * The basemap ships in one light style; inverting the canvas is what
- * makes it dark, which costs no second style download and cannot fall
- * out of sync with the theme. The filter lands on the canvas alone, so
- * the price pins and popups — separate DOM overlaid on top — keep their
- * own colours instead of coming out inverted.
- *
- * hue-rotate puts blues back where they started after the invert;
- * without it water comes out orange.
+ * The basemap itself comes in a dark style from the provider
+ * (lib/map/basemap, /api/map/style?theme=dark), so the canvas is left
+ * alone. What the provider's stylesheet does not know about is the
+ * map's own chrome — the zoom buttons and the attribution — which
+ * ship white; they take the theme's card colour here.
  */
-.dark .maplibregl-canvas {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+.dark .maplibregl-ctrl-group {
+  background-color: var(--card);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.dark .maplibregl-ctrl-group button + button {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+.dark .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(0.9);
+}
+.dark .maplibregl-ctrl-group button:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+.dark .maplibregl-ctrl-attrib {
+  background-color: rgba(20, 20, 22, 0.75);
+  color: rgba(255, 255, 255, 0.7);
+}
+.dark .maplibregl-ctrl-attrib a {
+  color: rgba(255, 255, 255, 0.8);
+}
+.dark .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
 }
 
 /* Printing an analysis is how a landlord packet leaves the app: the

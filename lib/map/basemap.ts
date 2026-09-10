@@ -4,15 +4,27 @@ import type * as maplibregl from "maplibre-gl";
  * The basemap both maps draw on.
  *
  * Which provider that is gets decided server-side, at /api/map/style —
- * see that route for why. From here it is one URL that always answers
- * with a usable style, so nothing in the components knows or cares
- * whose tiles they are.
+ * see that route for why. From here it is one URL per theme that
+ * always answers with a usable style, so nothing in the components
+ * knows or cares whose tiles they are.
  *
- * One style, not two: dark mode inverts the canvas in CSS (see
- * `.dark .maplibregl-canvas` in globals.css), so any light style works
- * in both themes with no second download and nothing to keep in sync.
+ * Two styles, one per theme: the provider draws the dark map as a
+ * dark map. An earlier cut inverted the light canvas in CSS, which
+ * turned parks black-green and roads into wires; a map drawn for the
+ * dark is the map the rest of the dark theme deserves.
  */
-export const BASEMAP_STYLE = "/api/map/style";
+export type BasemapTheme = "light" | "dark";
+
+export function basemapStyle(theme: BasemapTheme): string {
+  return theme === "dark" ? "/api/map/style?theme=dark" : "/api/map/style";
+}
+
+/** The theme the page is showing right now, read off the document:
+ *  the theme provider writes the class before the first paint, so it
+ *  is right at the moment a map is created. */
+export function documentTheme(): BasemapTheme {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
 
 /**
  * What a MapLibre error event is actually telling us, in one line.

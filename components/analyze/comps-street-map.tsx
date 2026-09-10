@@ -15,7 +15,8 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
+import { useTheme } from "next-themes";
+import { basemapStyle, describeMapError, documentTheme, type BasemapTheme } from "@/lib/map/basemap";
 import { ArrowUpRight, X } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { fmtMiles, fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
@@ -139,6 +140,18 @@ export function CompsStreetMap({
   /** Increments when a map instance is created, so the pin effect runs
    *  against the new instance rather than a removed one. */
   const [mapEpoch, setMapEpoch] = React.useState(0);
+  /** The theme the loaded style was asked for, so a toggle swaps it. */
+  const styleThemeRef = React.useRef<BasemapTheme>("light");
+  const { resolvedTheme } = useTheme();
+
+  // The theme toggled: the same map, a style drawn for the other side.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const theme: BasemapTheme = resolvedTheme === "dark" ? "dark" : "light";
+    if (!map || styleThemeRef.current === theme) return;
+    styleThemeRef.current = theme;
+    map.setStyle(basemapStyle(theme));
+  }, [resolvedTheme]);
 
   const placed = React.useMemo(
     () => placeComps({ lat: subject.lat, lon: subject.lon }, comps),
@@ -174,9 +187,10 @@ export function CompsStreetMap({
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    styleThemeRef.current = documentTheme();
     const map = new maplibregl.Map({
       container,
-      style: BASEMAP_STYLE,
+      style: basemapStyle(styleThemeRef.current),
       center: [subject.lon, subject.lat],
       zoom: 12,
       attributionControl: { compact: true },

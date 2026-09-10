@@ -20,7 +20,8 @@
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { BASEMAP_STYLE, describeMapError } from "@/lib/map/basemap";
+import { useTheme } from "next-themes";
+import { basemapStyle, describeMapError, documentTheme, type BasemapTheme } from "@/lib/map/basemap";
 import { fmtMoney, fmtMoneyShort } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import type { ZipBoundary } from "@/lib/map/zip-boundary";
@@ -187,6 +188,20 @@ export function RentalsMap({
    *  has actually rendered. Named rather than counted: a blank map
    *  should say whose tiles didn't arrive. */
   const [tileError, setTileError] = React.useState<string | null>(null);
+  /** The theme the loaded style was asked for, so a toggle swaps it. */
+  const styleThemeRef = React.useRef<BasemapTheme>("light");
+  const { resolvedTheme } = useTheme();
+
+  // The theme toggled: the same map, a style drawn for the other side.
+  // Pins are DOM and stay; the outline is redrawn when the style lands.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const theme: BasemapTheme = resolvedTheme === "dark" ? "dark" : "light";
+    if (!map || styleThemeRef.current === theme) return;
+    styleThemeRef.current = theme;
+    styleReadyRef.current = false;
+    map.setStyle(basemapStyle(theme));
+  }, [resolvedTheme]);
 
   // Latest handlers reachable from marker listeners without rebuilds.
   const onHoverRef = React.useRef(onHover);
@@ -205,9 +220,10 @@ export function RentalsMap({
     if (!container) return;
     const markers = markersRef.current;
     const els = markerElsRef.current;
+    styleThemeRef.current = documentTheme();
     const map = new maplibregl.Map({
       container,
-      style: BASEMAP_STYLE,
+      style: basemapStyle(styleThemeRef.current),
       center: US_CENTER,
       zoom: US_ZOOM,
       attributionControl: { compact: true },
@@ -232,6 +248,10 @@ export function RentalsMap({
     };
     map.on("style.load", ready);
     map.on("load", ready);
+    // A new style throws the outline away; "style.load" draws it again.
+    map.on("styledata", () => {
+      if (!map.isStyleLoaded()) styleReadyRef.current = false;
+    });
     // A pin's click never reaches here (it stops at the pin), so this
     // is the map itself: the docked card goes away.
     map.on("click", () => onClearRef.current?.());

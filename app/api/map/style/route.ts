@@ -1,5 +1,6 @@
 /**
  * The basemap style the maps load:  /api/map/style
+ *                                   /api/map/style?theme=dark
  *
  * Served from here rather than pointed at directly, for two reasons.
  *
@@ -32,15 +33,30 @@ import { requireSignedIn } from "@/lib/auth/gate";
 /** Styles are static for long stretches; one fetch serves everyone. */
 const REVALIDATE_SECONDS = 86_400;
 
-const OPENFREEMAP = "https://tiles.openfreemap.org/styles/positron";
+const OPENFREEMAP = {
+  light: "https://tiles.openfreemap.org/styles/positron",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+};
 
-/** Any map id from the MapTiler dashboard — "dataviz-light", "base-v4",
- *  "streets-v2". Light ones suit us: dark mode inverts the canvas in
- *  CSS, so one style covers both themes. */
+type Theme = "light" | "dark";
+
+/** Any map id from the MapTiler dashboard — "dataviz-light",
+ *  "streets-v2", "basic-v2". Dark mode asks for its dark twin
+ *  (MAPTILER_MAP_DARK, or the id with "-light" swapped for "-dark" /
+ *  "-dark" appended, which is how MapTiler names them). */
 const MAPTILER_MAP = process.env.MAPTILER_MAP ?? "dataviz-light";
+const MAPTILER_MAP_DARK =
+  process.env.MAPTILER_MAP_DARK ??
+  (MAPTILER_MAP.endsWith("-light")
+    ? MAPTILER_MAP.replace(/-light$/, "-dark")
+    : MAPTILER_MAP.endsWith("-dark")
+      ? MAPTILER_MAP
+      : `${MAPTILER_MAP}-dark`);
 
-const maptilerVector = (key: string) =>
-  `https://api.maptiler.com/maps/${MAPTILER_MAP}/style.json?key=${encodeURIComponent(key)}`;
+const maptilerMap = (theme: Theme) => (theme === "dark" ? MAPTILER_MAP_DARK : MAPTILER_MAP);
+
+const maptilerVector = (key: string, theme: Theme) =>
+  `https://api.maptiler.com/maps/${maptilerMap(theme)}/style.json?key=${encodeURIComponent(key)}`;
 
 /**
  * A raster style, built here rather than fetched.
@@ -54,14 +70,14 @@ const maptilerVector = (key: string) =>
  *
  * Set MAP_RASTER=1 to use it.
  */
-function maptilerRaster(key: string): string {
+function maptilerRaster(key: string, theme: Theme): string {
   return JSON.stringify({
     version: 8,
     sources: {
       basemap: {
         type: "raster",
         tiles: [
-          `https://api.maptiler.com/maps/${MAPTILER_MAP}/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(key)}`,
+          `https://api.maptiler.com/maps/${maptilerMap(theme)}/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(key)}`,
         ],
         tileSize: 256,
         attribution:
@@ -74,25 +90,32 @@ function maptilerRaster(key: string): string {
 
 /** Both spellings: the documented one, and the one you get when the
  *  platform won't accept NEXT_PUBLIC_ on a sensitive variable. */
-function resolve(): { url: string; provider: string } {
+function resolve(theme: Theme): { url: string; provider: string } {
+  // An explicit style URL is one style; a dark twin is its own variable.
   const explicit =
-    process.env.MAP_STYLE_URL ?? process.env.NEXT_PUBLIC_MAP_STYLE_URL;
+    theme === "dark"
+      ? (process.env.MAP_STYLE_URL_DARK ??
+        process.env.MAP_STYLE_URL ??
+        process.env.NEXT_PUBLIC_MAP_STYLE_URL)
+      : (process.env.MAP_STYLE_URL ?? process.env.NEXT_PUBLIC_MAP_STYLE_URL);
   if (explicit) return { url: explicit, provider: "the configured style" };
 
   const key =
     process.env.MAPTILER_KEY ??
     process.env.NEXT_MAPTILER_KEY ??
     process.env.NEXT_PUBLIC_MAPTILER_KEY;
-  if (key) return { url: maptilerVector(key), provider: `MapTiler ${MAPTILER_MAP}` };
+  if (key) return { url: maptilerVector(key, theme), provider: `MapTiler ${maptilerMap(theme)}` };
 
-  return { url: OPENFREEMAP, provider: "OpenFreeMap" };
+  return { url: OPENFREEMAP[theme], provider: `OpenFreeMap ${theme}` };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   // The style carries the tile key. Anyone signed in gets it — the
   // browser needs it to draw — but not anyone at all.
   const who = await requireSignedIn();
   if (!who.ok) return who.response;
+
+  const theme: Theme = new URL(request.url).searchParams.get("theme") === "dark" ? "dark" : "light";
 
   // Raster is assembled here, so it needs no upstream fetch at all —
   // one less thing between a request and a visible map.
@@ -103,16 +126,16 @@ export async function GET() {
         process.env.NEXT_PUBLIC_MAPTILER_KEY)
       : undefined;
   if (rasterKey) {
-    return new NextResponse(maptilerRaster(rasterKey), {
+    return new NextResponse(maptilerRaster(rasterKey, theme), {
       headers: {
         "content-type": "application/json",
         "cache-control": "public, max-age=3600, stale-while-revalidate=86400",
-        "x-basemap-provider": `MapTiler ${MAPTILER_MAP} (raster)`,
+        "x-basemap-provider": `MapTiler ${maptilerMap(theme)} (raster)`,
       },
     });
   }
 
-  const { url, provider } = resolve();
+  let { url, provider } = resolve(theme);
 
   let res: Response;
   try {
@@ -122,6 +145,19 @@ export async function GET() {
       { error: `could not reach ${provider}`, provider },
       { status: 502 }
     );
+  }
+
+  // A dark twin the provider does not have — an id with no dark
+  // version, a key whose plan lacks it — falls back to the light map,
+  // which is a map, rather than to a blank one.
+  if (!res.ok && theme === "dark") {
+    ({ url, provider } = resolve("light"));
+    try {
+      res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
+    } catch {
+      return NextResponse.json({ error: `could not reach ${provider}`, provider }, { status: 502 });
+    }
+    provider = `${provider} (no dark style; light served)`;
   }
 
   if (!res.ok) {
