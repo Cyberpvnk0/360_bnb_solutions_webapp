@@ -17,7 +17,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { ArrowUp, ExternalLink, RotateCcw, Sparkles, X } from "lucide-react";
+import { ArrowRight, ArrowUp, ExternalLink, RotateCcw, Sparkles, X } from "lucide-react";
 import { useSession } from "@/components/providers/session-provider";
 import { ASSISTANT_MESSAGE_CREDITS } from "@/config/app";
 import { contextTitle, suggestionsFor, type AssistantContext } from "@/lib/assistant/context";
@@ -74,6 +74,34 @@ function remember(offset: Offset): void {
 
 const within = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
+/**
+ * The nudge: a small word over the launcher, for someone who has not
+ * opened it. Once a day at most, a moment after the page settles,
+ * gone on its own after a while, and never over a conversation that
+ * has already started.
+ */
+const NUDGE_KEY = "aircore.assistant.nudge";
+const NUDGE_DELAY_MS = 2_500;
+const NUDGE_STAY_MS = 20_000;
+const NUDGE_EVERY_MS = 24 * 60 * 60 * 1000;
+
+function nudgeDue(): boolean {
+  try {
+    const at = Number(window.localStorage.getItem(NUDGE_KEY));
+    return !Number.isFinite(at) || at === 0 || Date.now() - at > NUDGE_EVERY_MS;
+  } catch {
+    return true;
+  }
+}
+
+function nudgeSeen(): void {
+  try {
+    window.localStorage.setItem(NUDGE_KEY, String(Date.now()));
+  } catch {
+    // Storage refused: it shows again next time, which is fine.
+  }
+}
+
 interface Bounds {
   minX: number;
   maxX: number;
@@ -111,8 +139,26 @@ export function Assistant({ context }: { context: AssistantContext }) {
   const affordable = creditsRemaining + credits >= ASSISTANT_MESSAGE_CREDITS;
   /** The panel stays mounted through its exit animation. */
   const [closing, setClosing] = React.useState(false);
+  const [nudge, setNudge] = React.useState<"idle" | "shown" | "done">("idle");
+  const untouched = !thread.open && thread.messages.length === 0;
+
+  // The nudge, on a timer: a moment after the page settles, for a day.
+  React.useEffect(() => {
+    if (!untouched || nudge !== "idle" || !nudgeDue()) return;
+    const show = window.setTimeout(() => {
+      setNudge("shown");
+      nudgeSeen();
+    }, NUDGE_DELAY_MS);
+    return () => window.clearTimeout(show);
+  }, [untouched, nudge]);
+  React.useEffect(() => {
+    if (nudge !== "shown") return;
+    const hide = window.setTimeout(() => setNudge("done"), NUDGE_STAY_MS);
+    return () => window.clearTimeout(hide);
+  }, [nudge]);
 
   const open = () => {
+    setNudge("done");
     if (!eligible) {
       openUpgrade({ reason: "generic" });
       return;
@@ -149,6 +195,40 @@ export function Assistant({ context }: { context: AssistantContext }) {
 
   return createPortal(
     <>
+      {nudge === "shown" && untouched ? (
+        <div
+          role="status"
+          className="fixed right-5 bottom-[4.75rem] z-40 w-[20.5rem] animate-assistant-rise print:hidden max-sm:right-3"
+        >
+          <div className="relative rounded-xl border border-border bg-card p-3.5 pr-8 shadow-[0_2px_4px_rgba(16,16,18,0.06),0_14px_36px_-10px_rgba(16,16,18,0.28)]">
+            <button
+              type="button"
+              onClick={() => setNudge("done")}
+              aria-label="Dismiss"
+              className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
+            >
+              <X aria-hidden className="size-3.5" />
+            </button>
+            <p className="text-sm leading-snug text-foreground">
+              Can&apos;t find the owner&apos;s contact info? Looking for photos of the property?
+            </p>
+            <button
+              type="button"
+              onClick={open}
+              className="mt-2 text-left text-sm font-semibold text-gold transition-colors duration-150 hover:text-gold-bright"
+            >
+              Ask our powerful AI Assistant for{" "}
+              <span className="whitespace-nowrap">
+                help! <ArrowRight aria-hidden className="inline size-3.5 align-[-2px]" />
+              </span>
+            </button>
+            <span
+              aria-hidden
+              className="absolute -bottom-1.5 right-8 size-3 rotate-45 border-r border-b border-border bg-card"
+            />
+          </div>
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={open}
