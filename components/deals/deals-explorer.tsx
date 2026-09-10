@@ -368,8 +368,13 @@ export function DealsExplorer({
     slug: string;
     listings: RentalListing[];
   } | null>(null);
-  const [redfinReason, setRedfinReason] =
-    React.useState<RedfinFailureReason | null>(null);
+  /** Why the last ask came back empty, and for which market — so the
+   *  note it puts in the toolbar is never about a market that was not
+   *  asked. */
+  const [redfinReason, setRedfinReason] = React.useState<{
+    slug: string;
+    reason: RedfinFailureReason;
+  } | null>(null);
   /** The market Redfin has answered for — "checking" is derived from
    *  it, so nothing is assigned synchronously inside an effect. */
   const [redfinChecked, setRedfinChecked] = React.useState<string | null>(null);
@@ -393,6 +398,9 @@ export function DealsExplorer({
 
   const furnishedTarget =
     filters.furnishedOnly && furnishedMarket ? furnishedMarket.slug : null;
+  /** The miss for the market on screen, if the last ask was for it. */
+  const redfinMiss =
+    redfinReason && redfinReason.slug === furnishedMarket?.slug ? redfinReason.reason : null;
   /** True once Redfin has answered for the market we're asking about. */
   const redfinActive = Boolean(
     furnishedTarget && redfin?.slug === furnishedTarget
@@ -493,8 +501,10 @@ export function DealsExplorer({
 
   // The Furnished chip stays usable whenever something can answer it:
   // rows that already know their amenities, or a market Redfin can be
-  // asked about. It only greys out once Redfin has said it can't help.
-  const canAskRedfin = Boolean(furnishedMarket) && redfinReason === null;
+  // asked about. An ask that failed does not grey it out — it turned
+  // the filter back off and said why, and the next click asks again.
+  // Greyed means nothing here can ever answer.
+  const canAskRedfin = Boolean(furnishedMarket);
   const featuresKnown =
     rows.length === 0 ||
     rows.some((r) => r.listing.featuresKnown !== false) ||
@@ -585,8 +595,16 @@ export function DealsExplorer({
       setRedfin(
         result.live ? { slug: furnishedTarget, listings: result.listings } : null
       );
-      setRedfinReason(result.live ? null : (result.reason ?? "network"));
       setRedfinChecked(furnishedTarget);
+      if (result.live) {
+        setRedfinReason(null);
+        return;
+      }
+      // No answer: the filter comes back off rather than staying lit
+      // over an unfiltered list, and the toolbar says why. The chip
+      // stays clickable, so trying again is one click.
+      setRedfinReason({ slug: furnishedTarget, reason: result.reason ?? "network" });
+      setFilters((prev) => (prev.furnishedOnly ? { ...prev, furnishedOnly: false } : prev));
     });
     return () => {
       cancelled = true;
@@ -810,6 +828,13 @@ export function DealsExplorer({
           featuresKnown={featuresKnown}
           onChange={(patch) => {
             if ("query" in patch) setZip(null);
+            // Furnished going on is a fresh ask: the last miss and the
+            // last answer's market are forgotten, so the ask shows as
+            // one in progress rather than as the old result.
+            if (patch.furnishedOnly === true) {
+              setRedfinReason(null);
+              setRedfinChecked(null);
+            }
             applyFilters(patch);
             setSelectedId(null);
             resetPaging();
@@ -869,10 +894,10 @@ export function DealsExplorer({
               <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
               Furnished
             </span>
-          ) : redfinReason ? (
+          ) : redfinMiss ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
               <Info aria-hidden className="size-3.5" />
-              {redfinFailureLabel(redfinReason)}
+              {redfinFailureLabel(redfinMiss)}
             </span>
           ) : null}
 
