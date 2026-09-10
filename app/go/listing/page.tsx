@@ -14,8 +14,8 @@
  * and replaces itself with the listing when it lands. When the site
  * has no page for the address, it replaces itself with the next
  * destination in order — the address's page on Zillow — and every
- * destination is on the page too, for anyone who would rather not
- * wait. See lib/live/listing-links for the order.
+ * destination (Zillow, Realtor, Google) is on the page too, for anyone
+ * who would rather not wait. See lib/live/listing-links for the order.
  *
  * A bare page, outside the shell: it exists for a second or thirty and
  * then goes away.

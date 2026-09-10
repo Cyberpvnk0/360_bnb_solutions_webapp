@@ -55,29 +55,17 @@ describe("the listing's own page comes first", () => {
   });
 });
 
-describe("the five destinations, in order", () => {
-  it("lists Redfin, Zillow, Realtor.com, Homes.com and Google, in that order", () => {
+describe("the four destinations, in order", () => {
+  it("lists Redfin, Zillow, Realtor and Google, in that order", () => {
     const ids = photoSources({ ...TAMPA, zip: "33602" }).map((s) => `${s.id}:${s.kind}`);
-    expect(ids).toEqual([
-      "redfin:finding",
-      "zillow:search",
-      "realtor:search",
-      "homes:search",
-      "google:search",
-    ]);
+    expect(ids).toEqual(["redfin:finding", "zillow:search", "realtor:search", "google:search"]);
     // With the row's own page, the first is the listing itself.
     const own = "https://www.redfin.com/FL/Tampa/1234-Palm-Ave-33602/home/123";
     const [first] = photoSources({ ...TAMPA, sourceUrl: own });
     expect(first).toEqual({ id: "redfin", label: "Redfin", href: own, kind: "listing" });
     // The button opens the first; the labels are the sites' names.
     expect(photosLink(TAMPA)?.kind).toBe("finding");
-    expect(photoSources(TAMPA).map((s) => s.label)).toEqual([
-      "Redfin",
-      "Zillow",
-      "Realtor.com",
-      "Homes.com",
-      "Google",
-    ]);
+    expect(photoSources(TAMPA).map((s) => s.label)).toEqual(["Redfin", "Zillow", "Realtor", "Google"]);
   });
 
   it("writes Zillow's address page the way their own search does", () => {
@@ -94,12 +82,10 @@ describe("the five destinations, in order", () => {
     expect(zillowHref({ ...TAMPA, city: "" })).toBeNull();
   });
 
-  it("searches Realtor.com and Homes.com for the property, each on its own", () => {
+  it("searches realtor.com for the property, on its own", () => {
     const realtor = queryOf(siteSearchHref({ ...TAMPA, address: "1804 East Sitka Street" }, "realtor.com")!);
     expect(realtor).toBe('"1804" "Sitka" Tampa FL site:realtor.com');
-    const homes = queryOf(siteSearchHref(TAMPA, "homes.com")!);
-    expect(homes).toBe('"1234" "Palm" Tampa FL site:homes.com');
-    expect(siteSearchHref({ ...TAMPA, city: "" }, "homes.com")).toBeNull();
+    expect(siteSearchHref({ ...TAMPA, city: "" }, "realtor.com")).toBeNull();
   });
 
   it("googles the full address, as written, last", () => {
@@ -148,7 +134,7 @@ describe("the searches, when there is no page URL", () => {
     for (const source of photoSources({ ...TAMPA, address: "88 W Main St #4B" })) {
       expect(source.href).not.toContain("#");
     }
-    expect(queryOf(siteSearchHref({ ...TAMPA, address: "88 W Main St #4B" }, "homes.com")!)).toContain('"88" "Main"');
+    expect(queryOf(siteSearchHref({ ...TAMPA, address: "88 W Main St #4B" }, "realtor.com")!)).toContain('"88" "Main"');
   });
 
   it("keeps the punctuation a real address carries", () => {

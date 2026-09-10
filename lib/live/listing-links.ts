@@ -11,7 +11,7 @@
  * A link is not a copy. It is what a search engine does, it never goes
  * stale, and it puts the traffic back where the photos came from.
  *
- * FIVE DESTINATIONS, IN ORDER. The button opens the first; the menu
+ * FOUR DESTINATIONS, IN ORDER. The button opens the first; the menu
  * beside it offers the rest in this order, and the finder page lists
  * them while it looks.
  *
@@ -26,15 +26,15 @@
  *      listed; when it does not, it shows the area, and the reader is
  *      one menu click from the next.
  *
- *   3. Realtor.com and 4. Homes.com — a search of that site for the
- *      address. Neither exposes a URL that takes an address: they key a
- *      property by an internal id, and a guessed URL does not 404 but
- *      silently degrades into the market's page. A quoted, site-scoped
- *      search is correct by construction — the engine holds the
- *      address-to-URL index the portals decline to expose, and the
- *      result titles show the reader whether it found the right place.
+ *   3. Realtor — a search of realtor.com for the address. It exposes no
+ *      URL that takes an address: it keys a property by an internal id,
+ *      and a guessed URL does not 404 but silently degrades into the
+ *      market's page. A quoted, site-scoped search is correct by
+ *      construction — the engine holds the address-to-URL index the
+ *      portal declines to expose, and the result titles show the reader
+ *      whether it found the right place.
  *
- *   5. Google — the full address, unscoped. Every other place the
+ *   4. Google — the full address, unscoped. Every other place the
  *      property is advertised.
  */
 
@@ -230,7 +230,7 @@ export function zillowHref(place: Addressed): string | null {
 }
 
 /** A search of one listing site for this exact property. */
-export function siteSearchHref(place: Addressed, site: "realtor.com" | "homes.com"): string | null {
+export function siteSearchHref(place: Addressed, site: "realtor.com"): string | null {
   const p = parts(place);
   if (!p) return null;
   return googleHref(`${pin(p.street)} ${p.city} ${p.state} site:${site}`);
@@ -284,7 +284,7 @@ export function webLookupHref(place: Addressed): string | null {
  *  is the listing, by way of the finder page. */
 export type PhotosLinkKind = "listing" | "search" | "finding";
 
-export type PhotoSourceId = "redfin" | "zillow" | "realtor" | "homes" | "google";
+export type PhotoSourceId = "redfin" | "zillow" | "realtor" | "google";
 
 export interface PhotoSource {
   id: PhotoSourceId;
@@ -319,9 +319,7 @@ export function photoSources(place: Addressed): PhotoSource[] {
   const zillow = zillowHref(place);
   if (zillow) out.push({ id: "zillow", label: "Zillow", href: zillow, kind: "search" });
   const realtor = siteSearchHref(place, "realtor.com");
-  if (realtor) out.push({ id: "realtor", label: "Realtor.com", href: realtor, kind: "search" });
-  const homes = siteSearchHref(place, "homes.com");
-  if (homes) out.push({ id: "homes", label: "Homes.com", href: homes, kind: "search" });
+  if (realtor) out.push({ id: "realtor", label: "Realtor", href: realtor, kind: "search" });
   const google = addressSearchHref(place);
   if (google) out.push({ id: "google", label: "Google", href: google, kind: "search" });
   return out;
