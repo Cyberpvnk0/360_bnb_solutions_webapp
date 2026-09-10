@@ -24,9 +24,22 @@ import { NextResponse, type NextRequest } from "next/server";
 /** Everything a signed-out visitor may see. */
 const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/"];
 
+/**
+ * Paths that answer for themselves. The API routes each carry their
+ * own gate (lib/auth/gate) and are called by the platform's cron with
+ * a secret and no cookie, so a redirect to the sign-in page would only
+ * turn a scheduled run into a login form. The service worker is
+ * fetched by the browser on its own schedule, with whatever cookie it
+ * has, and must always be the script.
+ */
+function isSelfGated(pathname: string): boolean {
+  return pathname.startsWith("/api/") || pathname === "/sw.js";
+}
+
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.some(
-    (p) => pathname === p || (p !== "/" && pathname.startsWith(`${p}/`))
+  return (
+    isSelfGated(pathname) ||
+    PUBLIC_PATHS.some((p) => pathname === p || (p !== "/" && pathname.startsWith(`${p}/`)))
   );
 }
 

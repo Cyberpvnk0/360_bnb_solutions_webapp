@@ -16,6 +16,7 @@ import * as React from "react";
 import {
   ArrowDownWideNarrow,
   Bookmark,
+  ChevronDown,
   FileDown,
   Info,
   LayoutGrid,
@@ -66,6 +67,7 @@ import {
   type DealFilters,
 } from "./deal-filters";
 import { MarketSearchBox } from "./market-search";
+import { ListingAlerts } from "./listing-alerts";
 import { ListingDetailDialog } from "./listing-detail-dialog";
 import { ListingDock } from "./listing-dock";
 import { Assistant } from "@/components/assistant/assistant";
@@ -946,6 +948,20 @@ export function DealsExplorer({
             </span>
           ) : null}
 
+          {/* Alerts for the area on screen: new rentals that fit the
+              filters, by mail or push, each morning. */}
+          {zip || liveTarget ? (
+            <ListingAlerts
+              scope={
+                zip
+                  ? { marketSlug: null, zip, label: `ZIP ${zip}` }
+                  : { marketSlug: liveTarget!.slug, zip: null, label: `${liveTarget!.name}, ${liveTarget!.stateCode}` }
+              }
+              filters={filters}
+              defaults={DEFAULT_DEAL_FILTERS}
+            />
+          ) : null}
+
           {/* Provenance — students always know which inventory they see. */}
           {zipActive || liveActive ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
@@ -1238,13 +1254,21 @@ export function DealsExplorer({
               </div>
               {remaining > 0 ? (
                 <div className="flex justify-center px-5 pb-8">
-                  <Button
-                    variant="outline"
+                  <button
+                    type="button"
                     onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                    className={cn(
+                      "inline-flex h-10 items-center gap-2 rounded-full border border-border bg-card pr-5 pl-4 text-sm font-semibold text-foreground",
+                      "shadow-[0_1px_2px_rgba(16,16,18,0.06),0_6px_18px_rgba(16,16,18,0.1)] transition-[transform,box-shadow,border-color] duration-150",
+                      "hover:-translate-y-0.5 hover:border-gold/60 hover:shadow-[0_2px_4px_rgba(16,16,18,0.08),0_10px_24px_rgba(16,16,18,0.14)] active:translate-y-0"
+                    )}
                   >
-                    Show {Math.min(PAGE_SIZE, remaining)} more ·{" "}
-                    {fmtNum(remaining)} remaining
-                  </Button>
+                    <span className="flex size-6 items-center justify-center rounded-full bg-gold-fill/15 text-gold">
+                      <ChevronDown aria-hidden className="size-3.5" strokeWidth={2.5} />
+                    </span>
+                    Show {Math.min(PAGE_SIZE, remaining)} more
+                    <span className="font-normal text-muted-foreground">· {fmtNum(remaining)} remaining</span>
+                  </button>
                 </div>
               ) : null}
             </>
