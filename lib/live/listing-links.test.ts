@@ -65,7 +65,7 @@ describe("the four destinations, in order", () => {
     expect(first).toEqual({ id: "redfin", label: "Redfin", href: own, kind: "listing" });
     // The button opens the first; the labels are the sites' names.
     expect(photosLink(TAMPA)?.kind).toBe("finding");
-    expect(photoSources(TAMPA).map((s) => s.label)).toEqual(["Redfin", "Zillow", "Realtor", "Google Images"]);
+    expect(photoSources(TAMPA).map((s) => s.label)).toEqual(["Redfin", "Zillow", "Realtor", "Google"]);
   });
 
   it("writes Zillow's address page the way their own search does", () => {

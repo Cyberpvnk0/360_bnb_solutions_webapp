@@ -329,7 +329,7 @@ export function photoSources(place: Addressed): PhotoSource[] {
   const realtor = siteSearchHref(place, "realtor.com");
   if (realtor) out.push({ id: "realtor", label: "Realtor", href: realtor, kind: "search" });
   const google = addressSearchHref(place);
-  if (google) out.push({ id: "google", label: "Google Images", href: google, kind: "search" });
+  if (google) out.push({ id: "google", label: "Google", href: google, kind: "search" });
   return out;
 }
 

@@ -41,7 +41,6 @@ import {
   hasOwnListingPage,
   photoSources,
   type Addressed,
-  type PhotoSource,
 } from "@/lib/live/listing-links";
 import { cn } from "@/lib/utils";
 import { useListingPage } from "./use-listing-page";
@@ -67,19 +66,11 @@ const LOOK: Record<Variant, { shell: string; main: string; caret: string }> = {
   },
 };
 
-/** What a menu entry opens, in a word or two beside its name. */
-function hint(source: PhotoSource): string {
-  switch (source.id) {
-    case "redfin":
-      return source.kind === "listing" ? "this listing" : "finds the listing";
-    case "zillow":
-      return "address page";
-    case "google":
-      return "pictures of the address";
-    default:
-      return "search";
-  }
-}
+/** Beside every name, the same two words: each entry is a place to
+ *  look, and whether the property is there is what the click finds
+ *  out. One wording, because four different ones read as four
+ *  different promises. */
+const HINT = "Check Availability";
 
 export function PhotosLink({
   place,
@@ -176,8 +167,8 @@ export function PhotosLink({
                 rel="noopener noreferrer"
                 className="flex items-center justify-between gap-3"
               >
-                <span>{source.label}</span>
-                <span className="text-[11px] text-muted-foreground">{hint(source)}</span>
+                <span className="whitespace-nowrap">{source.label}</span>
+                <span className="whitespace-nowrap text-[11px] text-muted-foreground">{HINT}</span>
               </a>
             </DropdownMenuItem>
           ))}

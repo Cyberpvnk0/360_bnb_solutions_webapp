@@ -76,7 +76,7 @@ function Finder() {
         if (res.ok && body?.ok && typeof body.href === "string" && /^https:\/\//.test(body.href)) {
           href = body.href;
           label =
-            body.source === "redfin" ? "Redfin" : body.source === "google" ? "Google Images" : "Zillow";
+            body.source === "redfin" ? "Redfin" : body.source === "google" ? "Google" : "Zillow";
         }
       } catch {
         // No answer: the next destination in order is where the click
