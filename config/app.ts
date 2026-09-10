@@ -217,9 +217,10 @@ export const PACK_ORDER: PackId[] = ["p5", "p10", "p25", "p50", "p100"];
 
 /**
  * What a deep phone lookup spends: a public-records search for the
- * owner's number, offered when no listing page gave one. Charged only
- * when a number comes back — a search that finds nothing costs the
- * account nothing.
+ * owner's number, offered when no listing page gave one. Charged when
+ * the owner comes back — a name, a number, an email, whatever the
+ * record holds, which is what the vendor bills for — and a search that
+ * finds nothing costs the account nothing.
  *
  * ONE CREDIT, AND WHY. The records vendors that bill strictly per hit
  * with no monthly fee charge four to seven cents a match (a fifth of
@@ -228,8 +229,8 @@ export const PACK_ORDER: PackId[] = ["p5", "p10", "p25", "p50", "p100"];
  * year for 300 a month, about 27 cents — and the dearest is the small
  * pack, a dollar. So one credit clears the vendor's cost on every plan
  * and every pack, by twenty cents at the least; the smallest unit is
- * already the profitable one, and a found number the store already
- * holds is charged again at no cost at all. Two credits would be a
+ * already the profitable one, and a match the store already holds is
+ * charged again at no cost at all. Two credits would be a
  * markup, not a margin.
  */
 export const PHONE_LOOKUP_CREDITS = 1;

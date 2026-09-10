@@ -69,8 +69,9 @@ describe("reading the records vendor's answer", () => {
   it("reads a miss as nobody, and an unrecognisable answer as unreadable", () => {
     expect(parseSkipTrace(MISS)).toEqual({ persons: [] });
     expect(phonesIn(parseSkipTrace(MISS))).toBe(0);
-    // A match with nobody usable in it is a no-match too.
-    expect(parseSkipTrace({ success: true, found: true, contact: { fullName: "X Y" }, phones: [], emails: [] })).toEqual({
+    // A match with nothing in it — no name, no number, no email — is a
+    // no-match too.
+    expect(parseSkipTrace({ success: true, found: true, contact: { propertyCity: "Tampa" }, phones: [], emails: [] })).toEqual({
       persons: [],
     });
     // Nothing that reads as a contact, and no word on whether one was
@@ -79,6 +80,24 @@ describe("reading the records vendor's answer", () => {
     expect(parseSkipTrace({ status: "queued", jobId: "j1" })).toBeNull();
     expect(parseSkipTrace(null)).toBeNull();
     expect(parseSkipTrace("nope")).toBeNull();
+  });
+
+  it("keeps a match without a number — the vendor billed for it, so it is a match", () => {
+    // The case that came up live: a name and an email, no number, four
+    // cents charged. A person to bill for, with no number to ring.
+    const named = parseSkipTrace({
+      success: true,
+      found: true,
+      charged: 4,
+      contact: { firstName: "Dana", lastName: "Lister", fullName: "Dana Lister" },
+      phones: [],
+      emails: ["dana@example.com"],
+    })!;
+    expect(named.persons).toEqual([{ name: "Dana Lister", phones: [], emails: ["dana@example.com"] }]);
+    expect(phonesIn(named)).toBe(0);
+    // A name alone is a match as well.
+    const nameOnly = parseSkipTrace({ success: true, found: true, charged: 4, contact: { fullName: "X Y" }, phones: [], emails: [] })!;
+    expect(nameOnly.persons).toEqual([{ name: "X Y", phones: [], emails: [] }]);
   });
 
   it("reads the contact wherever the answer puts it, and several of them", () => {

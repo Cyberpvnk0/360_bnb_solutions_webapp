@@ -16,10 +16,13 @@
  * should be rung at all — do-not-call, deceased — are honoured: a
  * deceased person is dropped, a do-not-call number is marked.
  *
- * CHARGED ONLY ON A NUMBER, ON BOTH SIDES. The vendor bills per match
- * and a miss is free; the route above this reads the account's room
- * before asking and takes the credits after, so a search that finds
- * nothing costs nobody anything. See app/api/phone-lookup.
+ * CHARGED ON A MATCH, ON BOTH SIDES. The vendor bills per match —
+ * whatever the record holds: a name, numbers, emails — and a miss is
+ * free. The route above this reads the account's room before asking
+ * and takes the credits after a match, whatever it carried: a name
+ * and an email with no number is a match the vendor billed for, so it
+ * is billed on. A search that finds nothing costs nobody anything.
+ * See app/api/phone-lookup.
  *
  * THE VENDOR'S CALL. One request per property:
  *
@@ -260,8 +263,11 @@ function personFrom(contact: Row): FoundPerson | null {
         .map((e) => e.trim().toLowerCase())
     )
   ).slice(0, 3);
-  if (phones.length === 0 && emails.length === 0) return null;
-  return { name: nameOf(contact), phones: phones.slice(0, 4), emails };
+  // A record with only a name in it is still the vendor's match, and
+  // still a person to look up: kept, and billed like any other.
+  const name = nameOf(contact);
+  if (name === null && phones.length === 0 && emails.length === 0) return null;
+  return { name, phones: phones.slice(0, 4), emails };
 }
 
 /**

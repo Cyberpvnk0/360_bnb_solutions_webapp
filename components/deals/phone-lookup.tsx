@@ -5,10 +5,11 @@
  *
  * Offered only where the listing site gave no number. One button that
  * says what it is and what it costs; press it and public records are
- * searched for the property's owner and their number. Charged only
- * when a number comes back, and the button says that too, because a
- * cost that might not apply is exactly the kind a person wants stated
- * before they press.
+ * searched for the property's owner and their number. Charged when
+ * the owner is on record — a name, a number, an email, whatever the
+ * record holds — and never when nothing is, and the button says that
+ * too, because a cost that might not apply is exactly the kind a
+ * person wants stated before they press.
  *
  * The answer is kept for the session by listing, so closing and
  * reopening the panel does not ask — or charge — again. The server
@@ -127,7 +128,7 @@ export function PhoneLookup({
       type="button"
       onClick={() => void run()}
       disabled={busy}
-      title={`Searches public records for the owner's phone number. ${price}, charged only when a number is found.`}
+      title={`Searches public records for the owner's name, phone number and email. ${price}, charged only when the owner is found.`}
       className={cn(
         "inline-flex h-8 w-fit items-center gap-1.5 rounded-sm border border-gold/60 bg-gold-fill/10 px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-gold-fill/20 disabled:cursor-default disabled:opacity-80",
         className
@@ -166,7 +167,7 @@ export function PhoneLookup({
     <div className="flex flex-col gap-3">
       {state.status === "none" ? (
         <p className="text-sm text-muted-foreground">
-          No phone number in public records for this address. Nothing was charged.
+          Nothing in public records for this address. Nothing was charged.
         </p>
       ) : null}
       {persons.map((person, i) => (
@@ -213,8 +214,12 @@ export function PhoneLookup({
       ))}
       {state.status === "found" ? (
         <p className="text-xs text-muted-foreground">
-          Usually the owner rather than the manager.
-          {state.charged > 0 ? ` ${state.charged} credits.` : " No charge this time."}
+          {persons.some((p) => p.phones.length > 0)
+            ? "Usually the owner rather than the manager."
+            : "No phone number on record for the owner."}
+          {state.charged > 0
+            ? ` ${state.charged} ${state.charged === 1 ? "credit" : "credits"}.`
+            : " No charge this time."}
           {persons.some((p) => p.phones.some((ph) => ph.dnc))
             ? " A marked number is on a do-not-call list; calling and texting rules apply."
             : ""}

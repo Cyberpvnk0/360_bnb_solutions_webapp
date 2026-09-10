@@ -5,14 +5,16 @@
  *
  * Public records, asked for the property's owner and their number,
  * for a listing that gave none. A paid feature, priced in credits
- * (config/app PHONE_LOOKUP_CREDITS) and charged ONLY when a number
- * comes back: the account's room is read before the vendor is asked,
- * and the credits are taken after it answers — once per address per
- * month for the account, so opening the same property again is free.
- * A vendor answer is kept a month for everyone, so the second account
- * to ask pays the plan and not the vendor.
+ * (config/app PHONE_LOOKUP_CREDITS) and charged when a match comes
+ * back — a name, a number, an email, whatever the record holds, which
+ * is exactly what the vendor bills us for: the account's room is read
+ * before the vendor is asked, and the credits are taken after it
+ * answers — once per address per month for the account, so opening
+ * the same property again is free. A vendor answer is kept a month for
+ * everyone, so the second account to ask pays the plan and not the
+ * vendor.
  *
- * Every answer says what happened: a number, no number (nothing
+ * Every answer says what happened: a match, no match (nothing
  * charged), no room on the plan (nothing asked), or a vendor that could
  * not be reached (nothing charged). Nothing off the vendor's answer is
  * logged.
@@ -23,7 +25,7 @@ import { PHONE_LOOKUP_CREDITS } from "@/config/app";
 import { requirePaid } from "@/lib/auth/gate";
 import { canCover, spendCredits } from "@/lib/db/usage";
 import { addressKey } from "@/lib/live/address";
-import { lookupPhone, phoneLookupConfigured, phonesIn } from "@/lib/live/phone-lookup";
+import { lookupPhone, phoneLookupConfigured } from "@/lib/live/phone-lookup";
 import { zipFromAddress } from "@/lib/live/zip";
 import { lookupZipAt } from "@/lib/map/zip-boundary";
 
@@ -84,9 +86,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (phonesIn(lookup.result) === 0) {
-    // Emails alone, or nothing: not what was paid for. Shown, unbilled.
-    return NextResponse.json({ ok: true, found: false, result: lookup.result, charged: 0 });
+  if ((lookup.result?.persons.length ?? 0) === 0) {
+    // Nobody on record: the vendor bills nothing for a miss, and
+    // neither does the plan.
+    return NextResponse.json({ ok: true, found: false, result: null, charged: 0 });
   }
 
   const spend = await spendCredits(
