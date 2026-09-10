@@ -23,7 +23,7 @@ import { NextResponse } from "next/server";
 import { ASSISTANT_MESSAGE_CREDITS, TIERS } from "@/config/app";
 import { readContext, renderContext } from "@/lib/assistant/context";
 import { encodeEvent, type AssistantEvent } from "@/lib/assistant/events";
-import { isOutOfScope, SYSTEM_PROMPT } from "@/lib/assistant/prompt";
+import { SYSTEM_PROMPT } from "@/lib/assistant/prompt";
 import { assistantTools, runTool } from "@/lib/assistant/tools";
 import { anthropicClient, assistantConfigured } from "@/lib/assistant/client";
 import { MODEL, runTurn, type StreamLike } from "@/lib/assistant/turn";
@@ -202,12 +202,9 @@ export async function POST(request: Request) {
           emit({ type: "error", reason: result.stopReason === "refusal" ? "refused" : "empty" });
           return;
         }
-        // A question off the subject gets the one sentence, and no credit
-        // is taken for it: nothing was researched.
-        if (isOutOfScope(result.text)) {
-          emit({ type: "done", charged: 0, balance: null });
-          return;
-        }
+        // A question off the subject gets the one sentence and is charged
+        // like any other: the credit is what keeps the box from being
+        // poked at for sport.
         // Answered: the credit. A refusal here is a race with a spend
         // that landed in between reading the room and asking; the
         // answer has gone out, unbilled, rather than being taken back.
