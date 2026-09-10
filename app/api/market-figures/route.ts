@@ -34,6 +34,7 @@
 
 import { NextResponse } from "next/server";
 import { requirePaid } from "@/lib/auth/gate";
+import type { Spread } from "@/lib/calc/deal-read";
 import { readEstimates } from "@/lib/db/market-store";
 import {
   calibrate,
@@ -75,13 +76,18 @@ export interface RowFigures {
   comps: number;
   radiusMiles: number;
   at: string | null;
+  /** How far an analysis may land from these; absent on the
+   *  property's own analysis. */
+  spread?: Spread;
 }
 
 /** The city's figures as the cards use them: the market's rate for
- *  each bedroom count, with the correction on it. */
+ *  each bedroom count, with the correction on it, and how far an
+ *  analysis has tended to land from them. */
 export type CityFigures = Figures & {
   calibration: Calibration | null;
   rates: Record<number, number>;
+  spread: Spread;
 };
 
 function rowsFrom(value: unknown): RowIn[] {
@@ -165,7 +171,15 @@ export async function POST(request: Request) {
       }
       const near = nearbyFigures(pool.comps, row, row.bd, model);
       answer[row.id] = near
-        ? { kind: "nearby", adr: near.adr, occupancy: near.occupancy, comps: near.comps, radiusMiles: near.radiusMiles, at: null }
+        ? {
+            kind: "nearby",
+            adr: near.adr,
+            occupancy: near.occupancy,
+            comps: near.comps,
+            radiusMiles: near.radiusMiles,
+            at: null,
+            spread: near.spread,
+          }
         : null;
     }
 

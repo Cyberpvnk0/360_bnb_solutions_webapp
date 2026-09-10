@@ -51,6 +51,7 @@
  */
 
 import { COMPS_RADIUS_MAX_MILES, MIN_COMPS, selectNearbyComps } from "@/lib/calc/comps";
+import type { Spread } from "@/lib/calc/deal-read";
 import { readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
 import { adrFactorFor } from "@/lib/mock/markets";
 import type { StrComp } from "@/lib/mock/types";
@@ -115,6 +116,20 @@ export const MIN_SIZE_SAMPLE = 8;
 /** The most bedrooms a card's rate is spelled out for; beyond it the
  *  table holds, as it does everywhere. */
 const RATES_UP_TO = 8;
+/**
+ * How wide a nearby reading's range is: the set's mean revenue may
+ * sit this many standard errors either way (about four in five
+ * analyses land inside), never tighter than a tenth — the analyzer's
+ * set is never exactly this one — and never wider than half.
+ */
+const SPREAD_Z = 1.28;
+const SPREAD_FLOOR = 0.1;
+const SPREAD_CEILING = 0.5;
+/** Anchors before the city rung's range is read off them rather than
+ *  assumed; a fifth-to-fifth band of fewer is noise. */
+export const MIN_SPREAD_ANCHORS = 8;
+/** The city rung's range until its analyses say otherwise. */
+export const CITY_SPREAD: Spread = { low: 0.7, high: 1.3 };
 /** The correction is a nudge, never a rewrite. */
 const CALIBRATION_FLOOR = 0.5;
 const CALIBRATION_CEILING = 2;
@@ -383,6 +398,8 @@ export interface NearbyFigures {
   comps: number;
   radiusMiles: number;
   sizing: Sizing;
+  /** How far an analysis's revenue may sit from this reading's. */
+  spread: Spread;
 }
 
 const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
@@ -418,9 +435,36 @@ export function nearbyFigures(
       comps: comps.length,
       radiusMiles,
       sizing: tier.sizing,
+      spread: spreadOf(comps.map((c) => rate(c) * c.occ)),
     };
   }
   return null;
+}
+
+/**
+ * How far the mean of a set of revenues may sit from the mean of the
+ * set an analysis would stand on: a standard-error band, floored and
+ * capped, as multipliers on the mean.
+ */
+export function spreadOf(revenues: readonly number[]): Spread {
+  const n = revenues.length;
+  const m = n > 0 ? mean([...revenues]) : 0;
+  let h = SPREAD_CEILING;
+  if (n > 1 && m > 0) {
+    const variance = revenues.reduce((s, r) => s + (r - m) ** 2, 0) / (n - 1);
+    h = (SPREAD_Z * Math.sqrt(variance)) / Math.sqrt(n) / m;
+  }
+  h = Math.min(SPREAD_CEILING, Math.max(SPREAD_FLOOR, h));
+  return { low: Math.round((1 - h) * 1000) / 1000, high: Math.round((1 + h) * 1000) / 1000 };
+}
+
+/** The value a fraction of the way through sorted numbers, read
+ *  between the two nearest. */
+function quantile(sorted: readonly number[], q: number): number {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
 /** A read of the pool around a point, for a diagnostic: how many
@@ -446,6 +490,9 @@ export interface Calibration {
   adr: number;
   /** Multiply the city's occupancy by this. */
   occupancy: number;
+  /** How far the analyses' revenue has sat from the corrected estimate
+   *  — the middle three-fifths of them — once there are enough. */
+  spread?: Spread;
 }
 
 function median(xs: number[]): number {
@@ -474,11 +521,27 @@ export function cityCalibration(
   if (usable.length < MIN_ANCHORS) return null;
   const adr = clamp(median(usable.map((a) => a.adr / model.rate(a.bd))));
   const occupancy = clamp(median(usable.map((a) => a.occ / city.occupancy)));
-  return {
+  const out: Calibration = {
     n: usable.length,
     adr: Math.round(adr * 1000) / 1000,
     occupancy: Math.round(occupancy * 1000) / 1000,
   };
+  if (usable.length >= MIN_SPREAD_ANCHORS) {
+    // Each analysis's revenue against the corrected estimate that
+    // would have been made for it: the band the middle three-fifths
+    // fell in is the range a card of this grain shows.
+    const residual = usable
+      .map((a) => (a.adr * a.occ) / (model.rate(a.bd) * out.adr * city.occupancy * out.occupancy))
+      .filter((r) => Number.isFinite(r) && r > 0)
+      .sort((x, y) => x - y);
+    if (residual.length >= MIN_SPREAD_ANCHORS) {
+      out.spread = {
+        low: Math.round(Math.min(0.9, Math.max(0.5, quantile(residual, 0.2))) * 1000) / 1000,
+        high: Math.round(Math.max(1.1, Math.min(1.6, quantile(residual, 0.8))) * 1000) / 1000,
+      };
+    }
+  }
+  return out;
 }
 
 /**
@@ -490,20 +553,22 @@ export function calibrate<T extends { adr: number; occupancy: number }>(
   city: T,
   calibration: Calibration | null,
   model: SizeModel
-): T & { calibration: Calibration | null; rates: Record<number, number> } {
+): T & { calibration: Calibration | null; rates: Record<number, number>; spread: Spread } {
   const k = calibration?.adr ?? 1;
   const rates: Record<number, number> = {};
   for (let bd = 0; bd <= RATES_UP_TO; bd += 1) {
     const rate = model.rate(bd);
     if (rate > 0) rates[bd] = Math.round(rate * k);
   }
-  if (!calibration) return { ...city, calibration: null, rates };
+  const spread = calibration?.spread ?? CITY_SPREAD;
+  if (!calibration) return { ...city, calibration: null, rates, spread };
   return {
     ...city,
     adr: Math.round(city.adr * calibration.adr),
     occupancy: Math.min(1, Math.round(city.occupancy * calibration.occupancy * 100) / 100),
     calibration,
     rates,
+    spread,
   };
 }
 

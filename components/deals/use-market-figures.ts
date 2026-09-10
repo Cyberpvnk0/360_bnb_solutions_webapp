@@ -216,6 +216,7 @@ export function dealFiguresFor(
         at: near.at,
         comps: near.comps,
         radiusMiles: near.radiusMiles,
+        ...(near.spread ? { spread: near.spread } : {}),
       },
       pending: false,
     };
@@ -235,6 +236,7 @@ export function dealFiguresFor(
         area: market.name,
         at: byCity.at,
         ...(rate ? { sized: true } : {}),
+        ...(byCity.spread ? { spread: byCity.spread } : {}),
       },
       pending: false,
     };

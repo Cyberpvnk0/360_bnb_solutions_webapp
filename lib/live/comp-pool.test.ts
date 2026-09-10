@@ -7,11 +7,13 @@ import {
   milesBetween,
   MIN_ANCHORS,
   MIN_SIZE_SAMPLE,
+  MIN_SPREAD_ANCHORS,
   nearbyFigures,
   poolAround,
   poolDistance,
   SET_SIZE,
   sizeModel,
+  spreadOf,
   tableFactor,
   toPoolComps,
   TYPICAL_BEDROOMS,
@@ -88,14 +90,14 @@ describe("what the listings around a point say", () => {
     const f = nearbyFigures(pool, HOME, 3);
     // Three within a mile is too few for the one-mile grain, so the
     // two-mile set: the four three-bedrooms.
-    expect(f).toEqual({ adr: 200, occupancy: 0.33, comps: 4, radiusMiles: 2, sizing: "exact" });
+    expect(f).toMatchObject({ adr: 200, occupancy: 0.33, comps: 4, radiusMiles: 2, sizing: "exact" });
     expect(poolAround(pool, HOME)).toMatchObject({ size: 7, within1: 6, within2: 7 });
   });
 
   it("stands on the one-mile subset when there are enough of this size in it", () => {
     const near = [140, 150, 160, 170, 180, 190].map((adr, i) => comp(`n${i}`, 0.1 + i * 0.1, 2, adr, 0.5));
     const pool = [...near, comp("far1", 1.5, 2, 400, 0.9), comp("far2", 1.8, 2, 400, 0.9)];
-    expect(nearbyFigures(pool, HOME, 2)).toEqual({
+    expect(nearbyFigures(pool, HOME, 2)).toMatchObject({
       adr: 165,
       occupancy: 0.5,
       comps: 6,
@@ -116,7 +118,7 @@ describe("what the listings around a point say", () => {
     ];
     const f = nearbyFigures(pool, HOME, 4);
     const to4 = (bd: number, adr: number) => adr * (adrFactorFor(4) / adrFactorFor(bd));
-    expect(f).toEqual({
+    expect(f).toMatchObject({
       adr: Math.round(mean([to4(4, 220), to4(4, 240), to4(3, 180), to4(3, 170), to4(5, 300)])),
       occupancy: 0.4,
       comps: 5,
@@ -129,7 +131,7 @@ describe("what the listings around a point say", () => {
     const pool = [comp("1", 1.1, 3, 200, 0.5), comp("2", 1.4, 3, 220, 0.5), comp("3", 1.7, 4, 260, 0.5), comp("4", 1.9, 3, 210, 0.5)];
     const f = nearbyFigures(pool, HOME, 1);
     const to1 = (bd: number, adr: number) => adr * (adrFactorFor(1) / adrFactorFor(bd));
-    expect(f).toEqual({
+    expect(f).toMatchObject({
       adr: Math.round(mean([to1(3, 200), to1(3, 220), to1(4, 260), to1(3, 210)])),
       occupancy: 0.5,
       comps: 4,
@@ -161,6 +163,27 @@ describe("what the listings around a point say", () => {
     expect(f).toMatchObject({ comps: SET_SIZE, radiusMiles: 2, sizing: "exact" });
     // The nearest twenty-five: the cheapest, as the fixture is built.
     expect(f!.adr).toBe(Math.round(mean(Array.from({ length: SET_SIZE }, (_, i) => 100 + i))));
+  });
+
+  it("says how far an analysis may land from the reading: tighter with more listings that agree", () => {
+    // Identical listings: nothing to spread, so the floor — the
+    // analyzer's set is never exactly this one.
+    expect(spreadOf([100, 100, 100, 100])).toEqual({ low: 0.9, high: 1.1 });
+    // A spread of revenues, and the same spread over four times the
+    // listings: half the band.
+    const wide = spreadOf([60, 80, 100, 120, 140]);
+    expect(wide.high - 1).toBeCloseTo(1 - wide.low, 6);
+    expect(wide.high).toBeGreaterThan(1.1);
+    const many = spreadOf(Array.from({ length: 20 }, (_, i) => [60, 80, 100, 120, 140][i % 5]));
+    expect(many.high - 1).toBeCloseTo((wide.high - 1) / 2, 1);
+    // Wild disagreement caps at half; a single listing, or none, is
+    // the cap too.
+    expect(spreadOf([10, 1000, 20, 900])).toEqual({ low: 0.5, high: 1.5 });
+    expect(spreadOf([100])).toEqual({ low: 0.5, high: 1.5 });
+    expect(spreadOf([])).toEqual({ low: 0.5, high: 1.5 });
+    // A reading carries its set's spread.
+    const pool = [140, 150, 160, 170, 180, 190].map((adr, i) => comp(`n${i}`, 0.1 + i * 0.1, 2, adr, 0.5));
+    expect(nearbyFigures(pool, HOME, 2)?.spread).toEqual(spreadOf(pool.map((c) => c.adr * c.occ)));
   });
 
   it("says nothing when too few listings sit within two miles", () => {
@@ -252,6 +275,27 @@ describe("what the market's analyses say about its average", () => {
     expect(cityCalibration(anchors.slice(0, MIN_ANCHORS), CITY, bare)).not.toBeNull();
     expect(calibrate(CITY, null, bare)).toMatchObject({ ...CITY, calibration: null });
     expect(calibrate(CITY, null, bare).rates[4]).toBe(Math.round(bare.rate(4)));
+  });
+
+  it("reads the city rung's range off its analyses once there are enough, and assumes one before", () => {
+    const base = bare.rate(2);
+    // Eight two-bedroom analyses whose revenue sat at these fractions
+    // of the corrected estimate: the middle three-fifths span 0.8 to 1.2.
+    const ratios = [0.6, 0.8, 0.9, 0.95, 1.05, 1.1, 1.2, 1.5];
+    const anchors = ratios.map((r, i) => anchor(i, Math.round(base * r), 0.5));
+    expect(anchors).toHaveLength(MIN_SPREAD_ANCHORS);
+    const cal = cityCalibration(anchors, CITY, bare)!;
+    expect(cal.spread).toBeDefined();
+    expect(cal.spread!.low).toBeGreaterThan(0.7);
+    expect(cal.spread!.low).toBeLessThan(0.9);
+    expect(cal.spread!.high).toBeGreaterThan(1.1);
+    expect(cal.spread!.high).toBeLessThan(1.3);
+    expect(calibrate(CITY, cal, bare).spread).toEqual(cal.spread);
+    // Fewer: the usual band.
+    const few = cityCalibration(anchors.slice(0, MIN_SPREAD_ANCHORS - 1), CITY, bare)!;
+    expect(few.spread).toBeUndefined();
+    expect(calibrate(CITY, few, bare).spread).toEqual({ low: 0.7, high: 1.3 });
+    expect(calibrate(CITY, null, bare).spread).toEqual({ low: 0.7, high: 1.3 });
   });
 
   it("reads a larger size against the market's rate for that size, and never rewrites the city", () => {

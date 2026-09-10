@@ -25,16 +25,12 @@
  */
 
 import * as React from "react";
-import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Mail, Phone, TriangleAlert, User, X } from "lucide-react";
-import { projectDeal } from "@/lib/calc/arbitrage";
+import { ArrowUpRight, Mail, Phone, TriangleAlert, User, X } from "lucide-react";
 import { fmtMoney, fmtMonth, fmtNum, fmtPct, localityLine } from "@/lib/format";
-import { benchmark2brInputs } from "@/lib/mock/markets";
 import { basisLabel, estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -43,10 +39,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
+import { AnalyzeButton } from "./analyze-button";
+import { money, rangeText, rangeTone } from "./net-range";
 import { PhoneLookup } from "./phone-lookup";
 import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
-import { analyzeHref } from "@/lib/live/analyze-href";
 import { hasOwnListingPage, webLookupHref } from "@/lib/live/listing-links";
 import { useListingContact } from "./use-listing-contact";
 import { usePropertyFigures } from "./use-property-figures";
@@ -103,11 +100,14 @@ function Figure({
   value,
   sub,
   tone = "plain",
+  dense = false,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "plain" | "good" | "bad";
+  /** A step smaller, for a figure with two ends. */
+  dense?: boolean;
 }) {
   return (
     // Centred in its cell, because the cushion column beside these is
@@ -118,7 +118,8 @@ function Figure({
         <MetricLabel>{label}</MetricLabel>
         <p
           className={cn(
-            "text-lg font-semibold tabular sm:mt-1.5 sm:text-xl",
+            "font-semibold tabular sm:mt-1.5",
+            dense ? "text-base sm:text-lg" : "text-lg sm:text-xl",
             tone === "good"
               ? "text-gold"
               : tone === "bad"
@@ -255,18 +256,12 @@ export function ListingDetailDialog({
     }
     return deal ?? estimateDeal(listing, market);
   }, [listing, market, deal, own.figures]);
-  const projection = React.useMemo(() => {
-    if (!listing || !read) return null;
-    return projectDeal(benchmark2brInputs(listing.rentMonthly), {
-      adr: read.nightlyRate,
-      marketOccupancy: read.basis.occupancy,
-    });
-  }, [listing, read]);
-
-  const cushionPts = projection
-    ? Math.round(projection.marginOfSafety * 100)
-    : 0;
+  // Every figure below is the read's own — the same calculator, the
+  // same default inputs, the same figures as the card that opened this
+  // — so the panel cannot say one thing and the card another.
+  const cushionPts = read?.cushionPts ?? 0;
   const short = cushionPts < 0;
+  const analyzed = read?.basis.kind === "comps";
   const isLive = listing?.id.startsWith("live--") ?? false;
   // The feed's own contact when it has one, otherwise the listing page's
   // — read on open, because reading a page costs money and a property
@@ -298,7 +293,7 @@ export function ListingDetailDialog({
           <span className="sr-only">Close</span>
         </DialogClose>
 
-        {listing && market && projection ? (
+        {listing && market && read ? (
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
             {/* ---------------------------------------------------- */}
             {/* What it is                                            */}
@@ -396,12 +391,7 @@ export function ListingDetailDialog({
 
               <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/50 px-4 py-3 sm:px-5">
                 <AddToListMenu listing={listing} />
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={analyzeHref(listing)} target="_blank" rel="noopener">
-                    Run the numbers
-                    <ArrowRight aria-hidden className="size-3.5" />
-                  </Link>
-                </Button>
+                <AnalyzeButton listing={listing} analyzed={analyzed} />
                 <PhotosLink
                   place={{ ...listing, sourceUrl: listing.sourceUrl ?? pageFound }}
                   real={isLive}
@@ -456,27 +446,39 @@ export function ListingDetailDialog({
                   </p>
                   <div className="mt-4">
                     <CushionMeter
-                      breakeven={projection.breakevenOccupancy}
-                      occupancy={market.occupancy}
+                      breakeven={read.breakeven}
+                      occupancy={read.basis.occupancy}
                     />
                   </div>
                 </div>
 
-                <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                {/* The middle column is wider: a range is a longer
+                    figure than a number, and it must not wrap. */}
+                <div className="grid divide-y divide-border sm:grid-cols-[1fr_1.55fr_1fr] sm:divide-x sm:divide-y-0">
                   <Figure
                     label="Breakeven"
-                    value={fmtPct(projection.breakevenOccupancy)}
+                    value={fmtPct(read.breakeven)}
                     sub="Nights to cover costs"
                   />
-                  <Figure
-                    label="Net profit"
-                    value={`${fmtMoney(Math.round(projection.netCashFlow))}/mo`}
-                    sub={`${fmtMoney(Math.round(projection.monthlyRevenue))} revenue − ${fmtMoney(Math.round(projection.monthlyCosts))} costs`}
-                    tone={projection.netCashFlow < 0 ? "bad" : "good"}
-                  />
+                  {read.netRange ? (
+                    <Figure
+                      label="Net profit"
+                      value={rangeText(read.netRange)}
+                      sub="A month, estimated · run the numbers for the exact figure"
+                      tone={rangeTone(read.netRange)}
+                      dense
+                    />
+                  ) : (
+                    <Figure
+                      label="Net profit"
+                      value={`${money(read.netCashFlow)}/mo`}
+                      sub={`${fmtMoney(read.monthlyRevenue)} revenue − ${fmtMoney(read.monthlyCosts)} costs`}
+                      tone={read.netCashFlow < 0 ? "bad" : "good"}
+                    />
+                  )}
                   <Figure
                     label="Startup"
-                    value={fmtMoney(Math.round(projection.startupCapital))}
+                    value={fmtMoney(read.startupCapital)}
                     sub="Deposit + first month"
                   />
                 </div>

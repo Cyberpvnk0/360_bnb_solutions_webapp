@@ -22,8 +22,7 @@
  */
 
 import * as React from "react";
-import Link from "next/link";
-import { ArrowRight, TrendingDown } from "lucide-react";
+import { Check, TrendingDown } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import { basisLabel, type DealRead } from "@/lib/calc/deal-read";
 import { gradeDeal } from "@/lib/calc/deal-grade";
@@ -32,9 +31,9 @@ import { PropertyImage } from "./property-image";
 import { PhotosLink } from "./photos-link";
 import { DealBadge } from "./deal-badge";
 import { AddToListMenu } from "./add-to-list-menu";
-import { Button } from "@/components/ui/button";
+import { AnalyzeButton } from "./analyze-button";
+import { money, rangeText, rangeTone } from "./net-range";
 import { TYPE_LABEL } from "./deal-filters";
-import { analyzeHref } from "@/lib/live/analyze-href";
 import { cn } from "@/lib/utils";
 
 /** Zillow's separator, and it earns its place: four facts run together
@@ -50,6 +49,51 @@ function listedAgo(days: number): string {
   if (days < 30) return `${days} days ago`;
   const months = Math.round(days / 30);
   return months === 1 ? "1 month ago" : `${months} months ago`;
+}
+
+/**
+ * The card's one big number: the net profit a month. A range until
+ * the property is analyzed — where the analysis is likely to land —
+ * and the analysis itself after, marked so.
+ */
+function NetProfit({ deal }: { deal: DealRead }) {
+  const pending = deal.basis.kind === "pending";
+  const analyzed = deal.basis.kind === "comps";
+  const tone: "plain" | "good" | "bad" = pending
+    ? "plain"
+    : deal.netRange
+      ? rangeTone(deal.netRange)
+      : deal.netCashFlow < 0
+        ? "bad"
+        : "good";
+  return (
+    <div className="px-4 pb-2.5 pt-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Net profit
+        </p>
+        {analyzed ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gold">
+            <Check aria-hidden className="size-3" strokeWidth={3} />
+            Analyzed
+          </span>
+        ) : pending ? null : (
+          <span className="text-[10px] font-medium text-muted-foreground">Estimate</span>
+        )}
+      </div>
+      <p
+        className={cn(
+          "mt-0.5 text-lg font-semibold leading-tight tracking-tight tabular",
+          tone === "good" ? "text-gold" : tone === "bad" ? "text-neg" : "text-foreground"
+        )}
+      >
+        {pending ? "—" : deal.netRange ? rangeText(deal.netRange) : money(deal.netCashFlow)}
+        {pending ? null : (
+          <span className="ml-1 text-xs font-normal text-muted-foreground">/mo</span>
+        )}
+      </p>
+    </div>
+  );
 }
 
 function Stat({
@@ -106,7 +150,7 @@ function basisCaption(basis: DealRead["basis"]): string {
   const reach = basis.radiusMiles ? ` within ${basis.radiusMiles} mi` : "";
   switch (basis.kind) {
     case "comps":
-      return `Analyzed · ${basis.comps ?? "—"} listings${reach}`;
+      return `This property's analysis · ${basis.comps ?? "—"} listings${reach}`;
     case "nearby":
       return `Nearby · ${basis.comps ?? "—"} listings${reach}`;
     case "zip":
@@ -238,35 +282,30 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           ) : null}
         </div>
 
-        {/* The part a rental portal does not have. Projected from the
-            measured figures for the row's ZIP or city (the title says
-            which); held blank while those are still on their way, so
-            a number about to change is not the one that was read. */}
-        <div
-          className="grid grid-cols-3 divide-x divide-border border-t border-border bg-secondary/40"
-          title={basisLabel(deal.basis)}
-        >
-          {deal.basis.kind === "pending" ? (
-            <>
-              <Stat label="Cushion" value="—" />
-              <Stat label="Net profit" value="—" />
-              <Stat label="Nightly" value="—" />
-            </>
-          ) : (
-            <>
-              <Stat
-                label="Cushion"
-                value={`${deal.cushionPts < 0 ? "−" : "+"}${Math.abs(deal.cushionPts)} pts`}
-                tone={deal.cushionPts < 0 ? "bad" : deal.cushionPts >= 8 ? "good" : "plain"}
-              />
-              <Stat
-                label="Net profit"
-                value={`${fmtMoney(deal.netCashFlow)}/mo`}
-                tone={deal.netCashFlow < 0 ? "bad" : "good"}
-              />
-              <Stat label="Nightly" value={fmtMoney(deal.nightlyRate)} />
-            </>
-          )}
+        {/* The part a rental portal does not have. The net profit is
+            the headline — a range until the property is analyzed — and
+            the two figures it turns on sit under it. Held blank while
+            the figures are still on their way, so a number about to
+            change is not the one that was read. */}
+        <div className="border-t border-border bg-secondary/40" title={basisLabel(deal.basis)}>
+          <NetProfit deal={deal} />
+          <div className="grid grid-cols-2 divide-x divide-border border-t border-border">
+            {deal.basis.kind === "pending" ? (
+              <>
+                <Stat label="Cushion" value="—" />
+                <Stat label="Nightly" value="—" />
+              </>
+            ) : (
+              <>
+                <Stat
+                  label="Cushion"
+                  value={`${deal.cushionPts < 0 ? "−" : "+"}${Math.abs(deal.cushionPts)} pts`}
+                  tone={deal.cushionPts < 0 ? "bad" : deal.cushionPts >= 8 ? "good" : "plain"}
+                />
+                <Stat label="Nightly" value={fmtMoney(deal.nightlyRate)} />
+              </>
+            )}
+          </div>
         </div>
         {/* What those three stand on, said rather than hidden in a
             hover: a reader deciding between two cards should know one
@@ -280,19 +319,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           onClick={(e) => e.stopPropagation()}
         >
           <AddToListMenu listing={l} />
-          {/* Outlined on a white card, the button vanished into it. A
-              soft shadow hugging the border lifts it just enough. */}
-          <Button
-            variant="outline"
-            size="sm"
-            asChild
-            className="shadow-[0_1px_2px_rgba(16,16,18,0.08),0_2px_6px_rgba(16,16,18,0.08)] transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(16,16,18,0.1),0_4px_10px_rgba(16,16,18,0.1)]"
-          >
-            <Link href={analyzeHref(l)} target="_blank" rel="noopener">
-              Run the numbers
-              <ArrowRight aria-hidden className="size-3.5" />
-            </Link>
-          </Button>
+          <AnalyzeButton listing={l} analyzed={deal.basis.kind === "comps"} />
         </div>
       </div>
     );

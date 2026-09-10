@@ -98,6 +98,52 @@ describe("what a read stands on", () => {
     expect(basisLabel(read.basis)).toBe("Measured for Tampa · 47% occupancy");
   });
 
+  it("brackets an estimate's net profit in a range, and gives an analysis none", () => {
+    const nearby = estimateDeal(listing, market, {
+      adr: 171,
+      occupancy: 0.31,
+      kind: "nearby",
+      area: null,
+      at: null,
+      comps: 9,
+      radiusMiles: 1,
+      spread: { low: 0.8, high: 1.2 },
+    });
+    expect(nearby.netRange).not.toBeNull();
+    // The range brackets the figure the grid sorts by, and reads to
+    // the nearest fifty dollars.
+    expect(nearby.netRange!.low).toBeLessThan(nearby.netCashFlow);
+    expect(nearby.netRange!.high).toBeGreaterThan(nearby.netCashFlow);
+    expect(Math.abs(nearby.netRange!.low) % 50).toBe(0);
+    expect(Math.abs(nearby.netRange!.high) % 50).toBe(0);
+    // A tighter spread is a tighter range.
+    const tight = estimateDeal(listing, market, {
+      adr: 171,
+      occupancy: 0.31,
+      kind: "nearby",
+      area: null,
+      at: null,
+      spread: { low: 0.9, high: 1.1 },
+    });
+    expect(tight.netRange!.high - tight.netRange!.low).toBeLessThan(
+      nearby.netRange!.high - nearby.netRange!.low
+    );
+    // Without a spread of its own, a grain's usual one; the modelled
+    // read has the widest.
+    const area = estimateDeal(listing, market, { adr: 200, occupancy: 0.5, kind: "city", area: "Jacksonville", at: null });
+    expect(area.netRange).not.toBeNull();
+    const modelled = estimateDeal(listing, market);
+    expect(modelled.netRange!.high - modelled.netRange!.low).toBeGreaterThan(0);
+    // The property's own analysis is the figure, not a range; and
+    // nothing is bracketed while the figures are still on their way.
+    const own = estimateDeal(listing, market, { adr: 171, occupancy: 0.31, kind: "comps", area: null, at: null, comps: 12, radiusMiles: 1 });
+    expect(own.netRange).toBeNull();
+    expect(estimateDeal(listing, market, null, { pending: true }).netRange).toBeNull();
+    // And the panel's figures ride along with the read.
+    expect(own.monthlyRevenue - own.monthlyCosts).toBe(own.netCashFlow);
+    expect(own.startupCapital).toBeGreaterThanOrEqual(0);
+  });
+
   it("falls to the modelled catalogue figures and says so, or holds while measuring", () => {
     const modelled = estimateDeal(listing, market);
     expect(modelled.basis.kind).toBe("modelled");

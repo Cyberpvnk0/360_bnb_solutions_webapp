@@ -8,14 +8,13 @@
  * a new tab so the search stays where it was.
  */
 
-import Link from "next/link";
-import { ArrowRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import { gradeDeal } from "@/lib/calc/deal-grade";
 import type { DealRead } from "@/lib/calc/deal-read";
 import type { RentalListing } from "@/lib/mock/types";
-import { analyzeHref } from "@/lib/live/analyze-href";
 import { Button } from "@/components/ui/button";
+import { AnalyzeButton } from "./analyze-button";
 import { DealBadge } from "./deal-badge";
 import { PropertyImage } from "./property-image";
 
@@ -62,12 +61,7 @@ export function ListingDock({
             <Button variant="ghost" size="sm" onClick={onDetails}>
               Details
             </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link href={analyzeHref(l)} target="_blank" rel="noopener">
-                Run the numbers
-                <ArrowRight aria-hidden className="size-3.5" />
-              </Link>
-            </Button>
+            <AnalyzeButton listing={l} analyzed={deal.basis.kind === "comps"} />
           </div>
         </div>
       </div>

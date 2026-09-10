@@ -14,6 +14,7 @@ const city: CityFigures = {
   at: "2026-09-01T00:00:00Z",
   calibration: null,
   rates: { [listing.bedrooms]: 260 },
+  spread: { low: 0.8, high: 1.2 },
 };
 const set = (
   row: RowFigures | null | undefined,
@@ -25,7 +26,14 @@ describe("the figures a row is projected from", () => {
   it("takes the city's rate for this size as already sized, so the card does not scale it again", () => {
     const { figures, pending } = dealFiguresFor(listing, market, set(null, city));
     expect(pending).toBe(false);
-    expect(figures).toMatchObject({ kind: "city", adr: 260, sized: true, occupancy: 0.5, area: market.name });
+    expect(figures).toMatchObject({
+      kind: "city",
+      adr: 260,
+      sized: true,
+      occupancy: 0.5,
+      area: market.name,
+      spread: { low: 0.8, high: 1.2 },
+    });
   });
 
   it("falls to the city's average, to be scaled, when no rate for this size came", () => {
@@ -36,7 +44,11 @@ describe("the figures a row is projected from", () => {
 
   it("prefers what the row itself stands on", () => {
     const own: RowFigures = { kind: "comps", adr: 180, occupancy: 0.4, comps: 9, radiusMiles: 1, at: null };
-    expect(dealFiguresFor(listing, market, set(own, city)).figures).toMatchObject({ kind: "comps", adr: 180, comps: 9 });
+    const figures = dealFiguresFor(listing, market, set(own, city)).figures;
+    expect(figures).toMatchObject({ kind: "comps", adr: 180, comps: 9 });
+    expect(figures?.spread).toBeUndefined();
+    const near: RowFigures = { ...own, kind: "nearby", spread: { low: 0.85, high: 1.15 } };
+    expect(dealFiguresFor(listing, market, set(near, city)).figures?.spread).toEqual({ low: 0.85, high: 1.15 });
   });
 
   it("is pending while an answer is on its way, and nothing once asked with nothing to be had", () => {
