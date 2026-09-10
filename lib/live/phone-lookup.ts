@@ -27,13 +27,23 @@
  *   Authorization: Bearer <DataSkip_Key>
  *   { "address": "44 Pine St", "city": "Bridgewater", "state": "MA", "zip": "02324" }
  *
- * A match answers { success, found: true, charged, contact: { fullName,
- * addresses, phones: [{ number, type, dnc }], emails } }; a miss answers
- * found: false. The answer is read defensively — the contact wherever
- * it sits, the fields under the names their docs use and the obvious
- * alternatives — and an answer with nothing recognisable in it is
- * reported as unreadable rather than as "no match", so a changed shape
- * shows up as a failure instead of a quiet run of empty results.
+ * The address is the street line only — their docs are explicit that
+ * a whole "street, city, state zip" in that field will not match — with
+ * the town, state and ZIP beside it. A match answers
+ *
+ *   { success: true, found: true, charged: 4,
+ *     contact: { firstName, lastName, fullName, propertyAddress, …, mailingAddress, … },
+ *     phones: [{ number: "5555550123", type: "mobile" | "landline", dnc: false }],
+ *     emails: ["owner@example.com"] }
+ *
+ * — the numbers and emails BESIDE the contact, the name inside it, and
+ * `charged` in cents. A miss answers { success: true, found: false,
+ * contact: null, charged: 0 }. A 402 means our balance with them is
+ * empty; a 429 is their per-minute limit. The answer is read
+ * defensively — that shape first, then the contact wherever else a
+ * vendor might put it — and an answer with nothing recognisable in it
+ * is reported as unreadable rather than as "no match", so a changed
+ * shape shows up as a failure instead of a quiet run of empty results.
  */
 
 import { addressKey, streetLine } from "./address";
@@ -76,8 +86,9 @@ const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 25_000;
 
-/** The names the key has been set under; the first one set wins. */
-const KEY_NAMES = ["DataSkip_Key", "DATASKIP_KEY", "DATA_SKIP_API", "DATASKIP_API_KEY"];
+/** The names the key has been set under — ours, then the vendor's own
+ *  (their CLI and SDK read SKIPTRACE_API_KEY); the first one set wins. */
+const KEY_NAMES = ["DataSkip_Key", "DATASKIP_KEY", "DATA_SKIP_API", "DATASKIP_API_KEY", "SKIPTRACE_API_KEY"];
 
 /**
  * A variable by one of its names, or by any name that starts with
@@ -98,7 +109,7 @@ function envNamed(names: readonly string[], test: (name: string) => boolean): st
 
 /** The key, under the name it is set by in Vercel. */
 function apiKey(): string | null {
-  return envNamed(KEY_NAMES, (name) => /^data_?skip/i.test(name) && !/url/i.test(name));
+  return envNamed(KEY_NAMES, (name) => /^(data_?skip|skiptrace)/i.test(name) && !/url/i.test(name));
 }
 
 export function phoneLookupConfigured(): boolean {
@@ -254,6 +265,24 @@ function personFrom(contact: Row): FoundPerson | null {
 }
 
 /**
+ * The documented match: numbers and emails beside the contact, the
+ * name inside it. Folded into one record so the name and the numbers
+ * are not read as two people, one nameless and one unreachable.
+ */
+function documentedContact(body: Row): Row | null {
+  if (!Array.isArray(body.phones) && !Array.isArray(body.emails)) return null;
+  // No contact object: the name, if any, is beside the numbers.
+  const contact = isRow(body.contact) ? body.contact : body;
+  return {
+    ...contact,
+    phones: Array.isArray(body.phones) ? body.phones : contact.phones,
+    emails: Array.isArray(body.emails) ? body.emails : contact.emails,
+    dnc: body.dnc ?? contact.dnc,
+    deceased: body.deceased ?? contact.deceased,
+  };
+}
+
+/**
  * What the vendor's answer says, or null when it is a shape this does
  * not read — a failure, not a no-match. A miss (`found: false`, or a
  * match with nobody usable in it) is `{ persons: [] }`.
@@ -261,7 +290,8 @@ function personFrom(contact: Row): FoundPerson | null {
 export function parseSkipTrace(body: unknown): PhoneLookupResult | null {
   if (!isRow(body)) return null;
   if (body.found === false) return { persons: [] };
-  const contacts = contactsIn(body);
+  const documented = documentedContact(body);
+  const contacts = documented ? [documented] : contactsIn(body);
   if (contacts.length === 0) return body.found === true ? { persons: [] } : null;
   const persons: FoundPerson[] = [];
   for (const contact of contacts) {

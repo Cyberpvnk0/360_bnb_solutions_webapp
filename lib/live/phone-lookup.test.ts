@@ -8,24 +8,34 @@ vi.mock("@/lib/db/market-store", async (importOriginal) => ({
   writeKeyed: vi.fn(async () => ({ ok: true, detail: null })),
 }));
 
-/** A match, the way the vendor's docs write one. */
+/** A match, the way the vendor's docs write one: the numbers and
+ *  emails beside the contact, the name inside it, the charge in cents. */
 const HIT = {
   success: true,
   found: true,
-  charged: true,
+  charged: 4,
   contact: {
+    firstName: "Dana",
+    lastName: "Lister",
     fullName: "Dana Lister",
-    addresses: [{ street: "1804 E Sitka St", city: "Tampa", state: "FL", zip: "33604" }],
-    phones: [
-      { number: "8135550142", type: "landline", dnc: false },
-      { number: "+1 (813) 555-0199", type: "mobile", dnc: false },
-      { number: "8135550199", type: "mobile" },
-      { number: "555", type: "mobile" },
-    ],
-    emails: ["Dana@Example.com", { email: "dana@example.com" }, "not an email"],
+    propertyAddress: "1804 E Sitka St",
+    propertyCity: "Tampa",
+    propertyState: "FL",
+    propertyZip: "33604",
+    mailingAddress: "PO Box 1",
+    mailingCity: "Tampa",
+    mailingState: "FL",
+    mailingZip: "33601",
   },
+  phones: [
+    { number: "8135550142", type: "landline", dnc: false },
+    { number: "+1 (813) 555-0199", type: "mobile", dnc: false },
+    { number: "8135550199", type: "mobile" },
+    { number: "555", type: "mobile" },
+  ],
+  emails: ["Dana@Example.com", { email: "dana@example.com" }, "not an email"],
 };
-const MISS = { success: true, found: false, charged: false };
+const MISS = { success: true, found: false, contact: null, charged: 0 };
 
 describe("reading the records vendor's answer", () => {
   it("takes the name, the numbers and the emails, the most useful number first", () => {
@@ -41,11 +51,26 @@ describe("reading the records vendor's answer", () => {
     expect(phonesIn(r)).toBe(2);
   });
 
+  it("reads the name off the contact and the numbers beside it as one person", () => {
+    // The documented shape, and the same numbers nested inside the
+    // contact instead: one person either way, never a nameless one
+    // with the numbers and a named one with none.
+    const documented = parseSkipTrace(HIT)!;
+    expect(documented.persons).toHaveLength(1);
+    expect(documented.persons[0].name).toBe("Dana Lister");
+    const { phones, emails, ...rest } = HIT;
+    const nested = parseSkipTrace({ ...rest, contact: { ...HIT.contact, phones, emails } })!;
+    expect(nested).toEqual(documented);
+    // A name from the parts when the full one is missing.
+    const parts = parseSkipTrace({ found: true, contact: { firstName: "Dana", lastName: "Lister" }, phones: [{ number: "8135550142" }] })!;
+    expect(parts.persons[0].name).toBe("Dana Lister");
+  });
+
   it("reads a miss as nobody, and an unrecognisable answer as unreadable", () => {
     expect(parseSkipTrace(MISS)).toEqual({ persons: [] });
     expect(phonesIn(parseSkipTrace(MISS))).toBe(0);
     // A match with nobody usable in it is a no-match too.
-    expect(parseSkipTrace({ success: true, found: true, contact: { fullName: "X Y", phones: [], emails: [] } })).toEqual({
+    expect(parseSkipTrace({ success: true, found: true, contact: { fullName: "X Y" }, phones: [], emails: [] })).toEqual({
       persons: [],
     });
     // Nothing that reads as a contact, and no word on whether one was
@@ -125,8 +150,12 @@ describe("asking the vendor", () => {
     vi.stubEnv("DataSkip_Key", "");
     vi.stubEnv("dataskip_api_key", "any casing");
     expect(phoneLookupConfigured()).toBe(true);
-    // The endpoint override is not mistaken for the key.
     vi.stubEnv("dataskip_api_key", "");
+    // The vendor's own variable name works too.
+    vi.stubEnv("SKIPTRACE_API_KEY", "pc_theirs");
+    expect(phoneLookupConfigured()).toBe(true);
+    vi.stubEnv("SKIPTRACE_API_KEY", "");
+    // The endpoint override is not mistaken for the key.
     vi.stubEnv("DATA_SKIP_API_URL", "https://example.test/trace");
     expect(phoneLookupConfigured()).toBe(false);
   });
@@ -140,9 +169,9 @@ describe("asking the vendor", () => {
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer pc_from_vercel");
   });
 
-  it("posts the address with the key, and stores a match for a month", async () => {
+  it("posts the street line with the key, and stores a match for a month", async () => {
     fetchMock.mockResolvedValue(answer(200, HIT));
-    const out = await lookupPhone(PLACE);
+    const out = await lookupPhone({ ...PLACE, address: "1804 E Sitka St, Tampa, FL 33604" });
     expect(out).toMatchObject({ ok: true, from: "vendor" });
     expect(phonesIn(out.ok ? out.result : null)).toBe(2);
 
@@ -173,8 +202,10 @@ describe("asking the vendor", () => {
   it("says what went wrong, in the vendor's words when it gave any", async () => {
     fetchMock.mockResolvedValue(answer(401, { error: "invalid api key" }));
     expect(await lookupPhone(PLACE)).toMatchObject({ ok: false, reason: "auth", status: 401 });
-    fetchMock.mockResolvedValue(answer(402, { error: "insufficient balance" }));
+    fetchMock.mockResolvedValue(answer(402, { error: "Insufficient balance", balanceRequired: 4 }));
     expect(await lookupPhone(PLACE)).toMatchObject({ ok: false, reason: "quota", status: 402 });
+    fetchMock.mockResolvedValue(new Response("", { status: 429, headers: { "retry-after": "5" } }));
+    expect(await lookupPhone(PLACE)).toMatchObject({ ok: false, reason: "quota", status: 429 });
     fetchMock.mockResolvedValue(answer(200, { success: false, error: "address could not be parsed" }));
     expect(await lookupPhone(PLACE)).toMatchObject({ ok: false, reason: "http", detail: "address could not be parsed" });
     fetchMock.mockResolvedValue(answer(200, { status: "queued", jobId: "j1" }));
