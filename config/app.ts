@@ -43,6 +43,9 @@ export interface Tier {
   pdfExport: boolean;
   csvExport: boolean;
   prioritySupport: boolean;
+  /** The research assistant on the analysis and the Deal Finder,
+   *  priced per message in credits (ASSISTANT_MESSAGE_CREDITS). */
+  assistant: boolean;
   /** One-line positioning used on pricing cards. */
   blurb: string;
   /** Bullet list for pricing cards, in display order. */
@@ -82,6 +85,7 @@ export const TIERS: Record<TierId, Tier> = {
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
+    assistant: false,
     blurb: "Walk the product on preview inventory before you pay.",
     features: [
       "Preview inventory in every market",
@@ -100,6 +104,7 @@ export const TIERS: Record<TierId, Tier> = {
     pdfExport: false,
     csvExport: false,
     prioritySupport: false,
+    assistant: false,
     blurb: "For your first market and your first few landlord calls.",
     features: [
       "45 credits / month",
@@ -118,11 +123,13 @@ export const TIERS: Record<TierId, Tier> = {
     pdfExport: true,
     csvExport: false,
     prioritySupport: false,
+    assistant: true,
     recommended: true,
     blurb: "For operators underwriting deals every week.",
     features: [
       "125 credits / month",
       "Credits cover market searches and property analyses",
+      "Research assistant: finds listings, owners and local rules",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -138,10 +145,12 @@ export const TIERS: Record<TierId, Tier> = {
     pdfExport: true,
     csvExport: true,
     prioritySupport: true,
+    assistant: true,
     blurb: "For teams running a portfolio across markets.",
     features: [
       "300 credits / month",
       "Credits cover market searches and property analyses",
+      "Research assistant: finds listings, owners and local rules",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -234,6 +243,17 @@ export const PACK_ORDER: PackId[] = ["p5", "p10", "p25", "p50", "p100"];
  * markup, not a margin.
  */
 export const PHONE_LOOKUP_CREDITS = 1;
+
+/**
+ * What one message to the research assistant spends. A message is a
+ * few web searches and reads and a short answer: a cent a search, the
+ * pages' tokens, the model's — five to twenty-five cents at the most
+ * searched. One credit is worth twenty-seven cents on the cheapest
+ * plan and a dollar on the smallest pack, so the one unit clears the
+ * cost on every plan, and a message that gets no answer is not
+ * charged at all.
+ */
+export const ASSISTANT_MESSAGE_CREDITS = 1;
 
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {

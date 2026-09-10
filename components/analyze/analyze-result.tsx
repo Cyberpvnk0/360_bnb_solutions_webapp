@@ -29,6 +29,9 @@ import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
 import { streetLine } from "@/lib/live/address";
 import { listingForAnalysis } from "@/lib/live/analysis-listing";
+import type { AssistantContext } from "@/lib/assistant/context";
+import { gradeDeal } from "@/lib/calc/deal-grade";
+import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import { TIERS, type TierId } from "@/config/app";
 import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
@@ -43,6 +46,7 @@ import { SizeControl } from "./size-control";
 import { CompsExplorer } from "./comps-explorer";
 import { LtrCompsTable } from "./comps-tables";
 import { CurbShot } from "./property-thumb";
+import { Assistant } from "@/components/assistant/assistant";
 import { AddToListMenu } from "@/components/deals/add-to-list-menu";
 import { PhotosLink } from "@/components/deals/photos-link";
 import { RevenueRange } from "./revenue-range";
@@ -244,6 +248,45 @@ export function AnalyzeResult({
   // when it clears costs narrowly, red when the market runs short. Read
   // from the same margin the gauge shows, so the two never disagree.
   const grade = dealGrade(neverBreaksEven ? -Infinity : p.marginOfSafety);
+  // What the assistant is looking at: this property, and the figures
+  // exactly as the page shows them — the edited rent, the projection
+  // it drives — so an answer about "the breakeven" is about the one
+  // on screen. See lib/assistant/context.
+  const assistantContext = React.useMemo<AssistantContext>(() => {
+    const market = MARKET_BY_SLUG.get(analysis.marketSlug);
+    const pts = neverBreaksEven ? -100 : marginPts;
+    return {
+      kind: "property",
+      id: `property:${listing?.id ?? analysis.id}`,
+      address: analysis.address,
+      city: analysis.city,
+      stateCode: analysis.stateCode,
+      ...(analysis.zip ? { zip: analysis.zip } : {}),
+      bedrooms: analysis.bedrooms,
+      bathrooms: analysis.bathrooms,
+      ...(searchedAddress?.assumedType ? {} : { propertyType: PROPERTY_TYPE_LABEL[analysis.propertyType] }),
+      rentMonthly: inputs.monthlyRent,
+      rentSource: searchedAddress?.rentSource === "market" ? "estimate" : "listing",
+      ...(analysis.sourceUrl ? { sourceUrl: analysis.sourceUrl } : {}),
+      ...(propertyPoint ? { point: propertyPoint } : {}),
+      market: {
+        name: market?.name ?? analysis.city,
+        stateCode: market?.stateCode ?? analysis.stateCode,
+        ...(market ? { regulation: { status: market.regulation.status, note: market.regulation.note } } : {}),
+      },
+      figures: {
+        adr: assumptions.adr,
+        occupancy: assumptions.marketOccupancy,
+        comps: analysis.strComps.length,
+        measured: liveComps,
+        monthlyRevenue: p.monthlyRevenue,
+        netCashFlow: p.netCashFlow,
+        breakeven: neverBreaksEven ? null : p.breakevenOccupancy,
+        cushionPts: pts,
+        grade: gradeDeal(pts).label,
+      },
+    };
+  }, [analysis, listing, searchedAddress, inputs.monthlyRent, propertyPoint, assumptions, liveComps, p, neverBreaksEven, marginPts]);
   // Annual figures display as rounded-monthly × 12 so a reader who
   // multiplies the two on-screen numbers gets an exact match.
   const annualRevenueDisplay = Math.round(p.monthlyRevenue) * 12;
@@ -666,6 +709,7 @@ export function AnalyzeResult({
         />
         <LtrCompsTable comps={analysis.ltrComps} />
       </div>
+      <Assistant context={assistantContext} />
     </div>
   );
 }

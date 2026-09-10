@@ -67,6 +67,9 @@ import {
 import { MarketSearchBox } from "./market-search";
 import { ListingDetailDialog } from "./listing-detail-dialog";
 import { ListingDock } from "./listing-dock";
+import { Assistant } from "@/components/assistant/assistant";
+import { MAX_ROWS as ASSISTANT_ROWS, type AssistantContext } from "@/lib/assistant/context";
+import { gradeDeal } from "@/lib/calc/deal-grade";
 import { ListingCard } from "./listing-card";
 import { inBounds, RentalsMap, type MapBounds, type MapFocus } from "./rentals-map";
 import { cn } from "@/lib/utils";
@@ -748,6 +751,48 @@ export function DealsExplorer({
   /** Nothing searched, no list open — the opening state. */
   const idle = !zip && !liveTarget && !listFilter;
 
+  // What the assistant is looking at: the search, its first rows as
+  // the grid orders them, and the rental open on the map, if one is.
+  // Nothing before a search: there is nothing to ask about yet.
+  const assistantContext = React.useMemo<AssistantContext | null>(() => {
+    if (idle) return null;
+    const label = zip
+      ? `ZIP ${zip}`
+      : liveTarget
+        ? `${liveTarget.name}, ${liveTarget.stateCode}`
+        : (lists.find((l) => l.id === listFilter)?.name ?? "Saved rentals");
+    const market = liveTarget ?? furnishedMarket ?? null;
+    const selected = dockRow?.listing ?? detailRow?.listing ?? null;
+    return {
+      kind: "search",
+      id: `search:${label}`,
+      label,
+      market: market
+        ? {
+            name: market.name,
+            stateCode: market.stateCode,
+            regulation: { status: market.regulation.status, note: market.regulation.note },
+          }
+        : null,
+      total: filtered.length,
+      rows: filtered.slice(0, ASSISTANT_ROWS).map((r) => ({
+        address: r.listing.address,
+        city: r.listing.city,
+        stateCode: r.listing.stateCode,
+        ...(r.listing.zip ? { zip: r.listing.zip } : {}),
+        bedrooms: r.listing.bedrooms,
+        bathrooms: r.listing.bathrooms,
+        rentMonthly: r.listing.rentMonthly,
+        net: Math.round(r.deal.netCashFlow),
+        netRange: r.deal.netRange,
+        grade: gradeDeal(r.deal.cushionPts, { potential: r.deal.basis.kind !== "comps" }).label,
+        analyzed: r.deal.basis.kind === "comps",
+        ...(r.listing.sourceUrl ? { sourceUrl: r.listing.sourceUrl } : {}),
+      })),
+      ...(selected ? { selected: selected.address } : {}),
+    };
+  }, [idle, zip, liveTarget, lists, listFilter, furnishedMarket, dockRow, detailRow, filtered]);
+
   /**
    * The feed has been asked and hasn't answered.
    *
@@ -1206,6 +1251,8 @@ export function DealsExplorer({
           )}
         </div>
       </div>
+
+      {assistantContext ? <Assistant context={assistantContext} /> : null}
 
       <ListingDetailDialog
         listing={detailRow?.listing ?? null}

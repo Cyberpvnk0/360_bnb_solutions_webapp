@@ -194,6 +194,53 @@
   --radius-xl: 20px;
 
   --animate-gold-ring: gold-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-assistant-rise: assistant-rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-assistant-dot: assistant-dot 1.2s ease-in-out infinite;
+  --animate-assistant-halo: assistant-halo 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-assistant-caret: assistant-caret 1s ease-in-out infinite;
+
+  @keyframes assistant-rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes assistant-dot {
+    0%,
+    80%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.35;
+    }
+    40% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
+  }
+  @keyframes assistant-halo {
+    0% {
+      transform: scale(0.9);
+      opacity: 0.55;
+    }
+    70%,
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+  @keyframes assistant-caret {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
 
   @keyframes gold-ring {
     0% {
@@ -609,5 +656,15 @@
   .working-phrase:first-child {
     display: block;
     opacity: 1;
+  }
+}
+
+/* The assistant's motion, off for a reader who asked for none. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-assistant-rise,
+  .animate-assistant-dot,
+  .animate-assistant-halo,
+  .animate-assistant-caret {
+    animation: none;
   }
 }
