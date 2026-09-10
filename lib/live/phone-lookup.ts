@@ -24,7 +24,7 @@
  * THE VENDOR'S CALL. One request per property:
  *
  *   POST https://app.dataskip.io/api/v1/skip-trace
- *   Authorization: Bearer <DATA_SKIP_API>
+ *   Authorization: Bearer <DataSkip_Key>
  *   { "address": "44 Pine St", "city": "Bridgewater", "state": "MA", "zip": "02324" }
  *
  * A match answers { success, found: true, charged, contact: { fullName,
@@ -76,9 +76,29 @@ const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 25_000;
 
+/** The names the key has been set under; the first one set wins. */
+const KEY_NAMES = ["DataSkip_Key", "DATASKIP_KEY", "DATA_SKIP_API", "DATASKIP_API_KEY"];
+
+/**
+ * A variable by one of its names, or by any name that starts with
+ * "dataskip" in whatever casing it was saved under — variable names
+ * are case-sensitive, and a key saved as DataSkip_Key must not sit
+ * unread because the code spelled it DATASKIP_KEY.
+ */
+function envNamed(names: readonly string[], test: (name: string) => boolean): string | null {
+  for (const name of names) {
+    const v = process.env[name]?.trim();
+    if (v) return v;
+  }
+  for (const [name, v] of Object.entries(process.env)) {
+    if (test(name) && v?.trim()) return v.trim();
+  }
+  return null;
+}
+
 /** The key, under the name it is set by in Vercel. */
 function apiKey(): string | null {
-  return process.env.DATA_SKIP_API?.trim() || process.env.DATASKIP_API_KEY?.trim() || null;
+  return envNamed(KEY_NAMES, (name) => /^data_?skip/i.test(name) && !/url/i.test(name));
 }
 
 export function phoneLookupConfigured(): boolean {
@@ -86,7 +106,10 @@ export function phoneLookupConfigured(): boolean {
 }
 
 function endpoint(): string {
-  return process.env.DATA_SKIP_API_URL?.trim() || DEFAULT_ENDPOINT;
+  return (
+    envNamed(["DATA_SKIP_API_URL", "DataSkip_Url"], (name) => /^data_?skip.*url$/i.test(name)) ??
+    DEFAULT_ENDPOINT
+  );
 }
 
 type Row = Record<string, unknown>;

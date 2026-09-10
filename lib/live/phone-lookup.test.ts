@@ -116,12 +116,28 @@ describe("asking the vendor", () => {
   const answer = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-  it("is configured by the key Vercel holds it under", () => {
+  it("is configured by the key under whichever name Vercel holds it", () => {
     expect(phoneLookupConfigured()).toBe(true);
     vi.stubEnv("DATA_SKIP_API", "");
     expect(phoneLookupConfigured()).toBe(false);
-    vi.stubEnv("DATASKIP_API_KEY", "alt");
+    vi.stubEnv("DataSkip_Key", "pc_named_so");
     expect(phoneLookupConfigured()).toBe(true);
+    vi.stubEnv("DataSkip_Key", "");
+    vi.stubEnv("dataskip_api_key", "any casing");
+    expect(phoneLookupConfigured()).toBe(true);
+    // The endpoint override is not mistaken for the key.
+    vi.stubEnv("dataskip_api_key", "");
+    vi.stubEnv("DATA_SKIP_API_URL", "https://example.test/trace");
+    expect(phoneLookupConfigured()).toBe(false);
+  });
+
+  it("sends the key saved as DataSkip_Key", async () => {
+    vi.stubEnv("DATA_SKIP_API", "");
+    vi.stubEnv("DataSkip_Key", "pc_from_vercel");
+    fetchMock.mockResolvedValue(answer(200, MISS));
+    await lookupPhone(PLACE);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer pc_from_vercel");
   });
 
   it("posts the address with the key, and stores a match for a month", async () => {
