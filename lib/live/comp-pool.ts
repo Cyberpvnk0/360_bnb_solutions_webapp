@@ -30,13 +30,20 @@
  * counted closer than it can be, and never further than two miles
  * when it is counted at all.
  *
- * THE ANALYSES THEMSELVES CALIBRATE THE CITY AVERAGE. A card with no
- * listings within two miles falls to the city's measured average, and
- * a city's average across every listing is not what a whole home in
- * the parts of town students actually analyze earns. Each analysis
- * leaves an anchor here — its point, its size, the figures it stood
- * on — and the ratio of those figures to the city's, over the market's
- * anchors, corrects the average for every card that falls to it.
+ * A CARD WITH NOTHING NEAR IT STANDS ON THE MARKET'S RATE FOR ITS SIZE.
+ * Measured from the pool where the pool holds enough listings of that
+ * size anywhere in the market — a market's own four-bedrooms say what
+ * a four-bedroom goes for — and scaled from the catalogue's size table
+ * otherwise: off the measured sizes when there are any, off the city's
+ * average and the typical home when there are none (sizeModel).
+ *
+ * THE ANALYSES THEMSELVES CORRECT THE REST. A city's average, and the
+ * listings students happen to have analyzed, are not quite what a
+ * whole home in the parts of town they actually analyze earns. Each
+ * analysis leaves an anchor here — its point, its size, the figures it
+ * stood on — and the ratio of those figures to what the market's rate
+ * for that size would have said, over the market's anchors, corrects
+ * every card that falls to it.
  *
  * The pool is a cache of facts about listings, not about people: an id,
  * a place, a rate, an occupancy, a bedroom count, a date. A listing
@@ -92,7 +99,22 @@ const MEMORY_MS = 2 * 60 * 1000;
 export const SET_SIZE = 25;
 /** Anchors before the city's average is corrected by them: a median of
  *  fewer says more about the analyses than about the city. */
-export const MIN_ANCHORS = 5;
+export const MIN_ANCHORS = 3;
+/**
+ * What a city-wide average rate is an average of: the typical whole
+ * home, in bedrooms, when the market's own mix is not known. The
+ * catalogue's size table is written relative to a two-bedroom, and a
+ * city's average is not a two-bedroom's rate — it already holds every
+ * three-, four- and five-bedroom home in the city — so a rate scaled
+ * from it by the table's row alone counted the size twice.
+ */
+export const TYPICAL_BEDROOMS = 2.7;
+/** Listings of one size in the market's pool before that size's rate
+ *  is measured from them rather than scaled from the table. */
+export const MIN_SIZE_SAMPLE = 8;
+/** The most bedrooms a card's rate is spelled out for; beyond it the
+ *  table holds, as it does everywhere. */
+const RATES_UP_TO = 8;
 /** The correction is a nudge, never a rewrite. */
 const CALIBRATION_FLOOR = 0.5;
 const CALIBRATION_CEILING = 2;
@@ -272,6 +294,78 @@ export function poolDistance(comp: PoolComp, point: { lat: number; lon: number }
   return milesBetween(point, comp) + (comp.dist ?? 0);
 }
 
+/** The catalogue's size factor at a fractional size: read between the
+ *  rows, so a typical size of 2.7 sits between the two- and three-
+ *  bedroom rows rather than on one of them. */
+export function tableFactor(bedrooms: number): number {
+  const lo = Math.floor(bedrooms);
+  const hi = Math.ceil(bedrooms);
+  if (lo === hi) return adrFactorFor(lo);
+  const t = bedrooms - lo;
+  return adrFactorFor(lo) * (1 - t) + adrFactorFor(hi) * t;
+}
+
+/**
+ * The market's nightly rate by size.
+ *
+ * Measured where the pool holds enough listings of a size: the median
+ * rate of a market's own four-bedrooms is the four-bedroom rate, not
+ * a table's guess at it. Sizes the pool has too few of are scaled by
+ * the catalogue's table — from the measured sizes when there are any,
+ * so a market's two- and four-bedroom rates never disagree about what
+ * the market costs; from the city's average scaled off the typical
+ * home when nothing is measured yet.
+ */
+export interface SizeModel {
+  /** The rate for a size, in dollars; 0 when nothing here can say. */
+  rate: (bedrooms: number) => number;
+  /** What multiplies one size's rate into another's. */
+  ratio: (from: number, to: number) => number;
+  /** The sizes measured from the pool. */
+  measured: Record<number, { adr: number; comps: number }>;
+  /** Dollars per table unit: a two-bedroom's rate on this market's scale. */
+  level: number | null;
+}
+
+export function sizeModel(
+  comps: readonly PoolComp[],
+  city: { adr: number } | null
+): SizeModel {
+  const bySize = new Map<number, number[]>();
+  for (const c of comps) {
+    if (!(c.adr > 0)) continue;
+    const bd = Math.max(0, Math.round(c.bd));
+    const list = bySize.get(bd);
+    if (list) list.push(c.adr);
+    else bySize.set(bd, [c.adr]);
+  }
+  const measured: SizeModel["measured"] = {};
+  for (const [bd, adrs] of bySize) {
+    if (adrs.length >= MIN_SIZE_SAMPLE) {
+      measured[bd] = { adr: Math.round(median(adrs)), comps: adrs.length };
+    }
+  }
+  const levels = Object.entries(measured).map(([bd, m]) => m.adr / adrFactorFor(Number(bd)));
+  const level =
+    levels.length > 0
+      ? median(levels)
+      : city && city.adr > 0
+        ? city.adr / tableFactor(TYPICAL_BEDROOMS)
+        : null;
+  const rate = (bedrooms: number): number => {
+    const bd = Math.max(0, Math.round(bedrooms));
+    const m = measured[bd];
+    if (m) return m.adr;
+    return level === null ? 0 : level * adrFactorFor(bd);
+  };
+  const ratio = (from: number, to: number): number => {
+    const a = rate(from);
+    const b = rate(to);
+    return a > 0 && b > 0 ? b / a : adrFactorFor(to) / adrFactorFor(from);
+  };
+  return { rate, ratio, measured, level };
+}
+
 /**
  * How the listings a reading stands on relate to the property's size.
  *
@@ -301,7 +395,8 @@ const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
 export function nearbyFigures(
   pool: readonly PoolComp[],
   point: { lat: number; lon: number },
-  bedrooms: number
+  bedrooms: number,
+  model: SizeModel = sizeModel(pool, null)
 ): NearbyFigures | null {
   const placed = pool
     .map((c) => ({ ...c, distanceMiles: poolDistance(c, point) }))
@@ -316,8 +411,7 @@ export function nearbyFigures(
     const set = placed.filter(tier.fits).slice(0, SET_SIZE);
     if (set.length < MIN_COMPS) continue;
     const { comps, radiusMiles } = selectNearbyComps(set);
-    const rate = (c: PoolComp) =>
-      tier.sizing === "exact" ? c.adr : c.adr * (adrFactorFor(bedrooms) / adrFactorFor(c.bd));
+    const rate = (c: PoolComp) => (tier.sizing === "exact" ? c.adr : c.adr * model.ratio(c.bd, bedrooms));
     return {
       adr: Math.round(mean(comps.map(rate))),
       occupancy: Math.round(mean(comps.map((c) => c.occ)) * 100) / 100,
@@ -364,19 +458,21 @@ const clamp = (x: number) =>
   Math.min(CALIBRATION_CEILING, Math.max(CALIBRATION_FLOOR, x));
 
 /**
- * The correction the market's analyses put on its city-wide average:
- * the median, over the anchors, of what an analysis stood on against
- * what the average scaled to its size would have said. Null until
- * enough analyses have been run here to say anything.
+ * The correction the market's analyses put on what a card with nothing
+ * near it would say: the median, over the anchors, of what an analysis
+ * stood on against the market's rate for its size, and of its
+ * occupancy against the city's. Null until enough analyses have been
+ * run here to say anything.
  */
 export function cityCalibration(
   anchors: readonly PoolAnchor[],
-  city: { adr: number; occupancy: number } | null
+  city: { adr: number; occupancy: number } | null,
+  model: SizeModel
 ): Calibration | null {
   if (!city || !(city.adr > 0) || !(city.occupancy > 0)) return null;
-  const usable = anchors.filter((a) => a.adr > 0 && a.occ > 0);
+  const usable = anchors.filter((a) => a.adr > 0 && a.occ > 0 && model.rate(a.bd) > 0);
   if (usable.length < MIN_ANCHORS) return null;
-  const adr = clamp(median(usable.map((a) => a.adr / (city.adr * adrFactorFor(a.bd)))));
+  const adr = clamp(median(usable.map((a) => a.adr / model.rate(a.bd))));
   const occupancy = clamp(median(usable.map((a) => a.occ / city.occupancy)));
   return {
     n: usable.length,
@@ -385,17 +481,29 @@ export function cityCalibration(
   };
 }
 
-/** The city's figures with the market's correction on them. */
+/**
+ * The city's figures as a card uses them: the market's rate for every
+ * size, and the city's average and occupancy, with the analyses'
+ * correction on all of them.
+ */
 export function calibrate<T extends { adr: number; occupancy: number }>(
   city: T,
-  calibration: Calibration | null
-): T & { calibration: Calibration | null } {
-  if (!calibration) return { ...city, calibration: null };
+  calibration: Calibration | null,
+  model: SizeModel
+): T & { calibration: Calibration | null; rates: Record<number, number> } {
+  const k = calibration?.adr ?? 1;
+  const rates: Record<number, number> = {};
+  for (let bd = 0; bd <= RATES_UP_TO; bd += 1) {
+    const rate = model.rate(bd);
+    if (rate > 0) rates[bd] = Math.round(rate * k);
+  }
+  if (!calibration) return { ...city, calibration: null, rates };
   return {
     ...city,
     adr: Math.round(city.adr * calibration.adr),
     occupancy: Math.min(1, Math.round(city.occupancy * calibration.occupancy * 100) / 100),
     calibration,
+    rates,
   };
 }
 

@@ -222,13 +222,19 @@ export function dealFiguresFor(
   }
   const byCity = set.market(market.slug);
   if (byCity) {
+    // The area's rate for this size, worked out on the server —
+    // measured from the market's own listings of this size when there
+    // are enough, scaled from the city's average otherwise — so the
+    // card does not scale it again.
+    const rate = byCity.rates?.[Math.max(0, Math.round(listing.bedrooms))];
     return {
       figures: {
-        adr: byCity.adr,
+        adr: rate ?? byCity.adr,
         occupancy: byCity.occupancy,
         kind: "city",
         area: market.name,
         at: byCity.at,
+        ...(rate ? { sized: true } : {}),
       },
       pending: false,
     };

@@ -12,8 +12,11 @@
  *   nearby    the real listings around it, from the market's comp pool:
  *             the set the analyzer would buy for it, mimicked out of
  *             the listings every analysis in the city has brought in.
- *   city      nothing within two miles: the city's measured average,
- *             corrected by what the city's analyses actually stood on.
+ *   city      nothing within two miles: the market's rate for the
+ *             property's size — measured from the market's own listings
+ *             of that size when the pool holds enough, scaled from the
+ *             city's measured average otherwise — corrected by what the
+ *             city's analyses actually stood on.
  *
  * See lib/live/property-figures, lib/live/comp-pool and
  * lib/live/market-figures. The city's row is the one thing this route
@@ -38,6 +41,8 @@ import {
   nearbyFigures,
   poolAround,
   readPool,
+  sizeModel,
+  TYPICAL_BEDROOMS,
   type Calibration,
 } from "@/lib/live/comp-pool";
 import { marketFigures, type Figures } from "@/lib/live/market-figures";
@@ -72,8 +77,12 @@ export interface RowFigures {
   at: string | null;
 }
 
-/** The city's figures as the cards use them, with the correction. */
-export type CityFigures = Figures & { calibration: Calibration | null };
+/** The city's figures as the cards use them: the market's rate for
+ *  each bedroom count, with the correction on it. */
+export type CityFigures = Figures & {
+  calibration: Calibration | null;
+  rates: Record<number, number>;
+};
 
 function rowsFrom(value: unknown): RowIn[] {
   if (!Array.isArray(value)) return [];
@@ -146,6 +155,7 @@ export async function POST(request: Request) {
       readEstimates(rows.flatMap(keysFor)),
     ]);
 
+    const model = sizeModel(pool.comps, city);
     const answer: Record<string, RowFigures | null> = {};
     for (const row of rows) {
       const own = ownFor(row, sets);
@@ -153,14 +163,14 @@ export async function POST(request: Request) {
         answer[row.id] = own;
         continue;
       }
-      const near = nearbyFigures(pool.comps, row, row.bd);
+      const near = nearbyFigures(pool.comps, row, row.bd, model);
       answer[row.id] = near
         ? { kind: "nearby", adr: near.adr, occupancy: near.occupancy, comps: near.comps, radiusMiles: near.radiusMiles, at: null }
         : null;
     }
 
     const corrected: CityFigures | null = city
-      ? calibrate(city, cityCalibration(pool.anchors, city))
+      ? calibrate(city, cityCalibration(pool.anchors, city, model), model)
       : null;
     return NextResponse.json(
       { ok: true, market: corrected, rows: answer },
@@ -199,7 +209,8 @@ export async function GET(request: Request) {
     readPool(market.slug),
     readEstimates(keys),
   ]);
-  const calibration = cityCalibration(pool.anchors, city);
+  const model = sizeModel(pool.comps, city);
+  const calibration = cityCalibration(pool.anchors, city, model);
   return NextResponse.json({
     ok: true,
     market: market.slug,
@@ -216,10 +227,11 @@ export async function GET(request: Request) {
     }),
     figures: ownFor(spec, sets),
     pool: poolAround(pool.comps, spec),
-    nearby: nearbyFigures(pool.comps, spec, spec.bd),
+    nearby: nearbyFigures(pool.comps, spec, spec.bd, model),
+    sizes: { typical: TYPICAL_BEDROOMS, level: model.level, measured: model.measured },
     anchors: pool.anchors.length,
     calibration,
     city,
-    cityAsUsed: city ? calibrate(city, calibration) : null,
+    cityAsUsed: city ? calibrate(city, calibration, model) : null,
   });
 }

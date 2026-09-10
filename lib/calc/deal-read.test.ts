@@ -85,6 +85,19 @@ describe("what a read stands on", () => {
     expect(basisLabel(read.basis)).toBe("Measured for Jacksonville · 50% occupancy");
   });
 
+  it("takes an area's rate the server already sized, unscaled, and still says which area", () => {
+    const read = estimateDeal(listing, market, {
+      adr: 297,
+      occupancy: 0.47,
+      kind: "city",
+      area: "Tampa",
+      at: null,
+      sized: true,
+    });
+    expect(read.nightlyRate).toBe(297);
+    expect(basisLabel(read.basis)).toBe("Measured for Tampa · 47% occupancy");
+  });
+
   it("falls to the modelled catalogue figures and says so, or holds while measuring", () => {
     const modelled = estimateDeal(listing, market);
     expect(modelled.basis.kind).toBe("modelled");

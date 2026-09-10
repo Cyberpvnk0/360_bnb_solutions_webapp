@@ -6,11 +6,15 @@ import {
   mergePool,
   milesBetween,
   MIN_ANCHORS,
+  MIN_SIZE_SAMPLE,
   nearbyFigures,
   poolAround,
   poolDistance,
   SET_SIZE,
+  sizeModel,
+  tableFactor,
   toPoolComps,
+  TYPICAL_BEDROOMS,
   type PoolAnchor,
   type PoolComp,
 } from "./comp-pool";
@@ -134,6 +138,23 @@ describe("what the listings around a point say", () => {
     });
   });
 
+  it("brings a size to the property's by the market's own measured ratio when it has one", () => {
+    // Eight two-bedrooms and eight four-bedrooms across the market, far
+    // from home: enough to measure both sizes. The four-bedrooms earn
+    // more over the two-bedrooms than the catalogue's table says.
+    const far = [
+      ...Array.from({ length: 8 }, (_, i) => comp(`two${i}`, 6 + i * 0.1, 2, 100, 0.5)),
+      ...Array.from({ length: 8 }, (_, i) => comp(`four${i}`, 6 + i * 0.1, 4, 200, 0.5)),
+    ];
+    const near = Array.from({ length: 4 }, (_, i) => comp(`three${i}`, 0.3 + i * 0.1, 3, 150, 0.5));
+    const pool = [...far, ...near];
+    const model = sizeModel(pool, null);
+    expect(model.ratio(3, 4)).not.toBeCloseTo(adrFactorFor(4) / adrFactorFor(3), 3);
+    const f = nearbyFigures(pool, HOME, 4);
+    expect(f).toMatchObject({ comps: 4, radiusMiles: 2, sizing: "close" });
+    expect(f!.adr).toBe(Math.round(150 * model.ratio(3, 4)));
+  });
+
   it("takes the nearest couple of dozen, never the whole pool around the point", () => {
     const pool = Array.from({ length: 40 }, (_, i) => comp(`c${i}`, 1.2 + i * 0.015, 2, 100 + i, 0.5));
     const f = nearbyFigures(pool, HOME, 2);
@@ -148,6 +169,46 @@ describe("what the listings around a point say", () => {
   });
 });
 
+describe("the market's rate by size", () => {
+  it("scales the city's average off the typical home, not off a two-bedroom", () => {
+    const m = sizeModel([], { adr: 223 });
+    expect(tableFactor(TYPICAL_BEDROOMS)).toBeCloseTo(0.3 * adrFactorFor(2) + 0.7 * adrFactorFor(3), 10);
+    expect(m.rate(4)).toBeCloseTo((223 * adrFactorFor(4)) / tableFactor(TYPICAL_BEDROOMS), 6);
+    // The old reading: the table's row on an average that already held
+    // every size. About sixty dollars a night too much for Tampa.
+    expect(Math.round(m.rate(4))).toBe(297);
+    expect(223 * adrFactorFor(4)).toBeGreaterThan(360);
+    expect(m.measured).toEqual({});
+  });
+
+  it("measures a size from the pool once there are enough listings of it, and scales the rest from the measured", () => {
+    const fours = [250, 260, 270, 270, 280, 290, 300, 400].map((adr, i) => comp(`f${i}`, 3 + i, 4, adr, 0.5));
+    const twos = [100, 110, 120].map((adr, i) => comp(`t${i}`, 3 + i, 2, adr, 0.5));
+    expect(fours).toHaveLength(MIN_SIZE_SAMPLE);
+    const m = sizeModel([...fours, ...twos], { adr: 223 });
+    expect(m.measured).toEqual({ 4: { adr: 275, comps: 8 } });
+    expect(m.rate(4)).toBe(275);
+    // Too few two-bedrooms to measure: scaled from the measured
+    // four-bedrooms by the table, on the market's own scale.
+    expect(m.level).toBeCloseTo(275 / adrFactorFor(4), 6);
+    expect(m.rate(2)).toBeCloseTo((275 / adrFactorFor(4)) * adrFactorFor(2), 6);
+    expect(m.ratio(4, 2)).toBeCloseTo(adrFactorFor(2) / adrFactorFor(4), 6);
+    // Two measured sizes: their ratio is theirs, and the rest sit between.
+    const more = [...twos, ...[100, 100, 100, 100, 100].map((adr, i) => comp(`u${i}`, 3 + i, 2, adr, 0.5))];
+    const both = sizeModel([...fours, ...more], { adr: 223 });
+    expect(both.measured[2]).toEqual({ adr: 100, comps: 8 });
+    expect(both.ratio(2, 4)).toBe(2.75);
+    expect(both.level).toBeCloseTo((100 / adrFactorFor(2) + 275 / adrFactorFor(4)) / 2, 6);
+  });
+
+  it("has no rate, and the table's ratio, with nothing measured and no city", () => {
+    const m = sizeModel([], null);
+    expect(m.rate(3)).toBe(0);
+    expect(m.level).toBeNull();
+    expect(m.ratio(2, 3)).toBe(adrFactorFor(3) / adrFactorFor(2));
+  });
+});
+
 describe("what the market's analyses say about its average", () => {
   const anchor = (i: number, adr: number, occ: number, at = "2026-09-01T00:00:00Z", bd = 2): PoolAnchor => ({
     lat: HOME.lat + i / 100,
@@ -158,6 +219,8 @@ describe("what the market's analyses say about its average", () => {
     at,
   });
   const CITY = { adr: 200, occupancy: 0.5, scope: "city" as const, area: "Jacksonville", at: null };
+  /** Nothing measured: the city's average off the typical home. */
+  const bare = sizeModel([], CITY);
 
   it("keeps one anchor per point and size, the newest, and drops the old", () => {
     const stale = anchor(0, 100, 0.5, "2025-01-01T00:00:00Z");
@@ -166,34 +229,38 @@ describe("what the market's analyses say about its average", () => {
     expect(mergeAnchors([stale, first], [again], Date.parse("2026-09-10T00:00:00Z"))).toEqual([again]);
   });
 
-  it("corrects the city's figures by the median of what analyses stood on, once there are enough", () => {
-    // Two-bedroom anchors, so the size factor is one and the ratios
-    // read straight off: rates 1.1, 1.2, 1.2, 1.3, 1.5 of the city's,
-    // occupancies 1.0, 1.1, 1.2, 1.4, 1.6 of it.
-    const anchors = [
-      anchor(0, 220, 0.5),
-      anchor(1, 240, 0.55),
-      anchor(2, 240, 0.6),
-      anchor(3, 260, 0.7),
-      anchor(4, 300, 0.8),
-    ];
-    expect(anchors).toHaveLength(MIN_ANCHORS);
-    expect(adrFactorFor(2)).toBe(1);
-    const cal = cityCalibration(anchors, CITY);
-    expect(cal).toEqual({ n: 5, adr: 1.2, occupancy: 1.2 });
-    expect(calibrate(CITY, cal)).toEqual({ ...CITY, adr: 240, occupancy: 0.6, calibration: cal });
-    // Too few to say anything, and the figures pass through untouched.
-    expect(cityCalibration(anchors.slice(0, 4), CITY)).toBeNull();
-    expect(calibrate(CITY, null)).toEqual({ ...CITY, calibration: null });
+  it("corrects the figures by the median of what analyses stood on against the market's rate for their size, once there are enough", () => {
+    // Two-bedroom anchors at 1.1, 1.2, 1.2, 1.3 and 1.5 of what a card
+    // would have said for a two-bedroom; occupancies 1.0, 1.1, 1.2,
+    // 1.4 and 1.6 of the city's.
+    const base = bare.rate(2);
+    const anchors = [1.1, 1.2, 1.2, 1.3, 1.5].map((k, i) =>
+      anchor(i, Math.round(base * k), [0.5, 0.55, 0.6, 0.7, 0.8][i])
+    );
+    const cal = cityCalibration(anchors, CITY, bare);
+    expect(cal?.n).toBe(5);
+    expect(cal?.adr).toBeCloseTo(1.2, 2);
+    expect(cal?.occupancy).toBe(1.2);
+    const used = calibrate(CITY, cal, bare);
+    expect(used).toMatchObject({ adr: 240, occupancy: 0.6, calibration: cal });
+    // Every size's rate, corrected, for the cards to read straight off.
+    expect(used.rates[2]).toBe(Math.round(base * cal!.adr));
+    expect(used.rates[4]).toBe(Math.round(bare.rate(4) * cal!.adr));
+    // Three analyses are enough to start; two are not. Uncorrected, the
+    // figures pass through, and the rates are the market's own.
+    expect(cityCalibration(anchors.slice(0, MIN_ANCHORS - 1), CITY, bare)).toBeNull();
+    expect(cityCalibration(anchors.slice(0, MIN_ANCHORS), CITY, bare)).not.toBeNull();
+    expect(calibrate(CITY, null, bare)).toMatchObject({ ...CITY, calibration: null });
+    expect(calibrate(CITY, null, bare).rates[4]).toBe(Math.round(bare.rate(4)));
   });
 
-  it("reads a larger size against the city's rate scaled to that size, and never rewrites the city", () => {
+  it("reads a larger size against the market's rate for that size, and never rewrites the city", () => {
     const four = Array.from({ length: 5 }, (_, i) =>
-      anchor(i, Math.round(200 * adrFactorFor(4) * 1.1), 0.5, "2026-09-01T00:00:00Z", 4)
+      anchor(i, Math.round(bare.rate(4) * 1.1), 0.5, "2026-09-01T00:00:00Z", 4)
     );
-    expect(cityCalibration(four, CITY)?.adr).toBeCloseTo(1.1, 1);
+    expect(cityCalibration(four, CITY, bare)?.adr).toBeCloseTo(1.1, 2);
     const wild = Array.from({ length: 5 }, (_, i) => anchor(i, 5000, 1));
-    expect(cityCalibration(wild, CITY)).toEqual({ n: 5, adr: 2, occupancy: 2 });
-    expect(calibrate(CITY, cityCalibration(wild, CITY)).occupancy).toBe(1);
+    expect(cityCalibration(wild, CITY, bare)).toEqual({ n: 5, adr: 2, occupancy: 2 });
+    expect(calibrate(CITY, cityCalibration(wild, CITY, bare), bare).occupancy).toBe(1);
   });
 });

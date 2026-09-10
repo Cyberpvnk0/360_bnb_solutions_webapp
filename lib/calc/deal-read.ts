@@ -55,8 +55,8 @@ export interface DealBasis {
 }
 
 /** Measured figures for a read. `adr` is this size's own nightly rate
- *  on the comps and nearby grains, and the area's average across sizes
- *  otherwise. */
+ *  on the comps and nearby grains, and on an area grain marked `sized`;
+ *  the area's average across sizes otherwise. */
 export interface DealFigures {
   adr: number;
   occupancy: number;
@@ -65,6 +65,9 @@ export interface DealFigures {
   at: string | null;
   comps?: number;
   radiusMiles?: number | null;
+  /** True when an area's `adr` is already this size's rate — measured
+   *  or scaled on the server — and is not to be scaled again here. */
+  sized?: boolean;
 }
 
 export interface DealRead {
@@ -106,10 +109,11 @@ export function defaultsForListing(listing: RentalListing, market: Market): Deal
  * The read for one listing, from measured figures when there are any.
  *
  * The property's own comps and the listings around it are already
- * this size's rate; an area's average is across every size and is
- * scaled to this one the way the catalogue's benchmark always was.
- * Without figures the catalogue's modelled ones stand in, and the read
- * says so.
+ * this size's rate, and so is an area's rate marked `sized` — the
+ * market's rate for this size, worked out on the server. An area's
+ * plain average is across every size and is scaled to this one the
+ * way the catalogue's benchmark always was. Without figures the
+ * catalogue's modelled ones stand in, and the read says so.
  */
 export function estimateDeal(
   listing: RentalListing,
@@ -117,7 +121,8 @@ export function estimateDeal(
   figures: DealFigures | null = null,
   opts: { pending?: boolean } = {}
 ): DealRead {
-  const ownRate = figures?.kind === "comps" || figures?.kind === "nearby";
+  const ownRate =
+    figures?.kind === "comps" || figures?.kind === "nearby" || figures?.sized === true;
   const nightlyRate = figures
     ? ownRate
       ? Math.round(figures.adr)
