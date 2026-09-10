@@ -91,7 +91,7 @@ export const TIERS: Record<TierId, Tier> = {
       "Preview inventory in every market",
       "Unlimited calculator",
       "3 saved deals",
-      "Upgrade for credits: live listings and property analyses",
+      "Upgrade for credits: live listings, analyses, alerts and the AI Assistant",
     ],
   },
   starter: {
@@ -108,7 +108,8 @@ export const TIERS: Record<TierId, Tier> = {
     blurb: "For your first market and your first few landlord calls.",
     features: [
       "45 credits / month",
-      "Credits cover market searches and property analyses",
+      "Credits cover market searches, property analyses and owner lookups",
+      "New-listing alerts by email or push",
       "Unlimited calculator",
       "25 saved deals",
     ],
@@ -128,8 +129,9 @@ export const TIERS: Record<TierId, Tier> = {
     blurb: "For operators underwriting deals every week.",
     features: [
       "125 credits / month",
-      "Credits cover market searches and property analyses",
-      "Research assistant: finds listings, owners and local rules",
+      "Credits cover market searches, property analyses and owner lookups",
+      "AI Assistant: finds listings, owners and local rules (2 credits a message)",
+      "New-listing alerts by email or push",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
@@ -149,8 +151,9 @@ export const TIERS: Record<TierId, Tier> = {
     blurb: "For teams running a portfolio across markets.",
     features: [
       "300 credits / month",
-      "Credits cover market searches and property analyses",
-      "Research assistant: finds listings, owners and local rules",
+      "Credits cover market searches, property analyses and owner lookups",
+      "AI Assistant: finds listings, owners and local rules (2 credits a message)",
+      "New-listing alerts by email or push",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
