@@ -248,12 +248,11 @@ export const PHONE_LOOKUP_CREDITS = 1;
  * What one message to the research assistant spends. A message is a
  * few web searches and reads and a short answer: a cent a search, the
  * pages' tokens, the model's — five to twenty-five cents at the most
- * searched. One credit is worth twenty-seven cents on the cheapest
- * plan and a dollar on the smallest pack, so the one unit clears the
- * cost on every plan, and a message that gets no answer is not
- * charged at all.
+ * searched. A credit is worth twenty-seven cents on the cheapest plan
+ * and a dollar on the smallest pack, so two clear the cost with room
+ * on every plan; a message that gets no answer is not charged at all.
  */
-export const ASSISTANT_MESSAGE_CREDITS = 1;
+export const ASSISTANT_MESSAGE_CREDITS: number = 2;
 
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {

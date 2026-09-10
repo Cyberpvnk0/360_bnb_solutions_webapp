@@ -6,6 +6,8 @@ describe("the one reply to anything off the subject", () => {
     expect(SYSTEM_PROMPT).toContain(OUT_OF_SCOPE);
     expect(SYSTEM_PROMPT).toContain("do not use any tool");
     expect(SYSTEM_PROMPT).toMatch(/opinion about a person, coach, course, program, brand or company/);
+    expect(SYSTEM_PROMPT).toContain('never "this app" or "the app"');
+    expect(SYSTEM_PROMPT).toContain("Never raise short-term rental use");
   });
 
   it("is recognised as given, with a stray word or a different case", () => {

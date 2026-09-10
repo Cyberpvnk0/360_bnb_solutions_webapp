@@ -83,7 +83,7 @@ describe("writing it for the model", () => {
     expect(text).toContain("2262 Kingston St, Jacksonville, FL 32209");
     expect(text).toContain("3 bd / 1 ba · House");
     expect(text).toContain("$979/mo (the listing's asking rent)");
-    expect(text).toContain("measured from 25 nearby short-term rentals");
+    expect(text).toContain("measured from 25 comparable rentals nearby");
     expect(text).toContain("Nightly rate $157 · occupancy 45%");
     expect(text).toContain("net cash flow $568/mo");
     expect(text).toContain("Breakeven occupancy 31% · 14 pts of cushion");

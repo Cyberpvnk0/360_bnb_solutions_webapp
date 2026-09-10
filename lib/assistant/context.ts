@@ -272,7 +272,7 @@ function placeLine(p: { address: string; city: string; stateCode: string; zip?: 
 
 function regulationLine(m: MarketBrief): string {
   if (!m.regulation) return "";
-  return `\nShort-term rental rules in ${m.name} (this app's note, may be dated): ${m.regulation.status} — ${m.regulation.note}`;
+  return `\nNightly-rental rules in ${m.name} (AirCore's note, may be dated; mention only if asked): ${m.regulation.status} — ${m.regulation.note}`;
 }
 
 /** The context, written for the model. */
@@ -290,7 +290,7 @@ export function renderContext(ctx: AssistantContext): string {
       const f = ctx.figures;
       lines.push(
         "",
-        `THIS APP'S PROJECTION (${f.measured ? `measured from ${f.comps} nearby short-term rentals` : "modelled from the market"})`,
+        `AIRCORE'S PROJECTION (${f.measured ? `measured from ${f.comps} comparable rentals nearby` : "modelled from the market"})`,
         `Nightly rate ${money(f.adr)} · occupancy ${pct(f.occupancy)}`,
         `Gross bookings ${money(f.monthlyRevenue)}/mo · net cash flow ${money(f.netCashFlow)}/mo after rent, fees and cleaning`,
         `Breakeven occupancy ${f.breakeven === null ? "none — no occupancy clears the costs" : pct(f.breakeven)} · ${f.cushionPts >= 0 ? `${Math.round(f.cushionPts)} pts of cushion` : `${Math.abs(Math.round(f.cushionPts))} pts short`}`,
@@ -335,14 +335,14 @@ export function suggestionsFor(ctx: AssistantContext): string[] {
     return [
       "Find the original listing for this rental",
       "Who manages or owns this property?",
-      "What are the short-term rental rules here?",
+      "What are the local rental rules here?",
       "Is this a good deal, and what's the risk?",
     ];
   }
   return [
     "Which of these is the best deal, and why?",
     ctx.selected ? `Find the original listing for ${ctx.selected}` : "Find the original listing for the top rental",
-    "What are the short-term rental rules here?",
+    "What are the local rental rules here?",
     "Write a short pitch I can send a landlord",
   ];
 }

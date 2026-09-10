@@ -31,6 +31,73 @@ const noop = () => () => {};
 /** Rendered in a portal, which exists only in a browser. */
 const useIsClient = () => React.useSyncExternalStore(noop, () => true, () => false);
 
+/**
+ * Where the window was put, as a shift from its corner. Kept for the
+ * tab and in the browser, so it is where it was left across pages and
+ * visits; a phone's sheet ignores it, having nowhere to go.
+ */
+interface Offset {
+  x: number;
+  y: number;
+}
+const CORNER: Offset = { x: 0, y: 0 };
+const POSITION_KEY = "aircore.assistant.position";
+/** How close to the viewport's edge the window may be put. */
+const EDGE = 8;
+/** The sheet layout below this width has nowhere to be dragged to. */
+const DRAGGABLE = "(min-width: 640px)";
+let remembered: Offset | null = null;
+
+function rememberedOffset(): Offset {
+  if (remembered) return remembered;
+  try {
+    const raw = window.localStorage.getItem(POSITION_KEY);
+    const v = raw ? (JSON.parse(raw) as Partial<Offset>) : null;
+    remembered =
+      v && typeof v.x === "number" && typeof v.y === "number" && Number.isFinite(v.x) && Number.isFinite(v.y)
+        ? { x: v.x, y: v.y }
+        : CORNER;
+  } catch {
+    remembered = CORNER;
+  }
+  return remembered;
+}
+
+function remember(offset: Offset): void {
+  remembered = offset;
+  try {
+    window.localStorage.setItem(POSITION_KEY, JSON.stringify(offset));
+  } catch {
+    // Storage refused: the tab still remembers.
+  }
+}
+
+const within = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/** How far the window may shift from its corner and stay on screen. */
+function boundsFor(frame: HTMLElement, current: Offset): Bounds {
+  const r = frame.getBoundingClientRect();
+  const left = r.left - current.x;
+  const top = r.top - current.y;
+  return {
+    minX: EDGE - left,
+    maxX: window.innerWidth - EDGE - (left + r.width),
+    minY: EDGE - top,
+    maxY: window.innerHeight - EDGE - (top + r.height),
+  };
+}
+
+function clampTo(b: Bounds, o: Offset): Offset {
+  return { x: within(o.x, b.minX, b.maxX), y: within(o.y, b.minY, b.maxY) };
+}
+
 export function Assistant({ context }: { context: AssistantContext }) {
   const isClient = useIsClient();
   const key = context.id;
@@ -89,6 +156,7 @@ export function Assistant({ context }: { context: AssistantContext }) {
         aria-label={label}
         className={cn(
           "fixed right-5 bottom-5 z-40 inline-flex items-center gap-2 rounded-full bg-gold-fill py-2.5 pr-4 pl-3.5 text-sm font-semibold text-[#1c1503] print:hidden",
+          "max-sm:size-13 max-sm:justify-center max-sm:p-0",
           "shadow-[0_2px_4px_rgba(16,16,18,0.12),0_10px_28px_rgba(227,179,65,0.42)] transition-[transform,box-shadow,background-color,opacity] duration-200",
           "hover:-translate-y-0.5 hover:bg-[#ecbf4f] hover:shadow-[0_3px_6px_rgba(16,16,18,0.14),0_14px_34px_rgba(227,179,65,0.5)] active:translate-y-0",
           "data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0 data-[state=closed]:translate-y-2",
@@ -97,11 +165,11 @@ export function Assistant({ context }: { context: AssistantContext }) {
       >
         <span className="relative flex">
           <span aria-hidden className="absolute -inset-1 rounded-full bg-[#1c1503]/10 animate-assistant-halo" />
-          <Sparkles aria-hidden className="relative size-4" strokeWidth={2.25} />
+          <Sparkles aria-hidden className="relative size-4 max-sm:size-5" strokeWidth={2.25} />
         </span>
-        {label}
+        <span className="max-sm:sr-only">{label}</span>
         {!eligible ? (
-          <span className="rounded-full bg-[#1c1503]/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
+          <span className="rounded-full bg-[#1c1503]/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase max-sm:hidden">
             Pro
           </span>
         ) : null}
@@ -155,6 +223,79 @@ function Panel({
   /** Follow the reply down, unless the reader has scrolled up to read. */
   const stick = React.useRef(true);
 
+  /* ------------------------------------------------------------ drag */
+  const frameRef = React.useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = React.useState<Offset>(rememberedOffset);
+  const [dragging, setDragging] = React.useState(false);
+  const drag = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    base: Offset;
+    applied: Offset;
+    bounds: Bounds;
+  } | null>(null);
+
+  // A window put near an edge stays on screen when the viewport shrinks.
+  React.useEffect(() => {
+    const onResize = () => {
+      const frame = frameRef.current;
+      if (!frame || !window.matchMedia(DRAGGABLE).matches) return;
+      setOffset((o) => {
+        const next = clampTo(boundsFor(frame, o), o);
+        if (next.x === o.x && next.y === o.y) return o;
+        remember(next);
+        return next;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const shift = (frame: HTMLElement, o: Offset) => {
+    frame.style.setProperty("--ax", `${o.x}px`);
+    frame.style.setProperty("--ay", `${o.y}px`);
+  };
+
+  const onGrab = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || drag.current) return;
+    // Buttons on the header keep their clicks.
+    if ((e.target as HTMLElement).closest("button, a, input, textarea")) return;
+    if (!window.matchMedia(DRAGGABLE).matches) return;
+    const frame = frameRef.current;
+    if (!frame) return;
+    drag.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      base: offset,
+      applied: offset,
+      bounds: boundsFor(frame, offset),
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    const frame = frameRef.current;
+    if (!d || !frame || e.pointerId !== d.pointerId) return;
+    // Straight to the element: a render per pointer move is a stutter.
+    d.applied = clampTo(d.bounds, { x: d.base.x + e.clientX - d.startX, y: d.base.y + e.clientY - d.startY });
+    shift(frame, d.applied);
+  };
+  const onRelease = (e: React.PointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    drag.current = null;
+    setDragging(false);
+    setOffset(d.applied);
+    remember(d.applied);
+  };
+  const onReset = () => {
+    setOffset(CORNER);
+    remember(CORNER);
+  };
+
   React.useEffect(() => {
     const el = listRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
@@ -173,10 +314,26 @@ function Panel({
   const last = messages[messages.length - 1];
 
   return (
+    // The frame carries the shift the window was dragged to; the window
+    // inside it carries its own entrance and exit, so the two never
+    // fight over one transform. Below the sheet width the shift is off.
+    <div
+      ref={frameRef}
+      data-dragging={dragging}
+      style={{ "--ax": `${offset.x}px`, "--ay": `${offset.y}px` } as React.CSSProperties}
+      className={cn(
+        "fixed right-5 bottom-5 z-40 print:hidden max-sm:inset-x-3 max-sm:bottom-3",
+        "sm:transform-[translate3d(var(--ax),var(--ay),0)]",
+        dragging
+          ? "transition-none will-change-transform"
+          : "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
+      )}
+    >
     <section
       role="dialog"
-      aria-label="Assistant"
+      aria-label="AI Assistant"
       data-state={state}
+      data-dragging={dragging}
       onAnimationEnd={(e) => {
         if (e.target === e.currentTarget && state === "closed") onGone();
       }}
@@ -184,21 +341,36 @@ function Panel({
         if (e.key === "Escape") onClose();
       }}
       className={cn(
-        "fixed right-5 bottom-5 z-40 flex h-[min(44rem,calc(100dvh-6.5rem))] w-[min(26.5rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-xl border border-border bg-card print:hidden",
+        "relative flex h-[min(44rem,calc(100dvh-6.5rem))] w-[min(26.5rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-xl border border-border bg-card",
         "shadow-[0_28px_90px_-28px_rgba(16,16,18,0.5),0_10px_28px_-14px_rgba(16,16,18,0.3)]",
         "duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]",
         "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-bottom-6",
         "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-bottom-6 data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
-        "max-sm:inset-x-3 max-sm:bottom-3 max-sm:h-[min(44rem,calc(100dvh-5rem))] max-sm:w-auto"
+        // Picked up: a touch larger, a deeper shadow, the way a card
+        // lifts off a desk.
+        "transition-[transform,box-shadow,border-color] data-[dragging=true]:scale-[1.012] data-[dragging=true]:border-gold/40 data-[dragging=true]:shadow-[0_40px_110px_-30px_rgba(16,16,18,0.55),0_16px_36px_-16px_rgba(16,16,18,0.35)]",
+        "max-sm:h-[min(44rem,calc(100dvh-5rem))] max-sm:w-auto"
       )}
     >
-      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
+      <header
+        onPointerDown={onGrab}
+        onPointerMove={onDrag}
+        onPointerUp={onRelease}
+        onPointerCancel={onRelease}
+        onDoubleClick={onReset}
+        title="Drag to move · double-click to put back"
+        className={cn(
+          "flex items-center gap-3 border-b border-border px-4 py-3 select-none",
+          "sm:cursor-grab sm:touch-none",
+          dragging && "cursor-grabbing"
+        )}
+      >
         <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-gold-fill/15 text-gold">
           {busy ? <span aria-hidden className="absolute inset-0 rounded-full bg-gold-fill/35 animate-assistant-halo" /> : null}
           <Sparkles aria-hidden className="relative size-4" strokeWidth={2.25} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">Assistant</p>
+          <p className="text-sm font-semibold text-foreground">AI Assistant</p>
           <p className="truncate text-xs text-muted-foreground">{contextTitle(context)}</p>
         </div>
         <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground">{PRICE_LINE}</span>
@@ -286,6 +458,7 @@ function Panel({
         </div>
       </form>
     </section>
+    </div>
   );
 }
 
