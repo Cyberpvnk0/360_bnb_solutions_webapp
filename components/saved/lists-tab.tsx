@@ -46,6 +46,14 @@ function marketName(slug: string): string {
   return m ? `${m.name}, ${m.stateCode}` : slug;
 }
 
+/** The unit's town, and the market it sits in when that is somewhere
+ *  else — "Jacksonville, FL · Jacksonville, FL" said nothing twice. */
+function placeLine(l: RentalListing): string {
+  const town = `${l.city}, ${l.stateCode}`;
+  const market = marketName(l.marketSlug);
+  return market.toLowerCase() === town.toLowerCase() ? town : `${town} · ${market}`;
+}
+
 const COLUMNS: CsvColumn<RentalListing>[] = [
   { header: "Address", value: (l) => l.address },
   { header: "City", value: (l) => l.city },
@@ -91,7 +99,7 @@ function ListCard({ list }: { list: DealList }) {
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
         {editing ? (
           <form
-            className="flex min-w-0 flex-1 items-center gap-2"
+            className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1"
             onSubmit={(e) => {
               e.preventDefault();
               commitRename();
@@ -134,7 +142,7 @@ function ListCard({ list }: { list: DealList }) {
             </Button>
           </form>
         ) : (
-          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+          <div className="flex w-full min-w-0 items-baseline gap-3 sm:w-auto sm:flex-1">
             <h2 className="truncate text-sm font-semibold text-foreground">{list.name}</h2>
             <span className="shrink-0 text-xs text-muted-foreground tabular">
               {fmtNum(list.listings.length)} {list.listings.length === 1 ? "rental" : "rentals"}
@@ -151,10 +159,12 @@ function ListCard({ list }: { list: DealList }) {
           </div>
         )}
 
-        <div className="flex shrink-0 items-center gap-2">
+        {/* Its own row on a phone: beside the name there was no room,
+            and the buttons were drawn over the count. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
           <Button asChild variant="outline" size="sm" className="gap-1.5">
             <Link href={`/deals?list=${encodeURIComponent(list.id)}`}>
-              Open in Deal Finder
+              <span className="hidden sm:inline">Open in&nbsp;</span>Deal Finder
               <ArrowUpRight aria-hidden className="size-3.5" />
             </Link>
           </Button>
@@ -214,9 +224,7 @@ function ListCard({ list }: { list: DealList }) {
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground">{l.address}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {l.city}, {l.stateCode} · {marketName(l.marketSlug)}
-                </p>
+                <p className="truncate text-xs text-muted-foreground">{placeLine(l)}</p>
               </div>
               <p className="hidden text-xs text-muted-foreground tabular sm:block">
                 {l.bedrooms} bd · {l.bathrooms} ba
