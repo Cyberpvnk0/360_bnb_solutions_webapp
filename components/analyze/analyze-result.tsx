@@ -48,7 +48,9 @@ import { LtrCompsTable } from "./comps-tables";
 import { CurbShot } from "./property-thumb";
 import { Assistant } from "@/components/assistant/assistant";
 import { AddToListMenu } from "@/components/deals/add-to-list-menu";
+import { ContactDetails } from "@/components/deals/contact-details";
 import { PhotosLink } from "@/components/deals/photos-link";
+import { useListingContact } from "@/components/deals/use-listing-contact";
 import { RevenueRange } from "./revenue-range";
 import { cn } from "@/lib/utils";
 
@@ -241,6 +243,12 @@ export function AnalyzeResult({
       }),
     [analysis, listingId, propertyPoint, marketCenter, searchedAddress?.assumedType]
   );
+  // Who to call: the feed's own contact when the row carried one (it
+  // came over in the URL), otherwise the listing's page, read once per
+  // property — and only for a real address, since a seeded street has
+  // no listing behind it and a page read costs money.
+  const looked = useListingContact(listing, realAddress);
+  const contact = listing?.contact ?? looked.contact ?? undefined;
   const neverBreaksEven = !Number.isFinite(p.breakevenOccupancy);
   const comfortable = p.marginOfSafety >= 0.02;
   const marginPts = Math.round(p.marginOfSafety * 100);
@@ -268,6 +276,7 @@ export function AnalyzeResult({
       rentMonthly: inputs.monthlyRent,
       rentSource: searchedAddress?.rentSource === "market" ? "estimate" : "listing",
       ...(analysis.sourceUrl ? { sourceUrl: analysis.sourceUrl } : {}),
+      ...(contact ? { contact } : {}),
       ...(propertyPoint ? { point: propertyPoint } : {}),
       market: {
         name: market?.name ?? analysis.city,
@@ -286,7 +295,7 @@ export function AnalyzeResult({
         grade: gradeDeal(pts).label,
       },
     };
-  }, [analysis, listing, searchedAddress, inputs.monthlyRent, propertyPoint, assumptions, liveComps, p, neverBreaksEven, marginPts]);
+  }, [analysis, listing, contact, searchedAddress, inputs.monthlyRent, propertyPoint, assumptions, liveComps, p, neverBreaksEven, marginPts]);
   // Annual figures display as rounded-monthly × 12 so a reader who
   // multiplies the two on-screen numbers gets an exact match.
   const annualRevenueDisplay = Math.round(p.monthlyRevenue) * 12;
@@ -555,6 +564,17 @@ export function AnalyzeResult({
               assumptions={assumptions}
               weights={analysis.monthlyRevenueWeights}
             />
+          </div>
+        ) : null}
+
+        {/* Who to call — the last step of the decision, after what it
+            is and whether it pencils. The same block as the listing
+            overlay's, read the same way. A seeded street has nobody
+            behind it and shows nothing; a typed address has no page
+            and is offered the ways on. */}
+        {listing && (realAddress || listing.contact) ? (
+          <div className="border-t border-border px-6 py-5 print:hidden">
+            <ContactDetails listing={listing} looked={looked} real={realAddress} />
           </div>
         ) : null}
       </section>

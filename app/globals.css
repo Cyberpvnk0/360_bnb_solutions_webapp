@@ -676,6 +676,41 @@
   }
 }
 
+/* The contact rows while a listing's page is read (components/deals/
+   contact-details): placeholders the shape of a name, a number and an
+   email, a gold highlight sweeping each a beat after the last. A sweep,
+   not a fill — nothing measures how far along a page read is. */
+.contact-shimmer {
+  position: relative;
+  overflow: hidden;
+  /* The skeleton tone, which the dark theme lifts off the card. */
+  background: var(--accent);
+}
+.contact-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--gold-fill) 36%, transparent) 50%,
+    transparent 100%
+  );
+  animation: contact-shimmer 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: calc(var(--i, 0) * 0.16s);
+}
+@keyframes contact-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .contact-shimmer::after {
+    display: none;
+  }
+}
+
 /* The assistant's motion, off for a reader who asked for none. */
 @media (prefers-reduced-motion: reduce) {
   .animate-assistant-rise,

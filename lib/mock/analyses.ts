@@ -273,8 +273,11 @@ export function analysisForListing(listing: RentalListing): Analysis {
     bathrooms: listing.bathrooms,
     propertyType: listing.propertyType,
     // The listing's page rides along, so a saved listing reopened later
-    // still opens it from "View photos" rather than searching for it.
+    // still opens it from "View photos" rather than searching for it —
+    // and its contact, so the result shows who to call without reading
+    // that page for it.
     ...(listing.sourceUrl ? { sourceUrl: listing.sourceUrl } : {}),
+    ...(listing.contact ? { contact: listing.contact } : {}),
     createdAt: MOCK_TODAY,
     strComps,
     ltrComps,

@@ -10,6 +10,7 @@ import {
   type AddressSpec,
 } from "@/lib/live/address-analysis";
 import { buildStrCompsFor } from "@/lib/mock/analyses";
+import { readContactParams } from "@/lib/live/handoff-contact";
 import { usableListingPage } from "@/lib/live/listing-links";
 import type { PropertyType } from "@/lib/mock/types";
 import { AnalyzeResult } from "@/components/analyze/analyze-result";
@@ -64,6 +65,11 @@ function specFrom(
   if (!Number.isFinite(lat) || Math.abs(lat) > 90) return null;
   if (!Number.isFinite(lon) || Math.abs(lon) > 180) return null;
 
+  // Who to call, when the listing this came from knew. Read with the
+  // same suspicion as the page link: these become tel: and mailto:
+  // links on the result.
+  const contact = readContactParams(one);
+
   // Out-of-range is treated as absent rather than fatal: a bad size in
   // a hand-edited URL should still produce an analysis someone can fix,
   // not a 404 with no explanation.
@@ -104,6 +110,7 @@ function specFrom(
     // The ZIP, five digits or nothing: the result's page lookup
     // searches the listing site by it.
     zip: /^\d{5}$/.test(one("z") ?? "") ? one("z") : undefined,
+    ...(contact ? { contact } : {}),
     /** True when nobody told us the size and we picked one. The result
      *  page says so rather than presenting a guess as a reading. */
     assumedSize: bd === null || ba === null,

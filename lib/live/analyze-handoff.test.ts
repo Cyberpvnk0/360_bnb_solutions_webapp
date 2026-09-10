@@ -169,6 +169,19 @@ describe("a saved listing reopened later", () => {
     // hand the whole time — it just wasn't reading it.
     expect(analysisForListing(listing).defaults.monthlyRent).toBe(2150);
   });
+
+  it("still knows who to call", () => {
+    const contact = { company: "Riverside Realty", phone: "(904) 555-0142", role: "Listing broker" as const };
+    const analysis = analysisForListing({
+      ...listing,
+      id: "live--x--2",
+      analysisId: "r--live--x--2",
+      contact,
+    });
+    expect(analysis.contact).toEqual(contact);
+    // And invents nobody for a row that had none.
+    expect(analysisForListing(listing).contact).toBeUndefined();
+  });
 });
 
 describe("the link out of an address search", () => {

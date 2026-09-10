@@ -64,6 +64,15 @@ describe("the listing a result stands for", () => {
     expect(listingForAnalysis(analysis, { point: POINT })!.propertyTypeKnown).toBeUndefined();
   });
 
+  it("keeps who to call when the analysis holds it", () => {
+    // Carried over from the card in the URL, so the result shows it
+    // without reading the listing's page a second time.
+    const contact = { name: "Jane Doe", phone: "(904) 555-0142", role: "Listing agent" as const };
+    const { analysis } = buildAddressAnalysis({ ...spec, contact });
+    expect(analysis.contact).toEqual(contact);
+    expect(listingForAnalysis(analysis, { point: POINT })!.contact).toEqual(contact);
+  });
+
   it("opens on the rent the calculator opened on: asking rent, or the comp median", () => {
     const asked = buildAddressAnalysis(spec).analysis;
     expect(listingForAnalysis(asked, { point: POINT })!.rentMonthly).toBe(979);

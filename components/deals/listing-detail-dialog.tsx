@@ -25,7 +25,7 @@
  */
 
 import * as React from "react";
-import { ArrowUpRight, Mail, Phone, TriangleAlert, User, X } from "lucide-react";
+import { TriangleAlert, X } from "lucide-react";
 import { fmtMoney, fmtMonth, fmtNum, fmtPct, localityLine } from "@/lib/format";
 import { basisLabel, estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
@@ -40,11 +40,10 @@ import {
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
 import { AnalyzeButton } from "./analyze-button";
+import { ContactDetails } from "./contact-details";
 import { money, rangeText, rangeTone } from "./net-range";
-import { PhoneLookup } from "./phone-lookup";
 import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
-import { hasOwnListingPage, webLookupHref } from "@/lib/live/listing-links";
 import { useListingContact } from "./use-listing-contact";
 import { usePropertyFigures } from "./use-property-figures";
 import { cn } from "@/lib/utils";
@@ -185,38 +184,6 @@ function CushionMeter({
         <span>Breakeven {fmtPct(breakeven)}</span>
         <span>Market {fmtPct(occupancy)}</span>
       </div>
-    </div>
-  );
-}
-
-/** A contact row with its icon in a quiet disc, so the column scans. */
-function ContactRow({
-  icon: Icon,
-  children,
-  href,
-}: {
-  icon: typeof User;
-  children: React.ReactNode;
-  href?: string;
-}) {
-  const body = (
-    <>
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-        <Icon aria-hidden className="size-3.5" />
-      </span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-    </>
-  );
-  return href ? (
-    <a
-      href={href}
-      className="flex items-center gap-2.5 text-sm text-foreground transition-colors duration-150 hover:text-gold"
-    >
-      {body}
-    </a>
-  ) : (
-    <div className="flex items-center gap-2.5 text-sm text-foreground">
-      {body}
     </div>
   );
 }
@@ -391,7 +358,17 @@ export function ListingDetailDialog({
 
               <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/50 px-4 py-3 sm:px-5">
                 <AddToListMenu listing={listing} />
-                <AnalyzeButton listing={listing} analyzed={analyzed} />
+                <AnalyzeButton
+                  // The result shows who to call too. What this panel
+                  // already knows goes with it, so the new tab does not
+                  // read the listing's page for an answer in hand.
+                  listing={{
+                    ...listing,
+                    ...(contact ? { contact } : {}),
+                    ...(listing.sourceUrl || !pageFound ? {} : { sourceUrl: pageFound }),
+                  }}
+                  analyzed={analyzed}
+                />
                 <PhotosLink
                   place={{ ...listing, sourceUrl: listing.sourceUrl ?? pageFound }}
                   real={isLive}
@@ -504,98 +481,7 @@ export function ListingDetailDialog({
                 two-up row beside a market panel, and on its own that
                 column left the right half of the overlay empty. */}
             <Panel className="p-4 sm:p-5">
-              <div className="flex items-baseline justify-between gap-3">
-                <MetricLabel>{contact?.role ?? "Contact"}</MetricLabel>
-                {!isLive ? <StatusChip tone="neutral">Preview</StatusChip> : null}
-              </div>
-
-              {contact ? (
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-7">
-                  {/* A page routinely gives a number and no name. Show
-                      the row only when there is somebody to name —
-                      an empty one reads as a name we failed to load. */}
-                  {contact.name || contact.company ? (
-                    <ContactRow icon={User}>
-                      {contact.name ? (
-                        <span className="font-medium">{contact.name}</span>
-                      ) : null}
-                      {contact.company ? (
-                        <span
-                          className={
-                            contact.name ? "text-muted-foreground" : "font-medium"
-                          }
-                        >
-                          {contact.name ? " · " : ""}
-                          {contact.company}
-                        </span>
-                      ) : null}
-                    </ContactRow>
-                  ) : null}
-                  {contact.phone ? (
-                    <ContactRow
-                      icon={Phone}
-                      href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}
-                    >
-                      <span className="tabular">{contact.phone}</span>
-                    </ContactRow>
-                  ) : null}
-                  {contact.email ? (
-                    <ContactRow icon={Mail} href={`mailto:${contact.email}`}>
-                      {contact.email}
-                    </ContactRow>
-                  ) : null}
-                </div>
-              ) : looked.status === "loading" ? (
-                <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                  Checking the listing for contact details…
-                </p>
-              ) : (
-                <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                  {/* Three different facts, and they must not read the
-                      same. "Couldn't read it" is not "there is none",
-                      and sending somebody away from a number that
-                      exists is the failure that matters here. */}
-                  {!isLive
-                    ? "Preview inventory carries no contact details."
-                    : looked.status === "unreadable"
-                      ? "Couldn't read this listing's page just now."
-                      : looked.status === "no-page"
-                        ? "This property isn't on the listing site contacts are read from."
-                        : "This listing's page publishes no contact details."}
-                  {hasOwnListingPage({ ...listing, sourceUrl: listing.sourceUrl ?? pageFound }) &&
-                  looked.status !== "none"
-                    ? " The listing page behind View photos may have them."
-                    : ""}
-                </p>
-              )}
-              {/* Only when the listing site gave no number — none on
-                  file, a page that could not be read, or one that
-                  publishes none. Two ways on from there: a deep lookup
-                  of public records for the owner's number (credits,
-                  charged only when one comes back), and a web search
-                  for the rental, typed out, since the reader was about
-                  to type it anyway. */}
-              {isLive && !contact?.phone && looked.status !== "loading" && looked.status !== "idle" ? (
-                <div className="mt-3 flex flex-col gap-3">
-                  <PhoneLookup listing={listing} />
-                  {(() => {
-                    const href = webLookupHref(listing);
-                    return href ? (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Searches the web for this rental, where a contact is often posted"
-                        className="inline-flex h-8 w-fit items-center gap-1 rounded-sm border border-border px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-secondary/60"
-                      >
-                        Web lookup
-                        <ArrowUpRight aria-hidden className="size-3.5" />
-                        <span className="sr-only">(opens in a new tab)</span>
-                      </a>
-                    ) : null;
-                  })()}
-                </div>
-              ) : null}
+              <ContactDetails listing={listing} looked={looked} real={isLive} />
             </Panel>
 
             {/* Seeded inventory only. A live row's description is the

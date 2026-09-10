@@ -42,6 +42,16 @@ export interface PropertyFigures {
   netRange?: { low: number; high: number } | null;
 }
 
+/** Who to call, as the page shows it. */
+export interface ContactBrief {
+  name?: string;
+  company?: string;
+  phone?: string;
+  email?: string;
+  /** "Listing agent", "Owner" — the panel's own word for them. */
+  role: string;
+}
+
 export interface PropertyContext {
   kind: "property";
   /** Stable for the property: the thread's key. */
@@ -57,6 +67,9 @@ export interface PropertyContext {
   rentMonthly: number;
   rentSource: "listing" | "estimate";
   sourceUrl?: string;
+  /** The lister's details the page already shows — so "who do I call"
+   *  is answered from the page rather than searched for. */
+  contact?: ContactBrief;
   point?: { lat: number; lon: number };
   market: MarketBrief;
   figures?: PropertyFigures;
@@ -134,6 +147,23 @@ function market(v: unknown): MarketBrief | null {
     name,
     stateCode: stateCode.toUpperCase(),
     ...(status && note ? { regulation: { status, note } } : {}),
+  };
+}
+
+function contact(v: unknown): ContactBrief | undefined {
+  if (!isRow(v)) return undefined;
+  const name = text(v.name, 80);
+  const company = text(v.company, 120);
+  const phone = text(v.phone, 32);
+  const email = text(v.email, 120);
+  // Nobody to name and nothing to dial is no contact, not an empty one.
+  if (!name && !company && !phone && !email) return undefined;
+  return {
+    ...(name ? { name } : {}),
+    ...(company ? { company } : {}),
+    ...(phone ? { phone } : {}),
+    ...(email ? { email } : {}),
+    role: text(v.role, 40) ?? "Listing contact",
   };
 }
 
@@ -237,6 +267,7 @@ export function readContext(raw: unknown): AssistantContext | null {
       rentMonthly,
       rentSource: raw.rentSource === "listing" ? "listing" : "estimate",
       ...(link(raw.sourceUrl) ? { sourceUrl: link(raw.sourceUrl) } : {}),
+      ...(contact(raw.contact) ? { contact: contact(raw.contact) } : {}),
       ...(point(raw.point) ? { point: point(raw.point) } : {}),
       market: mk,
       ...(figures(raw.figures) ? { figures: figures(raw.figures) } : {}),
@@ -285,6 +316,12 @@ export function renderContext(ctx: AssistantContext): string {
       `Rent: ${money(ctx.rentMonthly)}/mo (${ctx.rentSource === "listing" ? "the listing's asking rent" : "estimated from nearby leases"})`,
     ];
     if (ctx.sourceUrl) lines.push(`Listing page already known: ${ctx.sourceUrl}`);
+    if (ctx.contact) {
+      const c = ctx.contact;
+      lines.push(
+        `${c.role} on the listing: ${[c.name, c.company, c.phone, c.email].filter(Boolean).join(" · ")}`
+      );
+    }
     if (ctx.point) lines.push(`Coordinates: ${ctx.point.lat.toFixed(5)}, ${ctx.point.lon.toFixed(5)}`);
     if (ctx.figures) {
       const f = ctx.figures;

@@ -188,6 +188,9 @@ export interface Analysis {
   /** The ZIP, when the address arrived with one: what the result's
    *  page lookup searches the listing site by. */
   zip?: string;
+  /** Who to call, carried over when the analysis was opened from a
+   *  listing that knew — so the result need not read the page again. */
+  contact?: ListingContact;
   createdAt: string;
   /** The evidence behind the revenue projection. ADR and occupancy
    *  assumptions are derived from this set via lib/calc/comps. */

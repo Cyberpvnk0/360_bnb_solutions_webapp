@@ -27,8 +27,14 @@
  * property as a listing (lib/live/analysis-listing), and the id is
  * what makes that the same row the card would have saved rather than
  * a second copy of the same address.
+ *
+ * AND WHO TO CALL. The result shows the lister's details the way the
+ * overlay does, and a contact the row already holds must not be read
+ * off the listing's page a second time — see lib/live/handoff-contact.
  */
+import { writeContactParams } from "./handoff-contact";
 import { usableListingPage } from "./listing-links";
+import type { ListingContact } from "@/lib/mock/types";
 
 /** A listing id as the feeds and the seeds mint them: one token, no
  *  spaces, nothing a URL would have to think about. */
@@ -55,6 +61,8 @@ export function analyzeHref(l: {
   sourceUrl?: string;
   /** The ZIP, when the feed stated one apart from the address line. */
   zip?: string;
+  /** The lister's details, when the row holds them. */
+  contact?: ListingContact;
 }): string {
   const params = new URLSearchParams({
     a: l.address,
@@ -85,6 +93,7 @@ export function analyzeHref(l: {
   const page = usableListingPage(l.sourceUrl);
   if (page) params.set("u", page);
   if (l.id && LISTING_ID.test(l.id)) params.set("l", l.id);
+  writeContactParams(params, l.contact);
   return `/analyze/new?${params}`;
 }
 

@@ -18,9 +18,9 @@
  *
  * What the analysis does not know it does not invent: no size in
  * square feet, no listing date, no amenities — `featuresKnown` false
- * says so — and no contact. The rent is the one the calculator opened
- * on: the listing's asking rent when it had one, the comp median when
- * nobody did.
+ * says so — and a contact only when the analysis holds one. The rent
+ * is the one the calculator opened on: the listing's asking rent when
+ * it had one, the comp median when nobody did.
  */
 
 import type { Analysis, RentalListing } from "@/lib/mock/types";
@@ -64,6 +64,7 @@ export function listingForAnalysis(
     rentMonthly: Math.round(analysis.defaults.monthlyRent),
     petFriendly: false,
     ...(analysis.sourceUrl ? { sourceUrl: analysis.sourceUrl } : {}),
+    ...(analysis.contact ? { contact: analysis.contact } : {}),
     features: [],
     featuresKnown: false,
   };

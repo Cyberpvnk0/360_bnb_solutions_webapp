@@ -118,3 +118,28 @@ describe("writing it for the model", () => {
     expect(suggestionsFor(search)).toContain("Find the original listing for 9 Elm St");
   });
 });
+
+describe("who to call, in the assistant's view of the page", () => {
+  const contact = {
+    name: "Jane Doe",
+    company: "Riverside Realty",
+    phone: "(904) 555-0142",
+    role: "Listing agent",
+  };
+
+  it("is kept as the page shows it, and written for the model", () => {
+    const ctx = readContext({ ...PROPERTY, contact })!;
+    if (ctx.kind !== "property") throw new Error("expected a property");
+    expect(ctx.contact).toEqual(contact);
+    expect(renderContext(ctx)).toContain(
+      "Listing agent on the listing: Jane Doe · Riverside Realty · (904) 555-0142"
+    );
+  });
+
+  it("is nobody rather than an empty somebody", () => {
+    const ctx = readContext({ ...PROPERTY, contact: { role: "Owner" } })!;
+    if (ctx.kind !== "property") throw new Error("expected a property");
+    expect(ctx.contact).toBeUndefined();
+    expect(renderContext(ctx)).not.toContain("on the listing:");
+  });
+});

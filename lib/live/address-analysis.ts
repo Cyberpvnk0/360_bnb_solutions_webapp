@@ -24,7 +24,7 @@
 
 import { MARKETS, MARKET_BY_SLUG } from "@/lib/mock/markets";
 import { buildLtrCompsFor, buildDefaultsFor } from "@/lib/mock/analyses";
-import type { Analysis, Market, PropertyType } from "@/lib/mock/types";
+import type { Analysis, ListingContact, Market, PropertyType } from "@/lib/mock/types";
 
 export interface AddressSpec {
   address: string;
@@ -56,6 +56,8 @@ export interface AddressSpec {
   /** The ZIP, when the address arrived with one. The result's page
    *  lookup searches the listing site by it; the line often lacks it. */
   zip?: string;
+  /** Who to call, when the listing this came from already knew. */
+  contact?: ListingContact;
 }
 
 const EARTH_RADIUS_MILES = 3958.8;
@@ -141,6 +143,7 @@ export function buildAddressAnalysis(
       propertyType: spec.propertyType,
       ...(spec.sourceUrl ? { sourceUrl: spec.sourceUrl } : {}),
       ...(spec.zip ? { zip: spec.zip } : {}),
+      ...(spec.contact ? { contact: spec.contact } : {}),
       /**
        * A bare YYYY-MM-DD, matching the seeded analyses.
        *
