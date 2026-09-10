@@ -12,10 +12,10 @@
  * analyzed has no figures here, and the panel falls to the ZIP's.
  */
 
-import { deriveMarketAssumptions } from "@/lib/calc/comps";
+import { deriveMarketAssumptions, MIN_COMPS, selectNearbyComps } from "@/lib/calc/comps";
 import { estimateKey, isFresh, readEstimate } from "@/lib/db/market-store";
 import type { StrComp } from "@/lib/mock/types";
-import { compsSpecFor, ESTIMATE_TTL_MS, ESTIMATE_VERSION, MIN_COMPS } from "./str-comps";
+import { compsSpecFor, ESTIMATE_TTL_MS, ESTIMATE_VERSION } from "./str-comps";
 
 export interface PropertyFigures {
   /** This size's own nightly rate, the comps' mean. */
@@ -23,6 +23,8 @@ export interface PropertyFigures {
   /** Fraction. */
   occupancy: number;
   comps: number;
+  /** How far the comps the figures stand on reach, in miles. */
+  radiusMiles: number;
   at: string | null;
 }
 
@@ -39,8 +41,10 @@ export async function propertyFigures(spec: {
   if (!cached || !isFresh(cached.at, ESTIMATE_TTL_MS) || cached.estimate.v !== ESTIMATE_VERSION) {
     return null;
   }
-  const comps = (cached.estimate.comps as StrComp[]).filter((c) => c && c.active !== false);
+  const held = (cached.estimate.comps as StrComp[]).filter((c) => c && c.active !== false);
+  // The same subset the analyzer stands on, so the two agree.
+  const { comps, radiusMiles } = selectNearbyComps(held);
   if (comps.length < MIN_COMPS) return null;
   const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
-  return { adr, occupancy: marketOccupancy, comps: comps.length, at: cached.at };
+  return { adr, occupancy: marketOccupancy, comps: comps.length, radiusMiles, at: cached.at };
 }

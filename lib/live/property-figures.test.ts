@@ -32,7 +32,9 @@ describe("a property's own figures", () => {
       at: new Date().toISOString(),
     });
     const f = await propertyFigures(SPEC);
-    expect(f).toMatchObject({ adr: 170, occupancy: 0.31, comps: 5 });
+    // Five comps a mile out: too few for the one-mile grain, so the
+    // two-mile ceiling.
+    expect(f).toMatchObject({ adr: 170, occupancy: 0.31, comps: 5, radiusMiles: 2 });
     // Keyed the way the analyzer keys it: this point, this size, two guests to a bedroom.
     expect(String(read.mock.calls[0][0])).toBe("estimate:39.998,-82.973:3:1:6");
   });

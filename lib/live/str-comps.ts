@@ -19,7 +19,9 @@
  * said so.
  */
 
+import { COMPS_RADIUS_MAX_MILES, MIN_COMPS, selectNearbyComps } from "@/lib/calc/comps";
 import { fetchEstimate, hasAirRoiKey } from "@/lib/live/airroi";
+import { addToPool } from "@/lib/live/comp-pool";
 import {
   estimateKey,
   isFresh,
@@ -29,8 +31,7 @@ import {
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
 import type { Analysis, StrComp } from "@/lib/mock/types";
 
-/** Below this a comp set can't carry a projection honestly. */
-export const MIN_COMPS = 4;
+export { MIN_COMPS } from "@/lib/calc/comps";
 
 export interface CompsResolution {
   analysis: Analysis;
@@ -54,6 +55,10 @@ export const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  *   4             "no longer up" read off the last-90-day calendar the
  *                 feed actually carries, and private or shared rooms
  *                 left out (wholePlace).
+ *   5             bought within two miles of the property, so a set
+ *                 cannot be padded with listings from across the city;
+ *                 the projection stands on the one-mile subset when
+ *                 there is one (lib/calc/comps, selectNearbyComps).
  *
  * A set written in an older format is bought again, once: it may hold
  * comps that are not comps any more, and nothing in it says which. A
@@ -62,7 +67,7 @@ export const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * so, and buying again would only buy the same; those links are
  * dropped at render instead (lib/live/comp-links).
  */
-export const ESTIMATE_VERSION = 4;
+export const ESTIMATE_VERSION = 5;
 
 /** The vendor spec for an analysis at a point — the thing a comp set
  *  is bought for. One builder, so the plan meter and the cache agree
@@ -115,7 +120,13 @@ export async function withLiveComps(
   ) {
     // Belt and braces: the current format never stores one, but a
     // comp the feed marked as gone is not shown even if one got in.
-    const comps = (cached.estimate.comps as StrComp[]).filter((c) => c.active !== false);
+    // Then the nearest: the set was bought within two miles, and the
+    // projection stands on the one-mile subset when there is one.
+    const held = (cached.estimate.comps as StrComp[]).filter((c) => c.active !== false);
+    const comps = selectNearbyComps(held).comps;
+    // Every real listing in the set feeds the market's comp pool, which
+    // is what the Deal Finder's cards are projected from.
+    void addToPool(analysis.marketSlug, held).catch(() => undefined);
     if (comps.length >= MIN_COMPS) {
       return {
         analysis: {
@@ -147,7 +158,7 @@ export async function withLiveComps(
     // too — both are required by the endpoint in any case. Guests is
     // inferred the way the industry does, two to a bedroom, because the
     // analysis records the property rather than its listing.
-    const estimate = await fetchEstimate(spec);
+    const estimate = await fetchEstimate({ ...spec, radiusMiles: COMPS_RADIUS_MAX_MILES });
     commitLiveSearch(key);
 
     // Just paid for this; make it the last time — a thin set included,
@@ -163,11 +174,13 @@ export async function withLiveComps(
       adr: estimate.adr,
       occupancy: estimate.occupancy,
     }).catch(() => ({ ok: false, detail: "write threw" }));
-    if (estimate.comps.length < MIN_COMPS) return { analysis, liveComps: false };
+    void addToPool(analysis.marketSlug, estimate.comps).catch(() => undefined);
+    const comps = selectNearbyComps(estimate.comps).comps;
+    if (comps.length < MIN_COMPS) return { analysis, liveComps: false };
     return {
       analysis: {
         ...analysis,
-        strComps: estimate.comps,
+        strComps: comps,
         ...(estimate.monthlyRevenue
           ? { monthlyRevenueWeights: estimate.monthlyRevenue }
           : {}),

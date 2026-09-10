@@ -3,12 +3,12 @@
 /**
  * The measured figures the cards on screen are projected from.
  *
- * Asks app/api/market-figures for the city's figures and for the ZIPs
- * of the rows on screen, a batch at a time, and keeps every answer for
- * the session — a null answer included, since a ZIP the feed has
- * nothing for is not worth asking about again today. The rows are
- * re-read as answers land, so a card projected from the city's figures
- * a moment ago is projected from its ZIP's now.
+ * Asks app/api/market-figures, a page of rows at a time, what the real
+ * listings around each row say — and for the city's figures, which a
+ * row falls to when nothing stands near it. Every answer is kept for
+ * the session, a null answer included: a row nothing stands near is
+ * not asked about again on every render. The rows are re-read as
+ * answers land, so a card held blank a moment ago is projected now.
  *
  * Nothing is asked for while the grid shows preview inventory: those
  * rows are modelled through and through, and the figures are a paid
@@ -16,79 +16,87 @@
  */
 
 import * as React from "react";
+import type { DealFigures } from "@/lib/calc/deal-read";
+import type { NearbyFigures } from "@/lib/live/comp-pool";
 import type { Figures } from "@/lib/live/market-figures";
 import { zipOf } from "@/lib/live/zip";
-import type { DealFigures } from "@/lib/mock/rentals";
 import type { Market, RentalListing } from "@/lib/mock/types";
 
-export interface WantedZip {
-  zip: string;
+export interface WantedRow {
+  id: string;
+  zip: string | null;
+  lat: number;
+  lon: number;
+  bd: number;
+  ba: number;
   marketSlug: string;
-  /** A point in the ZIP, for the feed's own lookup of its market. */
-  point: { lat: number; lon: number };
 }
 
 export interface WantedFigures {
   markets: string[];
-  zips: WantedZip[];
+  rows: WantedRow[];
 }
 
-/** The areas a set of rows would be projected from. */
+/** The rows a set of listings would be projected from. */
 export function figuresWanted(listings: readonly RentalListing[]): WantedFigures {
   const markets = new Set<string>();
-  const zips = new Map<string, WantedZip>();
+  const rows: WantedRow[] = [];
   for (const l of listings) {
     markets.add(l.marketSlug);
-    const zip = zipOf(l);
-    if (zip && !zips.has(zip)) {
-      zips.set(zip, { zip, marketSlug: l.marketSlug, point: { lat: l.lat, lon: l.lon } });
-    }
+    rows.push({
+      id: l.id,
+      zip: zipOf(l) ?? null,
+      lat: l.lat,
+      lon: l.lon,
+      bd: l.bedrooms,
+      ba: l.bathrooms,
+      marketSlug: l.marketSlug,
+    });
   }
-  return { markets: [...markets], zips: [...zips.values()] };
+  return { markets: [...markets], rows };
 }
 
-/** null: asked, and the feed had nothing. */
+/** null: asked, and there was nothing to be had. */
 const marketCache = new Map<string, Figures | null>();
-const zipCache = new Map<string, Figures | null>();
+const rowCache = new Map<string, NearbyFigures | null>();
 /** Markets with a request under way. */
 const inFlight = new Set<string>();
 
-const BATCH = 12;
+const BATCH = 24;
 
 export interface FigureSet {
   /** undefined: not asked yet. null: asked, nothing to be had. */
   market: (slug: string) => Figures | null | undefined;
-  zip: (zip: string) => Figures | null | undefined;
+  row: (id: string) => NearbyFigures | null | undefined;
   /** A request is under way somewhere. */
   pending: boolean;
 }
 
-async function ask(marketSlug: string, zips: WantedZip[]): Promise<void> {
-  const params = new URLSearchParams({ market: marketSlug });
-  if (zips.length > 0) {
-    params.set("zips", zips.map((z) => z.zip).join(","));
-    params.set(
-      "points",
-      zips.map((z) => `${z.zip}:${z.point.lat.toFixed(4)}:${z.point.lon.toFixed(4)}`).join(",")
-    );
-  }
+async function ask(marketSlug: string, rows: WantedRow[]): Promise<void> {
   const nothing = () => {
     if (!marketCache.has(marketSlug)) marketCache.set(marketSlug, null);
-    for (const z of zips) zipCache.set(z.zip, null);
+    for (const r of rows) rowCache.set(r.id, null);
   };
   try {
-    const res = await fetch(`/api/market-figures?${params}`);
+    const res = await fetch("/api/market-figures", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        market: marketSlug,
+        rows: rows.map(({ id, zip, lat, lon, bd, ba }) => ({ id, zip, lat, lon, bd, ba })),
+      }),
+    });
     const body = (await res.json().catch(() => null)) as {
       ok?: boolean;
       market?: Figures | null;
-      zips?: Record<string, Figures | null>;
+      rows?: Record<string, NearbyFigures | null>;
     } | null;
     if (!res.ok || !body?.ok) {
       nothing();
       return;
     }
     marketCache.set(marketSlug, body.market ?? null);
-    for (const z of zips) zipCache.set(z.zip, body.zips?.[z.zip] ?? null);
+    for (const r of rows) rowCache.set(r.id, body.rows?.[r.id] ?? null);
   } catch {
     nothing();
   }
@@ -101,7 +109,7 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
     latest.current = wanted;
   }, [wanted]);
   const key = enabled
-    ? `${wanted.markets.join("|")}#${wanted.zips.map((z) => z.zip).join("|")}`
+    ? `${wanted.markets.join("|")}#${wanted.rows.map((r) => r.id).join("|")}`
     : "";
 
   React.useEffect(() => {
@@ -112,12 +120,12 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
         if (inFlight.has(slug)) continue;
         inFlight.add(slug);
         try {
-          // The city's figures ride along with the first batch of ZIPs;
-          // whatever is still missing when a batch lands — the rows
-          // may have grown meanwhile — goes in the next.
+          // The city's figures ride along with the first page of rows;
+          // whatever is still missing when a page lands — the rows may
+          // have grown meanwhile — goes in the next.
           for (;;) {
-            const missing = latest.current.zips.filter(
-              (z) => z.marketSlug === slug && !zipCache.has(z.zip)
+            const missing = latest.current.rows.filter(
+              (r) => r.marketSlug === slug && !rowCache.has(r.id)
             );
             if (marketCache.has(slug) && missing.length === 0) break;
             await ask(slug, missing.slice(0, BATCH));
@@ -139,15 +147,15 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
 
   return {
     market: (slug) => marketCache.get(slug),
-    zip: (zip) => zipCache.get(zip),
+    row: (id) => rowCache.get(id),
     pending: inFlight.size > 0,
   };
 }
 
 /**
- * The figures a row is projected from: its ZIP's, else its city's,
- * else none — with `pending` true while an answer is still on its way
- * for either, so the card can hold its numbers rather than show ones
+ * The figures a row is projected from: the listings around it, else
+ * its city's, else none — with `pending` true while an answer is still
+ * on its way, so the card can hold its numbers rather than show ones
  * about to change.
  */
 export function dealFiguresFor(
@@ -155,11 +163,18 @@ export function dealFiguresFor(
   market: Market,
   set: FigureSet
 ): { figures: DealFigures | null; pending: boolean } {
-  const zip = zipOf(listing);
-  const byZip = zip ? set.zip(zip) : null;
-  if (byZip) {
+  const near = set.row(listing.id);
+  if (near) {
     return {
-      figures: { adr: byZip.adr, occupancy: byZip.occupancy, kind: "zip", area: zip ?? null, at: byZip.at },
+      figures: {
+        adr: near.adr,
+        occupancy: near.occupancy,
+        kind: "nearby",
+        area: null,
+        at: null,
+        comps: near.comps,
+        radiusMiles: near.radiusMiles,
+      },
       pending: false,
     };
   }
@@ -176,12 +191,12 @@ export function dealFiguresFor(
       pending: false,
     };
   }
-  return { figures: null, pending: set.pending && (byZip === undefined || byCity === undefined) };
+  return { figures: null, pending: set.pending && (near === undefined || byCity === undefined) };
 }
 
 /** Tests only. */
 export function resetFigureCaches(): void {
   marketCache.clear();
-  zipCache.clear();
+  rowCache.clear();
   inFlight.clear();
 }

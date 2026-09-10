@@ -32,7 +32,7 @@ import {
 import { toast } from "sonner";
 import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/csv";
 import { fmtNum } from "@/lib/format";
-import { estimateDeal, type DealRead } from "@/lib/mock/rentals";
+import { estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 import { Button } from "@/components/ui/button";

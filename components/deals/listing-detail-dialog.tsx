@@ -30,7 +30,7 @@ import { ArrowRight, ArrowUpRight, Mail, Phone, TriangleAlert, User, X } from "l
 import { projectDeal } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtMonth, fmtNum, fmtPct, localityLine } from "@/lib/format";
 import { benchmark2brInputs } from "@/lib/mock/markets";
-import { basisLabel, estimateDeal, type DealRead } from "@/lib/mock/rentals";
+import { basisLabel, estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
@@ -61,9 +61,12 @@ function basisLine(read: DealRead, bedrooms: number, marketName: string): string
   const occ = `${fmtPct(b.occupancy)} occupancy`;
   const rate = `${fmtMoney(read.nightlyRate)}/night`;
   const when = b.at ? ` ${fmtMonth(b.at)}` : "";
+  const reach = b.radiusMiles ? ` within ${b.radiusMiles} mi` : "";
   switch (b.kind) {
     case "comps":
-      return `This property's own comps${b.comps ? ` · ${b.comps} listings` : ""} · ${occ} · ${rate}`;
+      return `This property's own comps${b.comps ? ` · ${b.comps} listings${reach}` : ""} · ${occ} · ${rate}`;
+    case "nearby":
+      return `${b.comps ?? "The"} listings${reach} · ${occ} · ${rate} for a ${bedrooms} bd`;
     case "zip":
       return `ZIP ${b.area ?? ""} · ${occ} · ${rate} for a ${bedrooms} bd · measured${when}`;
     case "city":
@@ -247,6 +250,7 @@ export function ListingDetailDialog({
         area: null,
         at: own.figures.at,
         comps: own.figures.comps,
+        radiusMiles: own.figures.radiusMiles,
       });
     }
     return deal ?? estimateDeal(listing, market);
@@ -465,7 +469,7 @@ export function ListingDetailDialog({
                     sub="Nights to cover costs"
                   />
                   <Figure
-                    label="Cash flow"
+                    label="Net profit"
                     value={`${fmtMoney(Math.round(projection.netCashFlow))}/mo`}
                     sub={`${fmtMoney(Math.round(projection.monthlyRevenue))} revenue − ${fmtMoney(Math.round(projection.monthlyCosts))} costs`}
                     tone={projection.netCashFlow < 0 ? "bad" : "good"}

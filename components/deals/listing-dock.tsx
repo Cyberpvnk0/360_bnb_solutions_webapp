@@ -12,7 +12,7 @@ import Link from "next/link";
 import { ArrowRight, X } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
 import { gradeDeal } from "@/lib/calc/deal-grade";
-import type { DealRead } from "@/lib/mock/rentals";
+import type { DealRead } from "@/lib/calc/deal-read";
 import type { RentalListing } from "@/lib/mock/types";
 import { analyzeHref } from "@/lib/live/analyze-href";
 import { Button } from "@/components/ui/button";

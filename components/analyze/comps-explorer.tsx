@@ -91,6 +91,18 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
   },
 ];
 
+/** How far the set reaches: "within 1 mi" when it all sits inside a
+ *  mile, "within 2 mi" inside two, and "nearby" for a set bought before
+ *  the ceiling was set. */
+function reachLabel(comps: readonly StrComp[]): string {
+  if (comps.length === 0) return "nearby";
+  const reach = Math.max(...comps.map((c) => c.distanceMiles));
+  if (!Number.isFinite(reach)) return "nearby";
+  if (reach <= 1) return "within 1 mi";
+  if (reach <= 2) return "within 2 mi";
+  return "nearby";
+}
+
 export function CompsExplorer({
   comps,
   address,
@@ -146,7 +158,7 @@ export function CompsExplorer({
       <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
-            Live comps — {comps.length} short-term rentals nearby
+            Live comps — {comps.length} short-term rentals {reachLabel(comps)}
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             The projection above is computed from these listings, nothing else.

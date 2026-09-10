@@ -19,6 +19,42 @@ export interface LtrCompLike {
   rent: number;
 }
 
+/* ------------------------------------------------------------------ */
+/* Which comps a projection stands on                                  */
+/* ------------------------------------------------------------------ */
+
+/** A comp set is bought within this many miles of the property, and
+ *  nothing beyond it is ever stood on: two miles is the ceiling. */
+export const COMPS_RADIUS_MAX_MILES = 2;
+/** The projection stands on the comps within this many miles when
+ *  there are enough of them: a street's own blocks. */
+export const COMPS_RADIUS_PREFERRED_MILES = 1;
+/** Enough within the preferred radius to stand on. */
+export const NEARBY_MIN_COMPS = 6;
+/** Below this a comp set can't carry a projection honestly. */
+export const MIN_COMPS = 4;
+
+/**
+ * The comps a projection stands on: those within a mile when there
+ * are enough, else those within two — and never one beyond two miles.
+ * A ZIP-wide or city-wide average is the wrong grain for a street: the
+ * same city holds blocks that book every night and blocks that never
+ * do, and a set padded out to five miles blends them. A set with too
+ * few inside two miles is thin, and the caller says so rather than
+ * reaching further.
+ */
+export function selectNearbyComps<T extends { distanceMiles: number }>(
+  comps: readonly T[]
+): { comps: T[]; radiusMiles: number } {
+  const within = (r: number) =>
+    comps.filter((c) => Number.isFinite(c.distanceMiles) && c.distanceMiles <= r);
+  const near = within(COMPS_RADIUS_PREFERRED_MILES);
+  if (near.length >= NEARBY_MIN_COMPS) {
+    return { comps: near, radiusMiles: COMPS_RADIUS_PREFERRED_MILES };
+  }
+  return { comps: within(COMPS_RADIUS_MAX_MILES), radiusMiles: COMPS_RADIUS_MAX_MILES };
+}
+
 /** Arithmetic mean, rounded to whole dollars. */
 function meanDollars(values: number[]): number {
   if (values.length === 0) return 0;

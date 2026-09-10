@@ -25,9 +25,8 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, TrendingDown } from "lucide-react";
 import { fmtMoney, fmtNum } from "@/lib/format";
-import { basisLabel } from "@/lib/mock/rentals";
+import { basisLabel, type DealRead } from "@/lib/calc/deal-read";
 import { gradeDeal } from "@/lib/calc/deal-grade";
-import type { DealRead } from "@/lib/mock/rentals";
 import type { RentalListing } from "@/lib/mock/types";
 import { PropertyImage } from "./property-image";
 import { PhotosLink } from "./photos-link";
@@ -231,7 +230,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           {deal.basis.kind === "pending" ? (
             <>
               <Stat label="Cushion" value="—" />
-              <Stat label="Cash flow" value="—" />
+              <Stat label="Net profit" value="—" />
               <Stat label="Nightly" value="—" />
             </>
           ) : (
@@ -242,7 +241,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
                 tone={deal.cushionPts < 0 ? "bad" : deal.cushionPts >= 8 ? "good" : "plain"}
               />
               <Stat
-                label="Cash flow"
+                label="Net profit"
                 value={`${fmtMoney(deal.netCashFlow)}/mo`}
                 tone={deal.netCashFlow < 0 ? "bad" : "good"}
               />

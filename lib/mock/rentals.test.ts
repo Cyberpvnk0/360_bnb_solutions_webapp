@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { breakevenOccupancy } from "@/lib/calc/arbitrage";
 import { estimateRentFromComps } from "@/lib/calc/comps";
 import { ANALYSES, analysisForListing } from "./analyses";
-import { adrFactorFor, benchmark2brInputs, BR_MULT, MARKET_BY_SLUG, MARKETS } from "./markets";
+import { adrFactorFor, BR_MULT, MARKET_BY_SLUG, MARKETS } from "./markets";
 import { submarketsFor } from "./submarkets";
 import {
   allRentals,
   BASE_FEATURES,
-  basisLabel,
   BEDROOM_RENT_FACTOR,
   estimateCushionPts,
-  estimateDeal,
   RENTAL_BY_ANALYSIS_ID,
   rentalCountFor,
   rentalsFor,
@@ -234,52 +231,3 @@ describe("rentals", () => {
   });
 });
 
-describe("a read says what it stands on", () => {
-  const market = MARKET_BY_SLUG.get("jacksonville")!;
-  const listing = rentalsFor(market)[0];
-
-  it("projects from the ZIP's or city's measured figures, scaled to the size, and says so", () => {
-    const read = estimateDeal(listing, market, {
-      adr: 200,
-      occupancy: 0.5,
-      kind: "zip",
-      area: "32202",
-      at: "2026-09-01T00:00:00Z",
-    });
-    expect(read.nightlyRate).toBe(Math.round(200 * adrFactorFor(listing.bedrooms)));
-    expect(read.basis).toEqual({ kind: "zip", area: "32202", occupancy: 0.5, at: "2026-09-01T00:00:00Z" });
-    expect(basisLabel(read.basis)).toBe("Measured for ZIP 32202 · 50% occupancy");
-  });
-
-  it("takes the property's own comps as this size's rate, unscaled", () => {
-    const read = estimateDeal(listing, market, {
-      adr: 171,
-      occupancy: 0.31,
-      kind: "comps",
-      area: null,
-      at: null,
-      comps: 25,
-    });
-    expect(read.nightlyRate).toBe(171);
-    expect(read.basis.kind).toBe("comps");
-    expect(read.basis.comps).toBe(25);
-    expect(basisLabel(read.basis)).toContain("25 listings");
-  });
-
-  it("is the analyzer's arithmetic on the analyzer's figures", () => {
-    // The Deal Finder's 33-point cushion against the analyzer's one
-    // point short was two sets of figures, not two formulas: handed the
-    // comps' ADR and occupancy, the read lands where the page does.
-    const read = estimateDeal(listing, market, { adr: 171, occupancy: 0.31, kind: "comps", area: null, at: null });
-    const be = breakevenOccupancy(benchmark2brInputs(listing.rentMonthly), { adr: 171, marketOccupancy: 0.31 });
-    expect(read.cushionPts).toBe(Math.round((0.31 - be) * 100));
-  });
-
-  it("falls to the modelled catalogue figures and says so, or holds while measuring", () => {
-    const modelled = estimateDeal(listing, market);
-    expect(modelled.basis.kind).toBe("modelled");
-    expect(modelled.cushionPts).toBe(estimateCushionPts(listing, market));
-    expect(basisLabel(modelled.basis)).toMatch(/^Modelled/);
-    expect(estimateDeal(listing, market, null, { pending: true }).basis.kind).toBe("pending");
-  });
-});

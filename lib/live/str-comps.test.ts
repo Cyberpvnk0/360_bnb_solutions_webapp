@@ -74,7 +74,7 @@ describe("a comp set stored in an older format", () => {
 
       expect(feed.fetchEstimate).toHaveBeenCalledTimes(1);
       expect(liveComps).toBe(true);
-      expect(analysis.strComps).toBe(exactSet);
+      expect(analysis.strComps).toEqual(exactSet);
       // Written back under the mark, so the next visit is a plain hit.
       expect(store.writeEstimate).toHaveBeenCalledWith(
         expect.any(String),
