@@ -213,6 +213,16 @@ grant select on public.usage to authenticated;
 revoke insert, update, delete on public.usage from authenticated, anon;
 grant select, insert, update, delete on public.usage to service_role;
 
+/* SPENDS OF MORE THAN ONE CREDIT. A deep phone lookup is five, and a
+   list of keys counts one each, so the weighted spends keep their own
+   list (for "already paid for this address this month") and their own
+   running total. Credits used this period is the two lists plus this
+   total — see consume_usage and spend_credits. Added after the first
+   cut; `add column if not exists` makes this safe to re-run. */
+alter table public.usage
+  add column if not exists spend_keys text[] not null default '{}',
+  add column if not exists spent integer not null default 0;
+
 /* ------------------------------------------------------------------ */
 /* Top-up credits: bought outright, spent after the plan's own         */
 /* ------------------------------------------------------------------ */
@@ -341,6 +351,7 @@ declare
   v_analyses text[];
   v_markets  text[];
   v_keys     text[];
+  v_spent    integer;
   v_used     integer;
   v_balance  integer := 0;
 begin
@@ -353,17 +364,18 @@ begin
   on conflict (user_id, period) do nothing;
 
   -- Lock the usage row for the rest of this transaction.
-  select analysis_keys, market_slugs
-    into v_analyses, v_markets
+  select analysis_keys, market_slugs, spent
+    into v_analyses, v_markets, v_spent
     from public.usage
    where user_id = p_user and period = p_period
      for update;
 
-  -- ONE POOL: a credit is a credit whether it bought an analysis or a
-  -- market. Each kind keeps its own list so a repeat is recognised and
-  -- the two can be told apart, but the cap is the sum of both.
+  -- ONE POOL: a credit is a credit whether it bought an analysis, a
+  -- market or a phone lookup. Each kind keeps its own list so a repeat
+  -- is recognised and the kinds can be told apart, but the cap is the
+  -- sum of everything.
   v_keys := case when p_kind = 'analysis' then v_analyses else v_markets end;
-  v_used := cardinality(v_analyses) + cardinality(v_markets);
+  v_used := cardinality(v_analyses) + cardinality(v_markets) + coalesce(v_spent, 0);
 
   select coalesce(b.balance, 0) into v_balance
     from public.credit_balance b where b.user_id = p_user;
@@ -418,6 +430,111 @@ $$;
 revoke execute on function public.consume_usage(uuid, text, text, text, integer)
   from public, anon, authenticated;
 grant execute on function public.consume_usage(uuid, text, text, text, integer)
+  to service_role;
+
+/* Spend SEVERAL credits at once on one key — a deep phone lookup is
+   five — atomically: the plan's room first, then the packs, and never
+   twice for the same key in a period. Refused outright, with nothing
+   taken from either pot, when the two together cannot cover it. Same
+   lock, same cap-as-parameter, same secret-key-only posture as
+   consume_usage.
+
+   Returns whether it went through, credits used this period after the
+   call, the cap, which pot paid ('plan', 'pack', 'mixed', 'cached', or
+   'none'), the pack balance left, and how many credits this call
+   actually took (zero for a key already paid for). */
+drop function if exists public.spend_credits(uuid, text, text, integer, integer);
+create or replace function public.spend_credits(
+  p_user   uuid,
+  p_period text,
+  p_key    text,
+  p_amount integer,
+  p_cap    integer
+)
+returns table (allowed boolean, used integer, cap integer, source text, balance integer, charged integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_analyses  text[];
+  v_markets   text[];
+  v_keys      text[];
+  v_spent     integer;
+  v_used      integer;
+  v_balance   integer := 0;
+  v_room      integer;
+  v_from_plan integer;
+  v_from_pack integer;
+begin
+  if p_amount <= 0 then
+    raise exception 'spend_credits: amount must be positive';
+  end if;
+
+  insert into public.usage (user_id, period)
+  values (p_user, p_period)
+  on conflict (user_id, period) do nothing;
+
+  select analysis_keys, market_slugs, spend_keys, spent
+    into v_analyses, v_markets, v_keys, v_spent
+    from public.usage
+   where user_id = p_user and period = p_period
+     for update;
+
+  v_used := cardinality(v_analyses) + cardinality(v_markets) + coalesce(v_spent, 0);
+
+  select coalesce(b.balance, 0) into v_balance
+    from public.credit_balance b where b.user_id = p_user;
+
+  -- Already paid for this period: free, from either pot.
+  if p_key = any (v_keys) then
+    return query select true, v_used, p_cap, 'cached'::text, v_balance, 0;
+    return;
+  end if;
+
+  v_room      := greatest(p_cap - v_used, 0);
+  v_from_plan := least(v_room, p_amount);
+  v_from_pack := p_amount - v_from_plan;
+
+  if v_from_pack > v_balance then
+    return query select false, v_used, p_cap, 'none'::text, v_balance, 0;
+    return;
+  end if;
+
+  if v_from_pack > 0 then
+    update public.credit_balance
+       set balance = credit_balance.balance - v_from_pack, updated_at = now()
+     where user_id = p_user and credit_balance.balance >= v_from_pack
+    returning credit_balance.balance into v_balance;
+    if not found then
+      return query select false, v_used, p_cap, 'none'::text, v_balance, 0;
+      return;
+    end if;
+    insert into public.credit_ledger (user_id, delta, reason, ref)
+    values (p_user, -v_from_pack, 'spend', p_key);
+  end if;
+
+  update public.usage
+     set spend_keys = array_append(v_keys, p_key),
+         spent      = coalesce(v_spent, 0) + p_amount,
+         updated_at = now()
+   where user_id = p_user and period = p_period;
+
+  return query select
+    true,
+    v_used + p_amount,
+    p_cap,
+    (case when v_from_pack = 0 then 'plan'
+          when v_from_plan = 0 then 'pack'
+          else 'mixed' end)::text,
+    v_balance,
+    p_amount;
+end;
+$$;
+
+revoke execute on function public.spend_credits(uuid, text, text, integer, integer)
+  from public, anon, authenticated;
+grant execute on function public.spend_credits(uuid, text, text, integer, integer)
   to service_role;
 
 /* ------------------------------------------------------------------ */

@@ -224,16 +224,26 @@ export async function loadUsage(
   supabase: SupabaseClient,
   userId: string,
   period: string
-): Promise<{ analysesUsed: number; marketsUsed: number }> {
+): Promise<{ analysesUsed: number; marketsUsed: number; extraUsed: number }> {
+  // Every column rather than a named few: the weighted-spend columns
+  // arrived after the first cut, and naming one a store has not been
+  // migrated to yet fails the whole read — which would show a full
+  // meter to an account that has spent.
   const { data } = await supabase
     .from("usage")
-    .select("analysis_keys, market_slugs")
+    .select("*")
     .eq("user_id", userId)
     .eq("period", period)
     .maybeSingle();
   const row = (data ?? {}) as Row;
   const len = (v: unknown) => (Array.isArray(v) ? v.length : 0);
-  return { analysesUsed: len(row.analysis_keys), marketsUsed: len(row.market_slugs) };
+  return {
+    analysesUsed: len(row.analysis_keys),
+    marketsUsed: len(row.market_slugs),
+    // Credits spent on things that cost more than one — deep phone
+    // lookups — this period.
+    extraUsed: num(row.spent),
+  };
 }
 
 /** Pack analyses on the account, read under "own balance". The browser

@@ -154,6 +154,130 @@ export async function consumeUsage(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Spends of more than one credit                                      */
+/* ------------------------------------------------------------------ */
+
+export interface SpendCheck {
+  allowed: boolean;
+  used: number;
+  cap: number;
+  /** Which pot paid: the plan, a pack, both, nothing (the key was
+   *  already paid for this period), or none. Absent when unmetered. */
+  source?: "plan" | "pack" | "mixed" | "cached" | "none";
+  balance?: number;
+  /** Credits this call actually took. */
+  charged: number;
+  unmetered?: string;
+}
+
+/**
+ * Spend several credits at once on one key — a deep phone lookup is
+ * five — atomically, plan first and then packs, and never twice for the
+ * same key in a month. Refused outright, with nothing taken, when the
+ * plan's room and the packs together cannot cover it. Same posture as
+ * consumeUsage otherwise: server only, cap from config, fails open
+ * with the reason on it.
+ */
+export async function spendCredits(
+  userId: string,
+  tier: TierId,
+  key: string,
+  amount: number,
+  now = new Date()
+): Promise<SpendCheck> {
+  const cap = capFor(tier);
+  if (cap <= 0) return { allowed: false, used: 0, cap, source: "none", charged: 0 };
+
+  const cfg = config();
+  if (!cfg) return { allowed: true, used: 0, cap, charged: 0, unmetered: "no store configured" };
+
+  try {
+    const res = await fetch(`${cfg.url}/rest/v1/rpc/spend_credits`, {
+      method: "POST",
+      headers: {
+        apikey: cfg.key,
+        authorization: `Bearer ${cfg.key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        p_user: userId,
+        p_period: currentPeriod(now),
+        p_key: key,
+        p_amount: amount,
+        p_cap: cap,
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => "")).slice(0, 200);
+      return { allowed: true, used: 0, cap, charged: 0, unmetered: detail || `HTTP ${res.status}` };
+    }
+    const rows = (await res.json()) as {
+      allowed: boolean; used: number; cap: number; source?: string; balance?: number; charged?: number;
+    }[];
+    const row = rows?.[0];
+    if (!row) return { allowed: true, used: 0, cap, charged: 0, unmetered: "empty reply" };
+    const source = (["plan", "pack", "mixed", "cached", "none"] as const).find((s) => s === row.source);
+    return {
+      allowed: Boolean(row.allowed),
+      used: Number(row.used),
+      cap,
+      source,
+      balance: Number.isFinite(Number(row.balance)) ? Number(row.balance) : undefined,
+      charged: Number.isFinite(Number(row.charged)) ? Number(row.charged) : 0,
+    };
+  } catch {
+    return { allowed: true, used: 0, cap, charged: 0, unmetered: "unreachable or timed out" };
+  }
+}
+
+/**
+ * Whether the account could cover a spend of `amount`, read BEFORE any
+ * money goes to a vendor for it. A read, not a claim: the claim is
+ * spendCredits, made after the vendor answers, so nothing is taken for
+ * a search that found nothing. Fails open like the meter, with the
+ * reason on it.
+ */
+export async function canCover(
+  userId: string,
+  tier: TierId,
+  amount: number,
+  now = new Date()
+): Promise<{ ok: boolean; remaining: number; unmetered?: string }> {
+  const cap = capFor(tier);
+  if (cap <= 0) return { ok: false, remaining: 0 };
+  const cfg = config();
+  if (!cfg) return { ok: true, remaining: amount, unmetered: "no store configured" };
+  const headers = { apikey: cfg.key, authorization: `Bearer ${cfg.key}` };
+  const q = encodeURIComponent;
+  try {
+    const [usageRes, balanceRes] = await Promise.all([
+      fetch(
+        `${cfg.url}/rest/v1/usage?user_id=eq.${q(userId)}&period=eq.${q(currentPeriod(now))}&select=*`,
+        { headers, signal: AbortSignal.timeout(TIMEOUT_MS), cache: "no-store" }
+      ),
+      fetch(`${cfg.url}/rest/v1/credit_balance?user_id=eq.${q(userId)}&select=balance`, {
+        headers,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        cache: "no-store",
+      }),
+    ]);
+    if (!usageRes.ok || !balanceRes.ok) {
+      return { ok: true, remaining: amount, unmetered: `HTTP ${usageRes.status}/${balanceRes.status}` };
+    }
+    const usage = ((await usageRes.json()) as Record<string, unknown>[])?.[0] ?? {};
+    const balance = ((await balanceRes.json()) as { balance?: unknown }[])?.[0]?.balance;
+    const len = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+    const used = len(usage.analysis_keys) + len(usage.market_slugs) + (Number(usage.spent) || 0);
+    const remaining = Math.max(0, cap - used) + (Number(balance) || 0);
+    return { ok: remaining >= amount, remaining };
+  } catch {
+    return { ok: true, remaining: amount, unmetered: "unreachable or timed out" };
+  }
+}
+
 /** What the profiles table said about an account's plan. */
 export type TierRead =
   /** A plan this code knows. */

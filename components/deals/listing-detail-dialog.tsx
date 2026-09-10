@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AddToListMenu } from "./add-to-list-menu";
+import { PhoneLookup } from "./phone-lookup";
 import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
 import { analyzeHref } from "@/lib/live/analyze-href";
@@ -515,13 +516,17 @@ export function ListingDetailDialog({
                     : ""}
                 </p>
               )}
-              {/* Better than nothing, and only when nothing is what the
-                  listing site gave: a web search for the rental, typed
-                  out, since the reader was about to type it anyway.
-                  The number is usually wherever else the unit is
-                  advertised. */}
-              {isLive && !contact && looked.status !== "loading" && looked.status !== "idle"
-                ? (() => {
+              {/* Only when the listing site gave no number — none on
+                  file, a page that could not be read, or one that
+                  publishes none. Two ways on from there: a deep lookup
+                  of public records for the owner's number (credits,
+                  charged only when one comes back), and a web search
+                  for the rental, typed out, since the reader was about
+                  to type it anyway. */}
+              {isLive && !contact?.phone && looked.status !== "loading" && looked.status !== "idle" ? (
+                <div className="mt-3 flex flex-col gap-3">
+                  <PhoneLookup listing={listing} />
+                  {(() => {
                     const href = webLookupHref(listing);
                     return href ? (
                       <a
@@ -529,15 +534,16 @@ export function ListingDetailDialog({
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Searches the web for this rental, where a contact is often posted"
-                        className="mt-3 inline-flex h-8 items-center gap-1 rounded-sm border border-border px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-secondary/60"
+                        className="inline-flex h-8 w-fit items-center gap-1 rounded-sm border border-border px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-secondary/60"
                       >
                         Web lookup
                         <ArrowUpRight aria-hidden className="size-3.5" />
                         <span className="sr-only">(opens in a new tab)</span>
                       </a>
                     ) : null;
-                  })()
-                : null}
+                  })()}
+                </div>
+              ) : null}
             </Panel>
 
             {/* Seeded inventory only. A live row's description is the

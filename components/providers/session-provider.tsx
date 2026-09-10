@@ -357,6 +357,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             tier: (data.profile?.tier ?? DEFAULT_TIER) as TierId,
             pullsUsed: usage.analysesUsed,
             marketsUsed: usage.marketsUsed,
+            extraUsed: usage.extraUsed,
             credits,
             watchedMarketSlugs: data.watchedMarketSlugs,
             joinedAt: createdAt ?? new Date().toISOString(),
@@ -416,8 +417,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, bootNonce]);
 
   const tier = TIERS[user?.tier ?? DEFAULT_TIER] ?? TIERS.free;
-  // One pool: analyses and market searches, added up.
-  const creditsUsed = (user?.pullsUsed ?? 0) + (user?.marketsUsed ?? 0);
+  // One pool: analyses, market searches and phone lookups, added up.
+  const creditsUsed =
+    (user?.pullsUsed ?? 0) + (user?.marketsUsed ?? 0) + (user?.extraUsed ?? 0);
   const creditLimit = tier.creditLimit;
   const creditsRemaining = Math.max(0, creditLimit - creditsUsed);
   const credits = user?.credits ?? 0;
@@ -436,6 +438,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             ...prev,
             pullsUsed: usage.analysesUsed,
             marketsUsed: usage.marketsUsed,
+            extraUsed: usage.extraUsed,
             credits: balance,
           }
         : prev
@@ -532,7 +535,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
    */
   const spendCredit = React.useCallback((): boolean => {
     if (!user) return false;
-    const planLeft = TIERS[user.tier].creditLimit - (user.pullsUsed + user.marketsUsed) > 0;
+    const planLeft =
+      TIERS[user.tier].creditLimit - (user.pullsUsed + user.marketsUsed + user.extraUsed) > 0;
     if (!planLeft && user.credits <= 0) return false;
     // Mirror the server's order of spend: plan first, then a pack.
     setUser((prev) =>

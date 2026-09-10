@@ -45,12 +45,13 @@ const COLUMNS: DataTableColumn<AdminAccount>[] = [
     cell: (row) => (
       <span
         className="tabular"
-        title={`${fmtNum(row.analysesUsed)} analyses · ${fmtNum(row.marketsUsed)} markets`}
+        title={`${fmtNum(row.analysesUsed)} analyses · ${fmtNum(row.marketsUsed)} markets · ${fmtNum(row.extraUsed)} on phone lookups`}
       >
-        {fmtNum(row.analysesUsed + row.marketsUsed)} / {fmtNum(TIERS[row.tier].creditLimit)}
+        {fmtNum(row.analysesUsed + row.marketsUsed + row.extraUsed)} /{" "}
+        {fmtNum(TIERS[row.tier].creditLimit)}
       </span>
     ),
-    sortValue: (row) => row.analysesUsed + row.marketsUsed,
+    sortValue: (row) => row.analysesUsed + row.marketsUsed + row.extraUsed,
   },
   {
     key: "packCredits",

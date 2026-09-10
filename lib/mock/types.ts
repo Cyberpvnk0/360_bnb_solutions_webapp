@@ -405,6 +405,9 @@ export interface SessionUser {
   pullsUsed: number;
   /** Distinct markets and ZIPs opened this month, from the same meter. */
   marketsUsed: number;
+  /** Credits spent this month on things that cost more than one — deep
+   *  phone lookups — from the same meter. */
+  extraUsed: number;
   /** Pack credits bought outright and not yet spent. Never expire. */
   credits: number;
   /** ISO date the current billing period resets. */

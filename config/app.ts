@@ -215,6 +215,15 @@ export const CREDIT_PACKS: Record<PackId, CreditPack> = {
 
 export const PACK_ORDER: PackId[] = ["p5", "p10", "p25", "p50", "p100"];
 
+/**
+ * What a deep phone lookup spends: a public-records search for the
+ * owner's number, offered when no listing page gave one. Charged only
+ * when a number comes back — a search that finds nothing costs the
+ * account nothing. Priced well above the records vendor's per-record
+ * rate on purpose: this is a paid feature, not a pass-through.
+ */
+export const PHONE_LOOKUP_CREDITS = 5;
+
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {
   return Math.round((pack.price / pack.credits) * 100) / 100;

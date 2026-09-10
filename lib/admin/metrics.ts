@@ -33,6 +33,9 @@ export interface AdminAccount {
   analysesUsed: number;
   /** Distinct markets opened this period. */
   marketsUsed: number;
+  /** Credits spent this period on things that cost more than one —
+   *  deep phone lookups. */
+  extraUsed: number;
   /** Pack analyses on the account. */
   credits: number;
   joinedAt: string;
@@ -149,7 +152,7 @@ export async function readAdminMetrics(now = new Date()): Promise<AdminMetrics> 
       rows(cfg, "profiles?select=id,email,full_name,tier,created_at&order=created_at.desc"),
       rows(
         cfg,
-        `usage?select=user_id,period,analysis_keys,market_slugs&period=gte.${since}&order=period.desc`
+        `usage?select=*&period=gte.${since}&order=period.desc`
       ),
       rows(cfg, "credit_balance?select=user_id,balance"),
       rows(
@@ -174,7 +177,7 @@ export async function readAdminMetrics(now = new Date()): Promise<AdminMetrics> 
     );
 
     // This period per account, and every period for the chart.
-    const thisPeriod = new Map<string, { analyses: number; markets: number }>();
+    const thisPeriod = new Map<string, { analyses: number; markets: number; spent: number }>();
     const byPeriodMap = new Map<string, { analyses: number; markets: number }>();
     for (const u of usage) {
       const p = str(u.period);
@@ -184,7 +187,9 @@ export async function readAdminMetrics(now = new Date()): Promise<AdminMetrics> 
       agg.analyses += a;
       agg.markets += m;
       byPeriodMap.set(p, agg);
-      if (p === period) thisPeriod.set(str(u.user_id), { analyses: a, markets: m });
+      if (p === period) {
+        thisPeriod.set(str(u.user_id), { analyses: a, markets: m, spent: num(u.spent) });
+      }
     }
     const byPeriod = Array.from({ length: 12 }, (_, i) => periodsBack(period, 11 - i)).map(
       (p) => ({ period: p, ...(byPeriodMap.get(p) ?? { analyses: 0, markets: 0 }) })
@@ -218,6 +223,7 @@ export async function readAdminMetrics(now = new Date()): Promise<AdminMetrics> 
         tier: tierOf(p.tier),
         analysesUsed: use?.analyses ?? 0,
         marketsUsed: use?.markets ?? 0,
+        extraUsed: use?.spent ?? 0,
         credits: balanceBy.get(id) ?? 0,
         joinedAt: str(p.created_at),
       };

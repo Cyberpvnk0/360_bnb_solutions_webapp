@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { capFor, consumeUsage, currentPeriod, grantPack, mockCheckoutEnabled, setTier } from "./usage";
+import {
+  canCover,
+  capFor,
+  consumeUsage,
+  currentPeriod,
+  grantPack,
+  mockCheckoutEnabled,
+  setTier,
+  spendCredits,
+} from "./usage";
 import { TIERS } from "@/config/app";
 
 describe("the plan month", () => {
@@ -206,5 +215,78 @@ describe("the demo checkout gate", () => {
     vi.stubEnv("MOCK_CHECKOUT", "");
     vi.stubEnv("CREDITS_MOCK_CHECKOUT", "1");
     expect(mockCheckoutEnabled()).toBe(true);
+  });
+});
+
+describe("spending several credits at once", () => {
+  const ENV = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SECRET_KEY: "sb_secret_t" };
+  beforeEach(() => {
+    for (const [k, v] of Object.entries(ENV)) vi.stubEnv(k, v);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("passes the key, the amount and the plan's cap, and reports what was taken", async () => {
+    const cap = TIERS.pro.creditLimit;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([{ allowed: true, used: 12, cap, source: "mixed", balance: 3, charged: 5 }]),
+        { status: 200 }
+      )
+    );
+    const r = await spendCredits("u1", "pro", "phone:fl:1804 sitka st e", 5, new Date("2026-09-10T12:00:00Z"));
+    expect(r).toEqual({ allowed: true, used: 12, cap, source: "mixed", balance: 3, charged: 5 });
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toEqual({
+      p_user: "u1",
+      p_period: "2026-09",
+      p_key: "phone:fl:1804 sitka st e",
+      p_amount: 5,
+      p_cap: cap,
+    });
+    expect(String(fetchSpy.mock.calls[0][0])).toContain("/rpc/spend_credits");
+  });
+
+  it("takes nothing from a key already paid for, and refuses Free outright", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ allowed: true, used: 12, cap: 125, source: "cached", balance: 3, charged: 0 }]), { status: 200 })
+    );
+    const again = await spendCredits("u1", "pro", "phone:x", 5);
+    expect(again.charged).toBe(0);
+    expect(again.source).toBe("cached");
+    fetchSpy.mockClear();
+    const free = await spendCredits("u1", "free", "phone:x", 5);
+    expect(free).toMatchObject({ allowed: false, charged: 0, source: "none" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads the room before the vendor is asked, plan and packs together", async () => {
+    const cap = TIERS.starter.creditLimit;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/rest/v1/usage")) {
+        return new Response(
+          JSON.stringify([{ analysis_keys: new Array(cap - 3).fill("a"), market_slugs: [], spent: 0 }]),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify([{ balance: 1 }]), { status: 200 });
+    });
+    // Three left on the plan and one pack credit: four, short of five.
+    expect(await canCover("u1", "starter", 5)).toEqual({ ok: false, remaining: 4 });
+    expect(await canCover("u1", "starter", 4)).toEqual({ ok: true, remaining: 4 });
+  });
+
+  it("counts earlier weighted spends against the room", async () => {
+    const cap = TIERS.starter.creditLimit;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/rest/v1/usage")) {
+        return new Response(JSON.stringify([{ analysis_keys: [], market_slugs: [], spent: cap }]), { status: 200 });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    expect(await canCover("u1", "starter", 5)).toEqual({ ok: false, remaining: 0 });
   });
 });
