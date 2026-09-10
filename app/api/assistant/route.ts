@@ -23,7 +23,7 @@ import { NextResponse } from "next/server";
 import { ASSISTANT_MESSAGE_CREDITS, TIERS } from "@/config/app";
 import { readContext, renderContext } from "@/lib/assistant/context";
 import { encodeEvent, type AssistantEvent } from "@/lib/assistant/events";
-import { SYSTEM_PROMPT } from "@/lib/assistant/prompt";
+import { isOutOfScope, SYSTEM_PROMPT } from "@/lib/assistant/prompt";
 import { assistantTools, runTool } from "@/lib/assistant/tools";
 import { anthropicClient, assistantConfigured } from "@/lib/assistant/client";
 import { MODEL, runTurn, type StreamLike } from "@/lib/assistant/turn";
@@ -200,6 +200,12 @@ export async function POST(request: Request) {
         if (closed) return;
         if (!result.text.trim()) {
           emit({ type: "error", reason: result.stopReason === "refusal" ? "refused" : "empty" });
+          return;
+        }
+        // A question off the subject gets the one sentence, and no credit
+        // is taken for it: nothing was researched.
+        if (isOutOfScope(result.text)) {
+          emit({ type: "done", charged: 0, balance: null });
           return;
         }
         // Answered: the credit. A refusal here is a race with a spend
