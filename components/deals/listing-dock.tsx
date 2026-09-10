@@ -29,7 +29,7 @@ export function ListingDock({
   onClose: () => void;
   onDetails: () => void;
 }) {
-  const verdict = gradeDeal(deal.cushionPts);
+  const verdict = gradeDeal(deal.cushionPts, { potential: deal.basis.kind !== "comps" });
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-card p-3 shadow-[0_4px_16px_rgba(16,16,18,0.12)]">
       <PropertyImage listing={l} className="h-20 w-28 shrink-0 overflow-hidden rounded-md" />

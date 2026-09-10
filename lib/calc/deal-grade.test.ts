@@ -6,7 +6,7 @@ describe("gradeDeal", () => {
   it("calls a lease that cannot clear breakeven what it is", () => {
     expect(gradeDeal(-6)).toMatchObject({
       grade: "bad",
-      label: "Bad deal",
+      label: "Bad Deal",
       why: "6 pts short of breakeven",
     });
   });
@@ -35,5 +35,21 @@ describe("gradeDeal", () => {
   it("rounds once, so the badge and its reason cannot disagree", () => {
     expect(gradeDeal(7.6)).toMatchObject({ grade: "good", why: "8 pts of cushion" });
     expect(gradeDeal(-0.4)).toMatchObject({ grade: "fair", why: "0 pts of cushion" });
+  });
+});
+
+describe("the word on the badge", () => {
+  it("is Great, Good, Fair or Bad — and Potential while the figures are an estimate", () => {
+    expect(gradeDeal(25).label).toBe("Great Deal");
+    expect(gradeDeal(10).label).toBe("Good Deal");
+    expect(gradeDeal(3).label).toBe("Fair Deal");
+    expect(gradeDeal(-2).label).toBe("Bad Deal");
+    expect(gradeDeal(25, { potential: true }).label).toBe("Great Deal Potential");
+    expect(gradeDeal(10, { potential: true }).label).toBe("Good Deal Potential");
+    expect(gradeDeal(3, { potential: true }).label).toBe("Fair Deal Potential");
+    expect(gradeDeal(-2, { potential: true }).label).toBe("Bad Deal Potential");
+    // The grade itself does not change with the word.
+    expect(gradeDeal(25, { potential: true }).grade).toBe("amazing");
+    expect(gradeDeal(-2, { potential: true }).why).toBe("2 pts short of breakeven");
   });
 });

@@ -178,7 +178,9 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
     },
     ref
   ) {
-    const verdict = gradeDeal(deal.cushionPts);
+    // Potential until the property's own analysis is what the card
+    // stands on; the analysis grades the deal itself.
+    const verdict = gradeDeal(deal.cushionPts, { potential: deal.basis.kind !== "comps" });
     const cut = l.priceTrend?.cutBy ?? 0;
     const furnished = l.features.includes("Furnished");
 

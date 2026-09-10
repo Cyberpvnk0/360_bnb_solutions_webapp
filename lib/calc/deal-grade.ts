@@ -12,6 +12,11 @@
  * to a colourblind operator and meaningless in a screenshot, so callers
  * render the label and the reason, and use colour only to repeat what
  * the words already say.
+ *
+ * AN ESTIMATE IS GRADED AS POTENTIAL. A card nobody has analyzed stands
+ * on the listings around it or the city's average, and its grade says
+ * so: "Great Deal Potential", not "Great Deal". The analysis, once run,
+ * drops the word — the same thresholds, on the property's own figures.
  */
 
 export type DealGrade = "amazing" | "good" | "fair" | "bad";
@@ -35,20 +40,28 @@ export interface GradedDeal {
 const AMAZING = 20;
 const GOOD = 8;
 
-export function gradeDeal(cushionPts: number): GradedDeal {
+/** The word for each grade; "amazing" reads as Great on the badge. */
+const WORD: Record<DealGrade, string> = {
+  amazing: "Great Deal",
+  good: "Good Deal",
+  fair: "Fair Deal",
+  bad: "Bad Deal",
+};
+
+export function gradeDeal(
+  cushionPts: number,
+  opts: {
+    /** True when the figures are an estimate rather than the property's
+     *  own analysis: the grade is what the deal could be. */
+    potential?: boolean;
+  } = {}
+): GradedDeal {
   const pts = Math.round(cushionPts);
-  if (pts < 0) {
-    return {
-      grade: "bad",
-      label: "Bad deal",
-      why: `${Math.abs(pts)} pts short of breakeven`,
-    };
-  }
-  if (pts >= AMAZING) {
-    return { grade: "amazing", label: "Amazing deal", why: `${pts} pts of cushion` };
-  }
-  if (pts >= GOOD) {
-    return { grade: "good", label: "Good deal", why: `${pts} pts of cushion` };
-  }
-  return { grade: "fair", label: "Fair deal", why: `${pts} pts of cushion` };
+  const grade: DealGrade =
+    pts < 0 ? "bad" : pts >= AMAZING ? "amazing" : pts >= GOOD ? "good" : "fair";
+  return {
+    grade,
+    label: opts.potential ? `${WORD[grade]} Potential` : WORD[grade],
+    why: pts < 0 ? `${Math.abs(pts)} pts short of breakeven` : `${pts} pts of cushion`,
+  };
 }

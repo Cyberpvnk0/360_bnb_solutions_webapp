@@ -94,10 +94,11 @@ const STARTER_MARKETS = [
   "charlotte",
 ];
 
-type SortKey = "spread" | "newest" | "rent-asc" | "rent-desc";
+type SortKey = "spread" | "potential" | "newest" | "rent-asc" | "rent-desc";
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "spread", label: "Best spread" },
+  { value: "potential", label: "Best Potential" },
   { value: "newest", label: "Newest" },
   { value: "rent-asc", label: "Rent: low to high" },
   { value: "rent-desc", label: "Rent: high to low" },
@@ -114,8 +115,15 @@ interface Row {
   haystack: string;
 }
 
+/** The most a row could clear a month: the top of its range while it
+ *  is an estimate, the analysis's own figure once it has one. */
+function potentialOf(r: Row): number {
+  return r.deal.netRange?.high ?? r.deal.netCashFlow;
+}
+
 const SORTERS: Record<SortKey, (a: Row, b: Row) => number> = {
   spread: (a, b) => b.deal.cushionPts - a.deal.cushionPts,
+  potential: (a, b) => potentialOf(b) - potentialOf(a),
   // A listing whose age we don't know sorts last, never as the freshest.
   newest: (a, b) =>
     (a.listing.daysOnMarket ?? Number.POSITIVE_INFINITY) -
