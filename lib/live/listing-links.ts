@@ -219,7 +219,13 @@ function googleHref(query: string): string {
 export function zillowHref(place: Addressed): string | null {
   const p = parts(place);
   if (!p) return null;
-  const street = (place.address ?? "").replace(/#\s*([\p{L}\p{N}-]+)/gu, "APT $1");
+  const street = (place.address ?? "")
+    .replace(/#\s*([\p{L}\p{N}-]+)/gu, "APT $1")
+    // A flat's marker the way their pages spell it, whichever way the
+    // feed wrote it.
+    .replace(/\b(apartment|apt)\b\.?/giu, "APT")
+    .replace(/\b(suite|ste)\b\.?/giu, "STE")
+    .replace(/\bunit\b\.?/giu, "UNIT");
   const words = [street, p.city, p.state, zipOf(place) ?? ""]
     .join(" ")
     .replace(/[^\p{L}\p{N}\s-]/gu, " ")

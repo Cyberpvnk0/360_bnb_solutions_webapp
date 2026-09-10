@@ -293,6 +293,44 @@ describe("resolving a page from an address", () => {
   });
 });
 
+describe("the fast resolution, for a click that must move on", () => {
+  const read = vi.mocked(readZipPages);
+  const lookup = vi.mocked(fetchAutocomplete);
+  const store = vi.mocked(readKeyedBlob);
+  beforeEach(() => {
+    read.mockReset();
+    lookup.mockReset();
+    store.mockReset();
+    store.mockResolvedValue(null);
+  });
+
+  it("reads the ZIP's rentals and never starts the slow lookup", async () => {
+    read.mockResolvedValue(zipPages([], false));
+    const out = await resolveListingPage({ ...TAMPA, zip: "33604" }, { fast: true });
+    expect(out.url).toBeNull();
+    expect(out.answered).toBe(false);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("still takes the page when the ZIP has it, and a whole-ZIP miss as a miss", async () => {
+    read.mockResolvedValue(zipPages([{ address: "1804 E Sitka St", sourceUrl: "https://www.redfin.com/FL/Tampa/x/home/1" }]));
+    expect((await resolveListingPage({ ...TAMPA, zip: "33604" }, { fast: true })).url).toBe(
+      "https://www.redfin.com/FL/Tampa/x/home/1"
+    );
+    read.mockResolvedValue(zipPages([{ address: "1 Other St", sourceUrl: "https://www.redfin.com/FL/Tampa/o/home/2" }], true));
+    const miss = await resolveListingPage({ ...TAMPA, address: "1806 E Sitka St", zip: "33604" }, { fast: true });
+    expect(miss).toMatchObject({ url: null, answered: true });
+  });
+
+  it("moves on when the ZIP is still being read past its budget", async () => {
+    read.mockReturnValue(new Promise(() => undefined));
+    const out = await resolveListingPage({ ...TAMPA, address: "1808 E Sitka St", zip: "33604" }, { fast: true, fastBudgetMs: 10 });
+    expect(out).toMatchObject({ url: null, answered: false });
+    expect(out.detail).toContain("still being read");
+    expect(lookup).not.toHaveBeenCalled();
+  });
+});
+
 describe("what a failed ZIP read leaves in the answer", () => {
   it("names the ZIP and what the site said, before the lookup's own verdict", async () => {
     vi.stubEnv("SCRAPERAPI_KEY", "k");

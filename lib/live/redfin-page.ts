@@ -72,6 +72,14 @@ const TOTAL_BUDGET_MS = 80_000;
 const LOOKUP_BUDGET_MS = 50_000;
 /** The address lookup is not started with less than this. */
 const MIN_LOOKUP_MS = 15_000;
+/**
+ * The fast resolution — a "View photos" click — reads the store and
+ * the ZIP's rentals and nothing slower: no address lookup, and the ZIP
+ * read itself is given this long before the click moves on to the
+ * next site. The read carries on behind the answer and is stored, so
+ * the next click on the ZIP is instant.
+ */
+export const FAST_ZIP_BUDGET_MS = 8_000;
 
 /** Every property row in a lookup payload, wherever it nests. */
 export function extractAddressRows(
@@ -193,15 +201,50 @@ export interface PageLookup {
  *  if it goes out on its own. */
 const inFlight = new Map<string, Promise<PageLookup>>();
 
-export async function resolveListingPage(place: Place): Promise<PageLookup> {
+export interface ResolveOptions {
+  /**
+   * True for a click that must move on: the store and the ZIP's
+   * rentals are read, within FAST_ZIP_BUDGET_MS, and the slow address
+   * lookup is never started. A "no" from this path says only that the
+   * fast places had no page.
+   */
+  fast?: boolean;
+  /** Tests only: the fast path's budget for the ZIP read. */
+  fastBudgetMs?: number;
+}
+
+export async function resolveListingPage(
+  place: Place,
+  opts: ResolveOptions = {}
+): Promise<PageLookup> {
   const key = storeKey(place);
   if (!key) return { url: null, answered: true, detail: "address could not be keyed" };
 
-  const running = inFlight.get(key);
+  // A fast caller never joins a slow lookup already under way: it
+  // would wait for the very thing it exists to skip.
+  const slot = opts.fast ? `fast:${key}` : key;
+  const running = inFlight.get(slot);
   if (running) return running;
-  const lookup = lookupOnce(place, key).finally(() => inFlight.delete(key));
-  inFlight.set(key, lookup);
+  const lookup = lookupOnce(place, key, opts).finally(() => inFlight.delete(slot));
+  inFlight.set(slot, lookup);
   return lookup;
+}
+
+/** The read, or nothing when it has not answered in time. */
+function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    );
+  });
 }
 
 /** The ZIP to search: the row's own, the address line's, or the one
@@ -214,7 +257,7 @@ async function zipFor(place: Place): Promise<string | null> {
   return place.point ? lookupZipAt(place.point) : null;
 }
 
-async function lookupOnce(place: Place, key: string): Promise<PageLookup> {
+async function lookupOnce(place: Place, key: string, opts: ResolveOptions): Promise<PageLookup> {
   const stored = await readKeyedBlob(key).catch(() => null);
   if (stored) {
     const url = (stored.value as { url?: unknown }).url;
@@ -240,8 +283,12 @@ async function lookupOnce(place: Place, key: string): Promise<PageLookup> {
   if (!zip) {
     notes.push("no ZIP to search");
   } else {
-    const read = await readZipPages(zip);
-    if (!read.ok) {
+    const read = opts.fast
+      ? await within(opts.fastBudgetMs ?? FAST_ZIP_BUDGET_MS, readZipPages(zip))
+      : await readZipPages(zip);
+    if (read === null) {
+      notes.push(`${zip}: the rentals were still being read when the click moved on`);
+    } else if (!read.ok) {
       notes.push(`${zip}: ${read.detail}`);
     } else {
       const { pages } = read;
@@ -260,6 +307,12 @@ async function lookupOnce(place: Place, key: string): Promise<PageLookup> {
         return { url: null, answered: true, detail: notes.join("; ") };
       }
     }
+  }
+
+  // A click does not wait for the slow lookup: the fast places had no
+  // page, and the click moves on to the next site.
+  if (opts.fast) {
+    return { url: null, answered: false, detail: notes.join("; ") || "nothing fast to read" };
   }
 
   // 2. The portal's address lookup, with what time is left.

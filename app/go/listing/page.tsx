@@ -1,35 +1,27 @@
 "use client";
 
 /**
- * The page a "View photos" click opens while the listing's own page is
- * still being found.
+ * The page a "View photos" click opens while the right site is being
+ * picked.
  *
  *   /go/listing?address=<street>&city=<town>&state=<ST>
  *
- * A row can arrive with no listing page, and finding one is a lookup
- * that can take half a minute the first time. A click in that window
- * used to open somewhere else instead — right, but not what the button
- * promised. This opens at once, asks the listing site (through
- * app/api/listing-page, cached for everyone after the first answer),
- * and replaces itself with the listing when it lands. When the site
- * has no page for the address, it replaces itself with the next
- * destination in order — the address's page on Zillow — and every
- * destination (Zillow, Realtor, Google) is on the page too, for anyone
- * who would rather not wait. See lib/live/listing-links for the order.
+ * A row can arrive with no listing page. This opens at once, asks
+ * app/api/photos-target where the click should land — the listing's
+ * own page when it can be had in a few seconds, Zillow's page for the
+ * home when Zillow says it has one, its address page otherwise, a
+ * search of Realtor when Zillow said no — and replaces itself with the
+ * answer. Every destination is on the page too, for anyone who would
+ * rather not wait the few seconds. See lib/live/photos-target.
  *
- * A bare page, outside the shell: it exists for a second or thirty and
- * then goes away.
+ * A bare page, outside the shell: it exists for a few seconds and then
+ * goes away.
  */
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
-import {
-  pageQuery,
-  photoSources,
-  usableListingPage,
-  type Addressed,
-} from "@/lib/live/listing-links";
+import { pageQuery, photoSources, type Addressed } from "@/lib/live/listing-links";
 
 function FindingRing() {
   return (
@@ -46,7 +38,7 @@ function FindingRing() {
   );
 }
 
-type Outcome = "finding" | "next" | "bad-address";
+type Outcome = "finding" | "opening" | "bad-address";
 
 function Finder() {
   const sp = useSearchParams();
@@ -59,36 +51,40 @@ function Finder() {
     zip: sp.get("zip")?.trim() || undefined,
     point: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : undefined,
   };
-  // Everywhere else the photos may be, in order, once the listing site
-  // has been asked; the first of them is where this lands when the
-  // site has no page.
+  // Everywhere else the photos may be, in order — on the page for
+  // anyone who would rather not wait; the first of them is where this
+  // lands if the answer never comes.
   const others = photoSources(place).filter((s) => s.id !== "redfin");
   const next = others[0] ?? null;
   const [outcome, setOutcome] = React.useState<Outcome>(next ? "finding" : "bad-address");
+  const [opening, setOpening] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!next) return;
     let live = true;
     void (async () => {
-      let page: string | null = null;
+      let href: string | null = null;
+      let label: string | null = null;
       try {
-        const res = await fetch(`/api/listing-page?${pageQuery(place)}`);
+        const res = await fetch(`/api/photos-target?${pageQuery(place)}`);
         const body = (await res.json().catch(() => null)) as {
           ok?: boolean;
-          page?: string | null;
+          href?: string;
+          source?: string;
         } | null;
-        if (res.ok && body?.ok) page = usableListingPage(body.page ?? undefined);
+        if (res.ok && body?.ok && typeof body.href === "string" && /^https:\/\//.test(body.href)) {
+          href = body.href;
+          label =
+            body.source === "redfin" ? "Redfin" : body.source === "realtor" ? "Realtor" : "Zillow";
+        }
       } catch {
-        // No answer is the same as no page for this click: the next
-        // destination is the honest second choice either way.
+        // No answer: the next destination in order is where the click
+        // would have gone anyway.
       }
       if (!live) return;
-      if (page) {
-        window.location.replace(page);
-        return;
-      }
-      setOutcome("next");
-      window.location.replace(next.href);
+      setOutcome("opening");
+      setOpening(label ?? next.label);
+      window.location.replace(href ?? next.href);
     })();
     return () => {
       live = false;
@@ -106,8 +102,8 @@ function Finder() {
         <p className="metric-label">
           {outcome === "finding"
             ? "Finding the listing"
-            : outcome === "next"
-              ? `Opening it on ${next?.label ?? "the next site"}`
+            : outcome === "opening"
+              ? `Opening it on ${opening ?? "the next site"}`
               : "No address"}
         </p>
         <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
@@ -117,7 +113,7 @@ function Finder() {
         <p className="mt-3 text-sm text-muted-foreground">
           {outcome === "bad-address"
             ? "This link carries too little of an address to find a listing for."
-            : "This can take up to half a minute the first time an address is looked up."}
+            : "A few seconds, at most."}
         </p>
         {others.length > 0 ? (
           <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
