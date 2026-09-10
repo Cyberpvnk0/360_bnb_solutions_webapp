@@ -101,6 +101,25 @@ interface ListingCardProps {
   priority?: boolean;
 }
 
+/** The one line under a card's figures. */
+function basisCaption(basis: DealRead["basis"]): string {
+  const reach = basis.radiusMiles ? ` within ${basis.radiusMiles} mi` : "";
+  switch (basis.kind) {
+    case "comps":
+      return `This property's own comps · ${basis.comps ?? "—"} listings${reach}`;
+    case "nearby":
+      return `${basis.comps ?? "—"} listings${reach}`;
+    case "zip":
+      return `ZIP ${basis.area ?? ""} average · measured`;
+    case "city":
+      return `${basis.area ?? "City"} average · measured`;
+    case "pending":
+      return "Measuring nearby listings…";
+    default:
+      return "Modelled · no measured figures for this area yet";
+  }
+}
+
 export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
   function ListingCard(
     {
@@ -249,6 +268,12 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
             </>
           )}
         </div>
+        {/* What those three stand on, said rather than hidden in a
+            hover: a reader deciding between two cards should know one
+            is the property's own comps and the other a city average. */}
+        <p className="border-t border-border bg-secondary/40 px-4 py-1.5 text-[11px] text-muted-foreground">
+          {basisCaption(deal.basis)}
+        </p>
 
         <div
           className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5"

@@ -13,7 +13,12 @@
  */
 
 import { deriveMarketAssumptions, MIN_COMPS, selectNearbyComps } from "@/lib/calc/comps";
-import { estimateKey, isFresh, readEstimate } from "@/lib/db/market-store";
+import {
+  estimateKey,
+  isFresh,
+  readEstimate,
+  type StoredEstimate,
+} from "@/lib/db/market-store";
 import type { StrComp } from "@/lib/mock/types";
 import { compsSpecFor, ESTIMATE_TTL_MS, ESTIMATE_VERSION } from "./str-comps";
 
@@ -28,23 +33,42 @@ export interface PropertyFigures {
   at: string | null;
 }
 
+/** The store's key for a property's comp set at this size. */
+export function propertyEstimateKey(spec: {
+  lat: number;
+  lon: number;
+  bedrooms: number;
+  bathrooms: number;
+}): string {
+  return estimateKey(
+    compsSpecFor({ bedrooms: spec.bedrooms, bathrooms: spec.bathrooms }, { lat: spec.lat, lon: spec.lon })
+  );
+}
+
+/**
+ * The figures a stored comp set carries, exactly as the analyzer
+ * derives them — the same subset, the same means — or null when the
+ * set is stale, in an older format, or too thin to stand on.
+ */
+export function propertyFiguresFrom(
+  cached: { estimate: StoredEstimate; at: string | null } | null | undefined
+): PropertyFigures | null {
+  if (!cached || !isFresh(cached.at, ESTIMATE_TTL_MS) || cached.estimate.v !== ESTIMATE_VERSION) {
+    return null;
+  }
+  const held = (cached.estimate.comps as StrComp[]).filter((c) => c && c.active !== false);
+  const { comps, radiusMiles } = selectNearbyComps(held);
+  if (comps.length < MIN_COMPS) return null;
+  const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
+  return { adr, occupancy: marketOccupancy, comps: comps.length, radiusMiles, at: cached.at };
+}
+
 export async function propertyFigures(spec: {
   lat: number;
   lon: number;
   bedrooms: number;
   bathrooms: number;
 }): Promise<PropertyFigures | null> {
-  const key = estimateKey(
-    compsSpecFor({ bedrooms: spec.bedrooms, bathrooms: spec.bathrooms }, { lat: spec.lat, lon: spec.lon })
-  );
-  const cached = await readEstimate(key).catch(() => null);
-  if (!cached || !isFresh(cached.at, ESTIMATE_TTL_MS) || cached.estimate.v !== ESTIMATE_VERSION) {
-    return null;
-  }
-  const held = (cached.estimate.comps as StrComp[]).filter((c) => c && c.active !== false);
-  // The same subset the analyzer stands on, so the two agree.
-  const { comps, radiusMiles } = selectNearbyComps(held);
-  if (comps.length < MIN_COMPS) return null;
-  const { adr, marketOccupancy } = deriveMarketAssumptions(comps);
-  return { adr, occupancy: marketOccupancy, comps: comps.length, radiusMiles, at: cached.at };
+  const cached = await readEstimate(propertyEstimateKey(spec)).catch(() => null);
+  return propertyFiguresFrom(cached);
 }

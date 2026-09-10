@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { mergePool, milesBetween, nearbyFigures, toPoolComps, type PoolComp } from "./comp-pool";
+import {
+  mergePool,
+  milesBetween,
+  nearbyFigures,
+  poolAround,
+  poolDistance,
+  seedCell,
+  toPoolComps,
+  type PoolComp,
+} from "./comp-pool";
 import { adrFactorFor } from "@/lib/mock/markets";
 
 const HOME = { lat: 30.33, lon: -81.7 };
@@ -15,16 +24,29 @@ const comp = (id: string, miles: number, bd: number, adr: number, occ: number, a
 });
 
 describe("the comp pool", () => {
-  it("keeps only real, placed, active listings, in its own shape", () => {
+  it("keeps active listings, placed at their own coordinates or at the set's point with their distance", () => {
     const pool = toPoolComps(
       [
         { id: "a", name: "x", bedrooms: 3, bathrooms: 1, adr: 150.4, occupancy: 0.3123, distanceMiles: 1, lat: 30.3, lon: -81.7 },
-        { id: "b", name: "y", bedrooms: 2, bathrooms: 1, adr: 120, occupancy: 0.5, distanceMiles: 1 },
+        // No coordinates, but a distance from the point the set was bought around.
+        { id: "b", name: "y", bedrooms: 2, bathrooms: 1, adr: 120, occupancy: 0.5, distanceMiles: 0.8 },
         { id: "c", name: "z", bedrooms: 2, bathrooms: 1, adr: 120, occupancy: 0.5, distanceMiles: 1, lat: 30.3, lon: -81.7, active: false },
       ],
+      HOME,
       "2026-09-10T00:00:00Z"
     );
-    expect(pool).toEqual([{ id: "a", lat: 30.3, lon: -81.7, bd: 3, adr: 150, occ: 0.312, at: "2026-09-10T00:00:00Z" }]);
+    expect(pool).toEqual([
+      { id: "a", lat: 30.3, lon: -81.7, bd: 3, adr: 150, occ: 0.312, at: "2026-09-10T00:00:00Z" },
+      { id: "b", lat: HOME.lat, lon: HOME.lon, bd: 2, adr: 120, occ: 0.5, at: "2026-09-10T00:00:00Z", dist: 0.8 },
+    ]);
+  });
+
+  it("counts a listing kept at its set's point no closer than it can be", () => {
+    const kept: PoolComp = { ...comp("k", 0, 2, 100, 0.5), dist: 0.8 };
+    // From home itself: exactly its distance from the set's point.
+    expect(poolDistance(kept, HOME)).toBeCloseTo(0.8, 2);
+    // From a mile away: a mile plus its distance, never less.
+    expect(poolDistance(kept, { lat: HOME.lat + 1 / 69, lon: HOME.lon })).toBeCloseTo(1.8, 1);
   });
 
   it("merges newest-wins, drops the stale, and holds the cap", () => {
@@ -35,8 +57,10 @@ describe("the comp pool", () => {
     expect(merged).toEqual([again]);
   });
 
-  it("measures distance in miles", () => {
+  it("measures distance in miles, and files a point in a cell about a mile and a half across", () => {
     expect(milesBetween(HOME, comp("x", 2, 2, 100, 0.5))).toBeCloseTo(2, 1);
+    expect(seedCell(HOME)).toBe(seedCell({ lat: HOME.lat - 0.004, lon: HOME.lon + 0.004 }));
+    expect(seedCell(HOME)).not.toBe(seedCell({ lat: HOME.lat + 0.05, lon: HOME.lon }));
   });
 });
 
@@ -56,6 +80,7 @@ describe("what the listings around a point say", () => {
     // Listings within a bedroom of three: the 3s, the 4 and the 2.
     expect(f!.adr).toBe(Math.round((150 + 170 + 190 + 160 + 180) / 5));
     expect(f!.occupancy).toBe(Math.round(((0.3 + 0.32 + 0.28 + 0.35 + 0.3 + 0.6) / 6) * 100) / 100);
+    expect(poolAround(pool, HOME)).toMatchObject({ size: 7, within1: 6, within2: 7 });
   });
 
   it("widens to two miles, scaling the rate when few listings are this size", () => {

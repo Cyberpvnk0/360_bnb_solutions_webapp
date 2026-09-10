@@ -571,6 +571,47 @@ export async function readEstimate(
   return hit ? { estimate: hit.value, at: hit.at } : null;
 }
 
+/**
+ * Several properties' comp sets in one read, by key — a page of Deal
+ * Finder cards asking which of them has been analyzed. One round trip
+ * rather than one per card; absent keys are simply absent.
+ */
+export async function readEstimates(
+  keys: readonly string[]
+): Promise<Map<string, { estimate: StoredEstimate; at: string | null }>> {
+  const out = new Map<string, { estimate: StoredEstimate; at: string | null }>();
+  const cfg = config();
+  const wanted = [...new Set(keys)].filter((k) => k.length > 0 && k.length < 200);
+  if (!cfg || wanted.length === 0) return out;
+  // PostgREST's `in` list: each value double-quoted, since the keys
+  // carry commas of their own.
+  const list = wanted.map((k) => `"${k.replace(/"/g, "")}"`).join(",");
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/listing_cache?listing_url=in.(${encodeURIComponent(list)})&select=listing_url,detail,detail_at`,
+      {
+        headers: headers(cfg.key),
+        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return out;
+    const rows = (await res.json()) as {
+      listing_url?: string;
+      detail?: unknown;
+      detail_at?: string | null;
+    }[];
+    for (const row of rows ?? []) {
+      if (row.listing_url && isEstimate(row.detail)) {
+        out.set(row.listing_url, { estimate: row.detail, at: row.detail_at ?? null });
+      }
+    }
+    return out;
+  } catch {
+    return out;
+  }
+}
+
 export async function writeEstimate(
   key: string,
   estimate: StoredEstimate

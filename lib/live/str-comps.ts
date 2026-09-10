@@ -126,7 +126,7 @@ export async function withLiveComps(
     const comps = selectNearbyComps(held).comps;
     // Every real listing in the set feeds the market's comp pool, which
     // is what the Deal Finder's cards are projected from.
-    void addToPool(analysis.marketSlug, held).catch(() => undefined);
+    void addToPool(analysis.marketSlug, held, point).catch(() => undefined);
     if (comps.length >= MIN_COMPS) {
       return {
         analysis: {
@@ -174,7 +174,7 @@ export async function withLiveComps(
       adr: estimate.adr,
       occupancy: estimate.occupancy,
     }).catch(() => ({ ok: false, detail: "write threw" }));
-    void addToPool(analysis.marketSlug, estimate.comps).catch(() => undefined);
+    void addToPool(analysis.marketSlug, estimate.comps, point).catch(() => undefined);
     const comps = selectNearbyComps(estimate.comps).comps;
     if (comps.length < MIN_COMPS) return { analysis, liveComps: false };
     return {
