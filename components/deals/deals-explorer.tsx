@@ -23,6 +23,7 @@ import {
   Map as MapIcon,
   Search,
   SearchX,
+  X,
 } from "lucide-react";
 import {
   getLiveRentals,
@@ -856,7 +857,7 @@ export function DealsExplorer({
   return (
     <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden contain-paint">
       {/* Filter chips — white chrome band pinned above both panes. */}
-      <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-surface px-5 py-3.5">
+      <div className="flex shrink-0 flex-col gap-2.5 border-b border-border bg-surface px-4 py-3 sm:flex-row sm:items-center sm:px-5 sm:py-3.5">
         {/* Front and center, like Zillow: type a city or ZIP, pick, go.
             Lives outside the chip scroller so its dropdown never clips. */}
         <MarketSearchBox
@@ -864,10 +865,10 @@ export function DealsExplorer({
           applied={zip ? `ZIP ${zip}` : filters.query}
           onApply={applyLocationQuery}
           onApplyZip={applyZipSearch}
-          className="shrink-0"
+          className="w-full shrink-0 sm:w-auto"
         />
 
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto">
+        <div className="-mx-4 flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
         <DealFilterChips
           filters={filters}
           featuresKnown={featuresKnown}
@@ -886,32 +887,31 @@ export function DealsExplorer({
           }}
         />
 
-        {lists
-          .filter((l) => l.listings.length > 0)
-          .map((l) => {
-            const on = listFilter === l.id;
-            return (
-              <button
-                key={l.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  setListFilter(on ? null : l.id);
-                  resetPaging();
-                }}
-                className={cn(
-                  "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
-                  on
-                    ? "border-select/50 bg-select/10 text-select"
-                    : "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                )}
-              >
-                <Bookmark aria-hidden className="size-3.5" />
-                <span className="max-w-28 truncate">{l.name}</span>
-                <span className="tabular">{l.listings.length}</span>
-              </button>
-            );
-          })}
+        {/* A saved list opens here from the Saved page (?list=). The one
+            that is open shows, with the way out; the rest live on the
+            Saved page rather than as a row of chips in the band. */}
+        {listFilter
+          ? (() => {
+              const open = lists.find((l) => l.id === listFilter);
+              return open ? (
+                <button
+                  type="button"
+                  aria-pressed
+                  onClick={() => {
+                    setListFilter(null);
+                    resetPaging();
+                  }}
+                  title="Show every rental again"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-select/50 bg-select/10 px-3.5 text-xs font-medium text-select transition-colors duration-150 hover:bg-select/15"
+                >
+                  <Bookmark aria-hidden className="size-3.5" />
+                  <span className="max-w-28 truncate">{open.name}</span>
+                  <span className="tabular">{open.listings.length}</span>
+                  <X aria-hidden className="size-3" />
+                </button>
+              ) : null;
+            })()
+          : null}
 
         {hasActiveFilters ? (
           <Button

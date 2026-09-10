@@ -70,7 +70,7 @@ function BoardColumn({
       ref={setNodeRef}
       aria-label={`${label} — ${deals.length} deals`}
       className={cn(
-        "flex min-w-[284px] flex-1 flex-col rounded-sm border border-border bg-secondary/40 p-3 elev-panel transition-colors duration-150",
+        "flex min-w-[284px] flex-1 snap-start flex-col rounded-sm border border-border bg-secondary/40 p-3 elev-panel transition-colors duration-150",
         isOver && "border-gold/30"
       )}
     >
@@ -284,8 +284,8 @@ export function PipelineBoard() {
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
           >
-            <div className="overflow-x-auto pb-2">
-              <div className="flex items-stretch gap-5">
+            <div className="snap-x snap-mandatory scroll-px-4 overflow-x-auto pb-2 sm:snap-none">
+              <div className="flex items-stretch gap-4 sm:gap-5">
                 {PIPELINE_STAGES.map(({ id, label }) => (
                   <BoardColumn
                     key={id}

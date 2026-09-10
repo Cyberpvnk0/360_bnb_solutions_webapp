@@ -15,7 +15,7 @@ interface StatCardProps {
 /** One figure in a stat header row. Compose inside <StatHeader>. */
 export function StatCard({ label, value, sub, serif, className }: StatCardProps) {
   return (
-    <div className={cn("min-w-0 px-8 py-6 first:pl-0 last:pr-0", className)}>
+    <div className={cn("min-w-0 px-4 py-4 sm:px-8 sm:py-6 sm:first:pl-0 sm:last:pr-0", className)}>
       <MetricLabel>{label}</MetricLabel>
       <div
         className={cn(
@@ -32,8 +32,8 @@ export function StatCard({ label, value, sub, serif, className }: StatCardProps)
 
 /**
  * The fat horizontal stat row that opens market and property pages:
- * figures separated by hairline dividers. Scrolls horizontally on mobile
- * instead of wrapping, so nothing shifts.
+ * figures separated by hairline dividers. Two by two on a phone, so
+ * every figure is on screen; the row, scrolling if it must, above.
  */
 export function StatHeader({
   className,
@@ -41,8 +41,8 @@ export function StatHeader({
   ...props
 }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("overflow-x-auto", className)} {...props}>
-      <div className="flex min-w-max items-stretch divide-x divide-border border-y border-border">
+    <div className={cn("sm:overflow-x-auto", className)} {...props}>
+      <div className="grid grid-cols-2 border-y border-border sm:flex sm:min-w-max sm:items-stretch sm:divide-x sm:divide-border [&>*]:border-border max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t">
         {children}
       </div>
     </div>

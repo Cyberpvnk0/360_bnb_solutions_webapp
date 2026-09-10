@@ -60,7 +60,7 @@ export function PullCounter({ className }: { className?: string }) {
   );
 
   const label = (
-    <span className="text-xs text-muted-foreground">
+    <span className="text-xs whitespace-nowrap text-muted-foreground">
       <span
         className={cn(
           "inline-flex items-center gap-1 font-medium tabular",

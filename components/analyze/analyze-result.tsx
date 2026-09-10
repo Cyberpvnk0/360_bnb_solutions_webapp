@@ -421,7 +421,7 @@ export function AnalyzeResult({
               )}
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
+          <div className="flex shrink-0 flex-col items-stretch gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center [&>*]:w-full sm:[&>*]:w-auto">
             {listing ? <AddToListMenu listing={listing} size="default" variant="outline" /> : null}
             <Button variant="outline" onClick={handleExport} className="gap-1.5">
               <FileDown aria-hidden className="size-4" />
@@ -449,9 +449,9 @@ export function AnalyzeResult({
         </div>
 
         {/* Headline figures */}
-        <div className="overflow-x-auto border-t border-border">
-          <div className="flex min-w-max items-stretch divide-x divide-border">
-            <div className="px-6 py-5 first:pl-6">
+        <div className="border-t border-border sm:overflow-x-auto">
+          <div className="grid grid-cols-2 sm:flex sm:min-w-max sm:items-stretch sm:divide-x sm:divide-border [&>*]:border-border max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t">
+            <div className="px-5 py-4 sm:px-6 sm:py-5 sm:first:pl-6">
               <MetricLabel>Projected annual revenue</MetricLabel>
               <AnimatedNumber
                 value={annualRevenueDisplay}
@@ -465,7 +465,7 @@ export function AnalyzeResult({
                 gross bookings · {fmtMoney(p.monthlyRevenue)}/mo
               </p>
             </div>
-            <div className="px-6 py-5">
+            <div className="px-5 py-4 sm:px-6 sm:py-5">
               <MetricLabel>Occupancy</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight tabular">
                 {fmtPct(assumptions.marketOccupancy)}
@@ -474,7 +474,7 @@ export function AnalyzeResult({
                 what this market actually runs
               </p>
             </div>
-            <div className="px-6 py-5">
+            <div className="px-5 py-4 sm:px-6 sm:py-5">
               <MetricLabel>ADR</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight tabular">
                 {fmtMoney(assumptions.adr)}
@@ -485,7 +485,7 @@ export function AnalyzeResult({
               </p>
             </div>
             {/* Breakeven — important, deliberately not the centerpiece. */}
-            <div className="flex items-center gap-3.5 px-6 py-5">
+            <div className="flex flex-col items-start gap-2.5 px-5 py-4 sm:flex-row sm:items-center sm:gap-3.5 sm:px-6 sm:py-5">
               <BreakevenGauge
                 breakeven={p.breakevenOccupancy}
                 marketOccupancy={p.marketOccupancy}

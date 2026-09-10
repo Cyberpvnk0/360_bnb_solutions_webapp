@@ -92,6 +92,7 @@ export function SeasonalityStrip({
               month={m}
               peak={peak}
               hot={hover === i}
+              named={m.month === risk.strongest.month || m.month === risk.weakest.month}
               onHover={(on) => setHover(on ? i : null)}
             />
           ))}
@@ -124,11 +125,15 @@ function MonthBar({
   month,
   peak,
   hot,
+  named,
   onHover,
 }: {
   month: MonthOutlook;
   peak: number;
   hot: boolean;
+  /** The best or the thinnest month: the two whose figure a phone
+   *  still prints, the sentence above having named them. */
+  named: boolean;
   onHover: (on: boolean) => void;
 }) {
   const negative = month.net < 0;
@@ -154,7 +159,8 @@ function MonthBar({
             <span
               className={cn(
                 "mb-1 text-[10px] font-medium tabular",
-                hot ? "text-foreground" : "text-muted-foreground"
+                hot ? "text-foreground" : "text-muted-foreground",
+                !named && !hot && "max-sm:invisible"
               )}
             >
               {fmtMoneyShort(month.net)}
@@ -181,7 +187,7 @@ function MonthBar({
                 hot ? "opacity-100" : "opacity-85"
               )}
             />
-            <span className="mt-1 text-[10px] font-medium text-neg tabular">
+            <span className={cn("mt-1 text-[10px] font-medium text-neg tabular", !named && !hot && "max-sm:invisible")}>
               −{fmtMoneyShort(Math.abs(month.net))}
             </span>
           </>
