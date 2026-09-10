@@ -7,6 +7,7 @@ import {
 } from "./redfin-page";
 import { addressKey } from "./address";
 import { fetchAutocomplete } from "./redfin-city";
+import { searchListingPages } from "./page-search";
 import { readZipPages, type ZipPages } from "./zip-pages";
 import { indexBySite } from "./listing-join";
 import { lookupZipAt } from "@/lib/map/zip-boundary";
@@ -15,6 +16,9 @@ import { readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
 vi.mock("./redfin-city", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./redfin-city")>()),
   fetchAutocomplete: vi.fn(),
+}));
+vi.mock("./page-search", () => ({
+  searchListingPages: vi.fn(async () => ({ urls: [], detail: "bing: HTTP 403; duckduckgo: HTTP 403" })),
 }));
 vi.mock("./zip-pages", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./zip-pages")>()),
@@ -28,6 +32,16 @@ vi.mock("@/lib/db/market-store", () => ({
   readKeyedBlob: vi.fn(),
   writeKeyed: vi.fn(),
 }));
+
+/** What the engines say when neither will talk to a server. */
+const NO_ENGINES = { urls: [], detail: "bing: HTTP 403; duckduckgo: HTTP 403" };
+
+beforeEach(() => {
+  vi.mocked(searchListingPages).mockReset();
+  vi.mocked(searchListingPages).mockResolvedValue(NO_ENGINES);
+  vi.mocked(writeKeyed).mockReset();
+  vi.mocked(writeKeyed).mockResolvedValue(undefined as never);
+});
 
 /** A ZIP's rows as lib/live/zip-pages hands them back. */
 function zipPages(
@@ -217,7 +231,9 @@ describe("resolving a page from an address", () => {
     const r = await resolveListingPage(TAMPA);
     expect(r.url).toBeNull();
     expect(r.answered).toBe(false);
-    expect(r.detail).toBe("no ZIP to search; lookup did not answer (no answer in 50s on premium)");
+    expect(r.detail).toBe(
+      "no ZIP to search; engines: bing: HTTP 403; duckduckgo: HTTP 403; lookup did not answer (no answer in 50s on premium)"
+    );
     expect(remember).not.toHaveBeenCalled();
   });
 
@@ -293,6 +309,62 @@ describe("resolving a page from an address", () => {
   });
 });
 
+describe("the engines' index of the site, asked alongside the ZIP", () => {
+  const read = vi.mocked(readZipPages);
+  const lookup = vi.mocked(fetchAutocomplete);
+  const engines = vi.mocked(searchListingPages);
+  const store = vi.mocked(readKeyedBlob);
+  const remember = vi.mocked(writeKeyed);
+  beforeEach(() => {
+    read.mockReset();
+    lookup.mockReset();
+    store.mockReset();
+    store.mockResolvedValue(null);
+    read.mockResolvedValue(zipPages([], false));
+    vi.stubEnv("SCRAPERAPI_KEY", "k");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("takes the engines' page when its path spells exactly this address, and remembers it", async () => {
+    engines.mockResolvedValue({
+      urls: [
+        "https://www.redfin.com/FL/Tampa/1806-E-Sitka-St-33604/home/5",
+        "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661",
+      ],
+      detail: "bing: 2 pages",
+    });
+    const out = await resolveListingPage({ ...TAMPA, address: "1804 East Sitka Street", zip: "33604" });
+    expect(out).toEqual({ url: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661", answered: true, detail: null });
+    expect(lookup).not.toHaveBeenCalled();
+    expect(remember).toHaveBeenCalledWith(expect.any(String), {
+      url: "https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/home/47311661",
+    });
+  });
+
+  it("refuses a near miss from the engines, and goes on to the slow lookup", async () => {
+    engines.mockResolvedValue({
+      urls: ["https://www.redfin.com/FL/Tampa/1804-E-Sitka-St-33604/unit-2/home/99", "https://www.redfin.com/FL/Orlando/1804-E-Sitka-St-32801/home/7"],
+      detail: "bing: 2 pages",
+    });
+    lookup.mockResolvedValue({ attempt: { tier: "premium", status: 408, text: "no answer in 50s" }, body: null, tried: ["premium"] });
+    const out = await resolveListingPage({ ...TAMPA, zip: "33604" });
+    expect(out.url).toBeNull();
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(out.detail).toContain("engines: bing: 2 pages");
+  });
+
+  it("reads a rental's own page shape too", async () => {
+    engines.mockResolvedValue({
+      urls: ["https://www.redfin.com/FL/Tampa/1107-W-Arch-St-33607/unit-A/apartment/171893443"],
+      detail: "bing: 1 page",
+    });
+    const out = await resolveListingPage({ address: "1107 W Arch St Apt A", city: "Tampa", stateCode: "FL", zip: "33607" }, { fast: true });
+    expect(out.url).toBe("https://www.redfin.com/FL/Tampa/1107-W-Arch-St-33607/unit-A/apartment/171893443");
+  });
+});
+
 describe("the fast resolution, for a click that must move on", () => {
   const read = vi.mocked(readZipPages);
   const lookup = vi.mocked(fetchAutocomplete);
@@ -344,7 +416,7 @@ describe("what a failed ZIP read leaves in the answer", () => {
     const r = await resolveListingPage({ ...TAMPA, zip: "33604" });
     expect(r.answered).toBe(false);
     expect(r.detail).toBe(
-      "33604: rentals: quota 429: too many; lookup did not answer (no answer in 50s on premium)"
+      "33604: rentals: quota 429: too many; engines: bing: HTTP 403; duckduckgo: HTTP 403; lookup did not answer (no answer in 50s on premium)"
     );
     vi.unstubAllEnvs();
   });

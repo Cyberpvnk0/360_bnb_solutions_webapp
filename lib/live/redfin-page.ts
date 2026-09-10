@@ -37,6 +37,7 @@
 import { addressKey } from "./address";
 import { autocompleteUrlFor, fetchAutocomplete, normalizeCity } from "./redfin-city";
 import { zipFromAddress } from "./zip";
+import { searchListingPages } from "./page-search";
 import { pageInZip, readZipPages } from "./zip-pages";
 import { lookupZipAt } from "@/lib/map/zip-boundary";
 import { isFresh, readKeyedBlob, writeKeyed } from "@/lib/db/market-store";
@@ -54,7 +55,7 @@ export interface AddressRow {
  *  street (ZIP last) and the unit — everything a match needs, whether
  *  or not the row's own fields say them. */
 const PROPERTY_PATH =
-  /^\/([A-Z]{2})\/([^/?#\s]+)\/([^/?#\s]+)(?:\/unit-([^/?#\s]+))?\/home\/\d+/;
+  /^\/([A-Z]{2})\/([^/?#\s]+)\/([^/?#\s]+)(?:\/unit-([^/?#\s]+))?\/(?:home|apartment)\/\d+/;
 const PORTAL = "https://www.redfin.com";
 
 const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -73,13 +74,16 @@ const LOOKUP_BUDGET_MS = 50_000;
 /** The address lookup is not started with less than this. */
 const MIN_LOOKUP_MS = 15_000;
 /**
- * The fast resolution — a "View photos" click — reads the store and
- * the ZIP's rentals and nothing slower: no address lookup, and the ZIP
- * read itself is given this long before the click moves on to the
- * next site. The read carries on behind the answer and is stored, so
- * the next click on the ZIP is instant.
+ * The fast resolution — a "View photos" click — reads the store, the
+ * ZIP's rentals and the search engines' index of the site, and nothing
+ * slower: no address lookup, and the ZIP read itself is given this
+ * long before the click moves on to the next site. The read carries on
+ * behind the answer and is stored, so the next click on the ZIP is
+ * instant.
  */
 export const FAST_ZIP_BUDGET_MS = 8_000;
+/** How long the engines are given, in either mode. */
+export const ENGINE_BUDGET_MS = 2_500;
 
 /** Every property row in a lookup payload, wherever it nests. */
 export function extractAddressRows(
@@ -257,6 +261,16 @@ async function zipFor(place: Place): Promise<string | null> {
   return place.point ? lookupZipAt(place.point) : null;
 }
 
+/** The path of a whole URL — what the picker reads — or the string as
+ *  it came, for one that is not a URL (the picker then refuses it). */
+function pathOf(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
 async function lookupOnce(place: Place, key: string, opts: ResolveOptions): Promise<PageLookup> {
   const stored = await readKeyedBlob(key).catch(() => null);
   if (stored) {
@@ -277,6 +291,10 @@ async function lookupOnce(place: Place, key: string, opts: ResolveOptions): Prom
   const notes: string[] = [];
   const remember = (url: string | null) =>
     void writeKeyed(key, { url }).catch(() => undefined);
+
+  // The engines' index of the site, asked alongside the ZIP's rentals
+  // so a click waits for the slower of the two rather than both.
+  const engines = searchListingPages(place, { timeoutMs: ENGINE_BUDGET_MS });
 
   // 1. The ZIP's rentals, keyed by address.
   const zip = await zipFor(place);
@@ -309,13 +327,28 @@ async function lookupOnce(place: Place, key: string, opts: ResolveOptions): Prom
     }
   }
 
+  // 2. The engines: the address searched the way a person would, and
+  // the result whose path spells exactly this address — the same strict
+  // match as the lookup's own rows. An engine miss says nothing about
+  // the address, so it is not remembered.
+  const found = await engines;
+  const fromEngines = pickAddressRow(
+    found.urls.map((url) => ({ name: "", url: pathOf(url) })),
+    place
+  );
+  if (fromEngines) {
+    remember(fromEngines);
+    return { url: fromEngines, answered: true, detail: null };
+  }
+  notes.push(`engines: ${found.detail}`);
+
   // A click does not wait for the slow lookup: the fast places had no
   // page, and the click moves on to the next site.
   if (opts.fast) {
-    return { url: null, answered: false, detail: notes.join("; ") || "nothing fast to read" };
+    return { url: null, answered: false, detail: notes.join("; ") };
   }
 
-  // 2. The portal's address lookup, with what time is left.
+  // 3. The portal's own address lookup, with what time is left.
   const apiKey = process.env.SCRAPERAPI_KEY;
   if (!apiKey) {
     return {
