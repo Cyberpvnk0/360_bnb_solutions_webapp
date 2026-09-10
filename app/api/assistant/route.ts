@@ -25,7 +25,8 @@ import { readContext, renderContext } from "@/lib/assistant/context";
 import { encodeEvent, type AssistantEvent } from "@/lib/assistant/events";
 import { SYSTEM_PROMPT } from "@/lib/assistant/prompt";
 import { assistantTools, runTool } from "@/lib/assistant/tools";
-import { assistantConfigured, MODEL, runTurn, type StreamLike } from "@/lib/assistant/turn";
+import { anthropicClient, assistantConfigured } from "@/lib/assistant/client";
+import { MODEL, runTurn, type StreamLike } from "@/lib/assistant/turn";
 import { requireOperator, requirePaid } from "@/lib/auth/gate";
 import { canCover, spendCredits } from "@/lib/db/usage";
 
@@ -83,7 +84,7 @@ export async function GET(request: Request) {
   if (!assistantConfigured()) {
     return NextResponse.json({ ok: false, reason: "not-configured", model: MODEL, hint: "ANTHROPIC_API_KEY is not set on this deployment" }, { status: 503 });
   }
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim(), maxRetries: 0 });
+  const client = anthropicClient({ maxRetries: 0 });
   const started = Date.now();
   try {
     const message = await client.messages.create({
@@ -103,12 +104,19 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     const { reason, detail } = reasonOf(error);
+    const words = detail ?? (error instanceof Error ? error.message.slice(0, 400) : String(error));
     return NextResponse.json(
       {
         ok: false,
         reason,
         status: error instanceof Anthropic.APIError ? error.status : null,
-        detail: detail ?? (error instanceof Error ? error.message.slice(0, 400) : String(error)),
+        detail: words,
+        ...(/workspace/i.test(words)
+          ? {
+              hint:
+                "The key is scoped to the organization. Set ANTHROPIC_WORKSPACE_ID to the workspace's id (Console, Settings, Workspaces) and redeploy, or use a key created inside a workspace.",
+            }
+          : {}),
         model: MODEL,
         ms: Date.now() - started,
       },
@@ -150,7 +158,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY?.trim() });
+  const client = anthropicClient();
   // The frozen instructions, then the page's context: two cache
   // breakpoints, so a thread's second message pays for neither again.
   const system: Anthropic.TextBlockParam[] = [

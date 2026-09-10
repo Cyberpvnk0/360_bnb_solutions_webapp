@@ -26,10 +26,6 @@ export const MAX_TOKENS = 4096;
 export const MAX_ROUNDS = 8;
 const MAX_SOURCES = 6;
 
-export function assistantConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-}
-
 export interface StreamLike extends AsyncIterable<Anthropic.MessageStreamEvent> {
   finalMessage(): Promise<Anthropic.Message>;
   abort?: () => void;
