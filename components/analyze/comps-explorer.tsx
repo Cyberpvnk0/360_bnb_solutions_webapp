@@ -9,9 +9,9 @@
 import * as React from "react";
 import { ArrowUpRight } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
-import { compListingUrl } from "@/lib/live/comp-links";
+import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
-import { fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
+import { fmtDate, fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { MetricLabel } from "@/components/primitives/metric-label";
@@ -24,9 +24,21 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
     header: "Listing",
     cell: (c) => {
       const page = compListingUrl(c);
+      // Why the arrow beside a name is missing, for anyone who hovers
+      // it: dense rows have no room to print the reason, and a row
+      // that silently lacks what fifteen others have reads as a bug.
+      const note = compLinkNote(c);
       return (
         <span className="inline-flex max-w-full items-center gap-1.5">
-          <span className="truncate font-sans font-medium text-foreground">{c.name}</span>
+          <span
+            title={note ?? undefined}
+            className={cn(
+              "truncate font-sans font-medium text-foreground",
+              note && "decoration-dotted underline-offset-4 [text-decoration-line:underline]"
+            )}
+          >
+            {c.name}
+          </span>
           {page ? (
             <a
               href={page}
@@ -109,6 +121,7 @@ export function CompsExplorer({
   propertyPoint = null,
   marketCenter,
   live = false,
+  boughtAt = null,
 }: {
   comps: StrComp[];
   address: string;
@@ -122,7 +135,14 @@ export function CompsExplorer({
   /** True when these came from the live STR feed rather than the
    *  seeded preview set — the reader deserves to know which. */
   live?: boolean;
+  /** When the set was read, ISO. Printed under the heading: these are
+   *  real listings as they stood on a day, and one of them can be off
+   *  the platform by the time somebody clicks it. */
+  boughtAt?: string | null;
 }) {
+  // A plain date, because fmtDate is handed bare YYYY-MM-DD across this
+  // product and appends a time of its own to whatever it gets.
+  const readOn = boughtAt ? fmtDate(boughtAt.slice(0, 10)) : null;
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   /** The comp whose card is docked on the map — from a row or a pin. */
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -162,6 +182,11 @@ export function CompsExplorer({
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             The projection above is computed from these listings, nothing else.
+            {/* The date, not a promise. A comp set is what was listed on
+                the day it was read; a host can take a listing down the
+                next morning, and the link below it then opens the
+                platform's own error page rather than the property. */}
+            {live && readOn ? <> Read {readOn}; a listing can come down after that.</> : null}
           </p>
         </div>
         {live ? (

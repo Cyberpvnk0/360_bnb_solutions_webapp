@@ -23,7 +23,7 @@ import { fmtMiles, fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { PropertyThumb } from "./property-thumb";
 import { createPricePin } from "@/lib/map/price-pin";
-import { compListingUrl } from "@/lib/live/comp-links";
+import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
 import { cn } from "@/lib/utils";
 
 
@@ -352,23 +352,32 @@ export function CompsStreetMap({
                 {fmtMoney(annualRevenueFromAdr(active.adr, active.occupancy))}
                 /yr · {fmtMiles(active.distanceMiles)} away
               </p>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                {(() => {
-                  const page = compListingUrl(active);
-                  return (
+              {(() => {
+                const page = compListingUrl(active);
+                // Why this one opens the neighbourhood instead of the
+                // property. Said on the card rather than left as a
+                // difference nobody can account for — and it is a fact
+                // about the listing, not an apology for the product.
+                const note = compLinkNote(active);
+                return (
+                  <div className="mt-2 flex flex-col gap-1">
                     <a
                       href={page ?? airbnbAreaUrl(active.lat, active.lon)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-select transition-colors duration-150 hover:underline"
+                      className="inline-flex w-fit items-center gap-1 text-xs font-medium text-select transition-colors duration-150 hover:underline"
                     >
                       {page ? "View listing on Airbnb" : "Open this area on Airbnb"}
                       <ArrowUpRight aria-hidden className="size-3" />
                     </a>
-                  );
-                })()}
-
-              </div>
+                    {note ? (
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        {note}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         ) : null}

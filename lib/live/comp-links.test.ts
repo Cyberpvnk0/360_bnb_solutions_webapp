@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compListingUrl } from "./comp-links";
+import { compLinkNote, compListingUrl } from "./comp-links";
 
 const EXACT = "1482756537092586123";
 const ROUNDED = "1482756537092586000";
@@ -41,5 +41,29 @@ describe("a comp the feed marked as no longer listed", () => {
     expect(compListingUrl({ id: "sc-live-36549812", active: true })).toBe(
       "https://www.airbnb.com/rooms/36549812"
     );
+  });
+});
+
+describe("a comp the mapper declined to link", () => {
+  it("has no link, and the id fallback does not put one back", () => {
+    // The whole point of withholding it: rebuilding the room URL from
+    // "sc-live-<id>" would undo the decision at render.
+    expect(
+      compListingUrl({
+        id: "sc-live-41234567",
+        listingUrl: "https://www.airbnb.com/rooms/41234567",
+        linkWithheld: "calendar-closed",
+      })
+    ).toBeNull();
+    expect(
+      compListingUrl({ id: "sc-live-41234567", linkWithheld: "calendar-closed" })
+    ).toBeNull();
+  });
+
+  it("says why, so a missing arrow is not a bug", () => {
+    expect(compLinkNote({ linkWithheld: "calendar-closed" })).toBe(
+      "No open or booked night in the last 90 days — may no longer be listed"
+    );
+    expect(compLinkNote({})).toBeNull();
   });
 });

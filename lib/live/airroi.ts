@@ -35,6 +35,7 @@
 
 import type { StrComp } from "@/lib/mock/types";
 import { looksRoundedId } from "./listing-id";
+import { describeFields } from "./shape";
 import { writeKeyed } from "@/lib/db/market-store";
 
 const BASE = "https://api.airroi.com";
@@ -373,6 +374,10 @@ const GONE_WORDS = /^(inactive|unlisted|delisted|deleted|removed|suspended|pause
 /** The last-90-days calendar, as the feed keeps it. */
 const L90D_TOTAL_KEYS = ["l90d_total_days"];
 const L90D_PART_KEYS = ["l90d_available_days", "l90d_days_reserved", "l90d_blocked_days"];
+/** The two of those that mean somebody could have stayed: a night the
+ *  host left open, and a night a guest took. */
+const L90D_OPEN_KEYS = ["l90d_available_days"];
+const L90D_BOOKED_KEYS = ["l90d_days_reserved"];
 
 /**
  * Whether this comp is still listed, and which field said so. Null
@@ -393,18 +398,47 @@ const L90D_PART_KEYS = ["l90d_available_days", "l90d_days_reserved", "l90d_block
  * ninety is not there to be booked. That is the fact this reads, after
  * an explicit flag if a feed ever sends one. A calendar that is merely
  * quiet — blocked, or unbooked — is a live listing and stays.
+ *
+ * AND A SECOND, WEAKER FACT, FOR THE LINK ONLY: whether any night in
+ * that window was OPEN OR BOOKED. `bookable` is false when the feed
+ * states both counts and both are zero — ninety days in which nobody
+ * could have stayed. A listing that has come down looks exactly like
+ * that to a feed that reads calendars, and so does an owner's own
+ * season, and the payload does not tell them apart. So it decides the
+ * link and nothing else: the comp stays in the set with its year's
+ * figures, and the page it would have opened is not promised. Null
+ * when the feed states neither count — nothing is inferred from
+ * silence here either.
  */
-export function activityOf(
-  row: Row,
-  info: Row | null
-): { active: boolean | null; key: string | null } {
-  const flagged = flagOf(row, info);
-  if (flagged.active !== null) return flagged;
+export interface Activity {
+  /** Still listed, as far as the feed says. Null when it does not. */
+  active: boolean | null;
+  /** Which field carried that, for the staff diagnostic. */
+  key: string | null;
+  /** Whether any night of the window was open or booked. Decides the
+   *  room link, never membership of the comp set. */
+  bookable: boolean | null;
+}
 
+export function activityOf(row: Row, info: Row | null): Activity {
   const metrics = group(row, "performance_metrics") ?? row;
+  const open = pickNumber(metrics, L90D_OPEN_KEYS);
+  const booked = pickNumber(metrics, L90D_BOOKED_KEYS);
+  // Stated by the feed, or not read at all: one open or booked night
+  // is proof enough, and two stated zeros are proof of the opposite.
+  const bookable =
+    open === null && booked === null ? null : (open ?? 0) > 0 || (booked ?? 0) > 0;
+
+  const flagged = flagOf(row, info);
+  if (flagged.active !== null) return { ...flagged, bookable };
+
   const total = pickNumber(metrics, L90D_TOTAL_KEYS);
   if (total !== null) {
-    return { active: total > 0, key: "performance_metrics.l90d_total_days" };
+    return {
+      active: total > 0,
+      key: "performance_metrics.l90d_total_days",
+      bookable,
+    };
   }
   const parts = L90D_PART_KEYS.map((k) => pickNumber(metrics, [k])).filter(
     (n): n is number => n !== null
@@ -413,9 +447,10 @@ export function activityOf(
     return {
       active: parts.some((n) => n > 0),
       key: "performance_metrics.l90d_*_days",
+      bookable,
     };
   }
-  return { active: null, key: null };
+  return { active: null, key: null, bookable };
 }
 
 /** An explicit listed-or-not flag, in the shapes feeds use. */
@@ -499,14 +534,25 @@ export function listingPageUrl(row: Row, info: Row | null, id: string): string |
 /* ------------------------------------------------------------------ */
 
 /**
- * The field names of the last comp payload this process mapped, one
- * level deep. Kept so a staff reader of /api/usage can see what the
- * feed actually sends — which groups, which keys — without a billed
- * call and without any listing value leaving the server. The link and
- * photo readers above were written from guesses at these names; this
- * is how the guesses get checked.
+ * The field names of the last comp payload this process mapped. Kept
+ * so a staff reader of /api/usage can see what the feed actually sends
+ * — which groups, which keys, how often — without a billed call and
+ * without any listing value leaving the server. The link and photo
+ * readers above were written from guesses at these names; this is how
+ * the guesses get checked.
+ *
+ * ACROSS THE WHOLE SET, NOT THE FIRST ROW. Twice now a rule about
+ * which comps are still listed has been written from one row of one
+ * payload and shipped, and twice the links went on failing — because a
+ * JSON feed omits a null field per row, so the first comp cannot say
+ * what the fiftieth carries, and a count of one cannot say whether a
+ * rule ever fires. What is recorded now is every field path in every
+ * comp with the number of comps carrying it, the calendar counts
+ * tallied, the ids tallied by length and exactness, and how many comps
+ * each rule actually removed or unlinked. Names and counts; never a
+ * value.
  */
-let lastCompShape: Record<string, string[]> | null = null;
+let lastCompShape: Record<string, unknown> | null = null;
 
 /** Where the shape is kept between processes: the shared cache table.
  *  On serverless the process that bought a comp set is almost never
@@ -514,10 +560,10 @@ let lastCompShape: Record<string, string[]> | null = null;
  *  saw one" — which is what it did. */
 export const COMP_SHAPE_KEY = "diag:comps-shape";
 
-export function rememberCompShape(rows: unknown[]): void {
+export function rememberCompShape(rows: unknown[], responseKeys: string[] = []): void {
   const first = rows.find((r) => r && typeof r === "object");
   if (!first) return;
-  const shape: Record<string, string[]> = {};
+  const shape: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(first as Row)) {
     shape[k] =
       v && typeof v === "object" && !Array.isArray(v)
@@ -538,16 +584,76 @@ export function rememberCompShape(rows: unknown[]): void {
   // How many of the payload's comps were left out, and why — counts,
   // never values.
   const objects = rows.filter((r): r is Row => !!r && typeof r === "object");
-  const gone = objects.filter(
-    (r) => activityOf(r, group(r, "listing_info")).active === false
-  ).length;
+  const reads = objects.map((r) => activityOf(r, group(r, "listing_info")));
+  const gone = reads.filter((a) => a.active === false).length;
   const rooms = objects.filter((r) => !wholePlace(r, group(r, "listing_info"))).length;
   shape.$inactive = [`${gone} of ${rows.length} no longer listed, left out`];
   shape.$rooms = [`${rooms} of ${rows.length} private or shared rooms, left out`];
+  // How many comps lose their room link under the calendar rule, and
+  // how many the rule cannot judge at all. A payload where every comp
+  // reads "unknown" is a payload with no calendar in it, whatever the
+  // field list says — and that is the answer that ends the guessing.
+  shape.$withheld = [
+    `${reads.filter((a) => a.bookable === false).length} of ${rows.length} with no open or booked night in the last ninety, kept without a link`,
+    `${reads.filter((a) => a.bookable === null).length} of ${rows.length} the calendar cannot judge, linked as before`,
+  ];
+  // The calendar itself, tallied: which of its four counts the feed
+  // states, on how many comps. Counts of fields, never a day of
+  // anyone's calendar.
+  const metricsOf = (r: Row) => group(r, "performance_metrics") ?? r;
+  shape.$calendar = Object.fromEntries(
+    [...L90D_TOTAL_KEYS, ...L90D_PART_KEYS].map((k) => [
+      k,
+      `stated on ${objects.filter((r) => pickNumber(metricsOf(r), [k]) !== null).length} of ${rows.length}`,
+    ])
+  );
+  // Every id in the set by length and exactness, not just the first —
+  // one rounded id among twenty-five is a broken link nobody would see
+  // in a sample of one.
+  shape.$ids = idTally(objects);
+  // Every field the payload carries anywhere, with how many comps
+  // carry it. maxLength separates a label from a paragraph without
+  // printing a word of either.
+  shape.$fields = describeFields(objects, 3);
+  // The estimate response's own top-level keys — where a data-as-of
+  // stamp would be, if the vendor ships one.
+  if (responseKeys.length > 0) shape.$response = [...responseKeys].sort();
   lastCompShape = shape;
   // Names only, never values; a failed write is a missing diagnostic,
   // not a missing feature.
   void writeKeyed(COMP_SHAPE_KEY, shape).catch(() => undefined);
+}
+
+/** Every comp's id by digit length, and how many survived as exact
+ *  integers rather than the printed form of a double. */
+function idTally(rows: Row[]): Record<string, string> {
+  const lengths = new Map<number, number>();
+  let exact = 0;
+  let rounded = 0;
+  let missing = 0;
+  for (const row of rows) {
+    const src = group(row, "listing_info") ?? row;
+    const found = [...ID_KEYS, "airbnb_id", "airbnbId"]
+      .map((k) => src[k])
+      .find((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== ""));
+    if (found === undefined) {
+      missing += 1;
+      continue;
+    }
+    const digits = String(found).trim();
+    lengths.set(digits.length, (lengths.get(digits.length) ?? 0) + 1);
+    if (/^\d+$/.test(digits) && !looksRoundedId(digits)) exact += 1;
+    else rounded += 1;
+  }
+  return {
+    byLength: [...lengths.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([len, n]) => `${n}x ${len} digits`)
+      .join(", "),
+    exact: String(exact),
+    rounded: String(rounded),
+    missing: String(missing),
+  };
 }
 
 function idShapeOf(row: Row): string[] {
@@ -563,7 +669,7 @@ function idShapeOf(row: Row): string[] {
   return ["missing"];
 }
 
-export function compFieldsSeen(): Record<string, string[]> | null {
+export function compFieldsSeen(): Record<string, unknown> | null {
   return lastCompShape;
 }
 const LAT_KEYS = ["latitude", "lat"];
@@ -613,7 +719,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   // and its room page is the platform's error page. Out, whole — not
   // kept with a caveat. A feed that says nothing is trusted; nothing
   // is inferred from dates or silence.
-  const { active } = activityOf(row, info);
+  const { active, bookable } = activityOf(row, info);
   if (active === false) return null;
   // Nor is a room in somebody's home a comparable for a whole unit.
   if (!wholePlace(row, info)) return null;
@@ -621,7 +727,15 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   // The listing's own page: the feed's link when it gives one, else the
   // page its id names. Its cover photo likewise, from wherever the
   // payload keeps it — never from the description, which is prose.
-  const listingUrl = listingPageUrl(row, info, id);
+  //
+  // WITHHELD when the last ninety days held no night anybody could
+  // have stayed. The comp is still a comp — its year is what the
+  // market earned, and the projection stands on that — but its page is
+  // as likely to be the platform's error page as the listing, and a
+  // link that fails two times in five is worth less than the area
+  // search beneath it. See StrComp.linkWithheld.
+  const linkWithheld = bookable === false;
+  const listingUrl = linkWithheld ? null : listingPageUrl(row, info, id);
   const photoUrl =
     (info ? pickHttpsUrl(info, PHOTO_KEYS) ?? pickFirstPhoto(info) : null) ??
     pickHttpsUrl(row, PHOTO_KEYS) ??
@@ -660,6 +774,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     ...(listingUrl ? { listingUrl } : {}),
     ...(photoUrl ? { photoUrl } : {}),
     ...(active === null ? {} : { active }),
+    ...(linkWithheld ? { linkWithheld: "calendar-closed" as const } : {}),
     bedrooms: Math.max(0, Math.round(bedrooms)),
     bathrooms: Math.max(0.5, bathrooms),
     adr: Math.round(adr),
@@ -1001,7 +1116,7 @@ export async function fetchEstimate(opts: {
     comps: withDistance(
       (() => {
         const raw = extractArray({ listings: row.comparable_listings });
-        rememberCompShape(raw);
+        rememberCompShape(raw, Object.keys(row));
         return raw.map(mapComp).filter((c): c is StrComp => c !== null);
       })(),
       subject

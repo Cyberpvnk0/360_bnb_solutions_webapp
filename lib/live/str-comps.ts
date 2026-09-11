@@ -43,6 +43,18 @@ export interface CompsResolution {
   analysis: Analysis;
   /** True when the comps on screen came from AirROI. */
   liveComps: boolean;
+  /**
+   * When these listings were read, ISO — today for a fresh purchase,
+   * the store's stamp for a set served from it.
+   *
+   * On screen because a comp set is a photograph, not a window: a
+   * listing in it can come down the day after it was bought, and the
+   * link this product offers to it then opens the platform's error
+   * page. The date is the only honest thing available to say about
+   * that, and saying nothing left people thinking the product was
+   * broken.
+   */
+  boughtAt?: string | null;
 }
 
 /** A month of freshness. A property's trailing-twelve comps do not
@@ -72,6 +84,15 @@ export const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * links look like — if its ids look rounded then the vendor sent them
  * so, and buying again would only buy the same; those links are
  * dropped at render instead (lib/live/comp-links).
+ *
+ * NOT BUMPED FOR THE WITHHELD-LINK RULE, deliberately. That rule
+ * (lib/live/airroi, activityOf's `bookable`) changes which comps are
+ * offered a link, not a single figure any projection stands on, and a
+ * version bump buys every stored set again at the vendor's per-call
+ * price to correct a link. New purchases carry it; sets already held
+ * keep the links they were stored with until they age out below,
+ * which is a month at the outside. A rule that moved a number would be
+ * a different judgement.
  */
 export const ESTIMATE_VERSION = 5;
 
@@ -187,6 +208,7 @@ export async function withLiveComps(
             : {}),
         },
         liveComps: true,
+        boughtAt: cached.at,
       };
     }
     // A thin set, remembered as thin: the modelled comps stand in, and
@@ -243,6 +265,7 @@ export async function withLiveComps(
           : {}),
       },
       liveComps: true,
+      boughtAt: new Date().toISOString(),
     };
   } catch {
     // Budget spent, feed down, key rejected — all the same answer here:

@@ -115,6 +115,18 @@ export interface StrComp {
    *  did not say. Never false on a mapped comp — a listing the feed
    *  marks as gone is not a comp and is left out (lib/live/airroi). */
   active?: boolean;
+  /**
+   * Why this comp is shown without a link to its page.
+   *
+   * "calendar-closed": not one night of the last ninety was open or
+   * booked. That is what a listing that has come down looks like in a
+   * feed that only knows calendars — and also what an owner's own
+   * season looks like, and nothing in the payload tells the two apart.
+   * The year's figures are evidence either way and stay in the set;
+   * the link does not, because a link that opens the platform's error
+   * page is worse than no link at all.
+   */
+  linkWithheld?: "calendar-closed";
   /** The listing's cover photo, when the feed carries one. Linked, not
    *  copied: the image is served by its platform, never stored here. */
   photoUrl?: string;

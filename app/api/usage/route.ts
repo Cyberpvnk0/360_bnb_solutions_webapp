@@ -75,7 +75,15 @@ export async function GET() {
     compsPayloadShapeNote:
       compsShape === null
         ? "No comp set has been bought since this was added. Cached analyses never reach the vendor; analyze a NEW address (or change a property's size) once, then reload this."
-        : "Field names of the vendor's last comp payload, one level deep. Names only. $id is how the first comp's id arrived: its type, its digit count, and whether it survived as an exact integer rather than the printed form of a double — a rounded id here means the vendor sends them rounded.",
+        : [
+            "The vendor's last comp payload, described across the WHOLE set. Names and counts only, never a value.",
+            "$fields: every field path any comp carried, with how many carried it — the union, because a JSON feed omits a null field per row and the first comp cannot say what the twentieth holds.",
+            "$calendar: on how many comps the feed states each of the last-90-day counts. All zeros means the payload carries no calendar, whatever the rest of the file assumes.",
+            "$withheld: how many comps had no open or booked night in that window and so are shown without a room link, and how many the calendar cannot judge.",
+            "$inactive / $rooms: how many comps were left out of the set entirely, and why.",
+            "$ids: every id by digit length, and how many survived as exact integers rather than the printed form of a double — rounded ones here mean the vendor sends them rounded.",
+            "$response: the estimate response's own top-level keys, which is where a data-as-of stamp would be if the vendor ships one.",
+          ].join(" "),
 
     usage,
     /**

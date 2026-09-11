@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityOf, wholePlace, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, toFraction } from "./airroi";
+import { activityOf, compFieldsSeen, wholePlace, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, rememberCompShape, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -315,13 +315,13 @@ describe("a comp the feed says is no longer listed", () => {
   });
 
   it("reads the signal in the shapes feeds use, and names the field", () => {
-    expect(activityOf({ is_active: true }, null)).toEqual({ active: true, key: "is_active" });
-    expect(activityOf({ unlisted: true }, null)).toEqual({ active: false, key: "unlisted" });
-    expect(activityOf({ active: 0 }, null)).toEqual({ active: false, key: "active" });
-    expect(activityOf({}, { status: "Inactive" })).toEqual({ active: false, key: "listing_info.status" });
-    expect(activityOf({ status: "live" }, null)).toEqual({ active: true, key: "status" });
-    expect(activityOf({ status: "something else" }, null)).toEqual({ active: null, key: null });
-    expect(activityOf({}, null)).toEqual({ active: null, key: null });
+    expect(activityOf({ is_active: true }, null)).toMatchObject({ active: true, key: "is_active" });
+    expect(activityOf({ unlisted: true }, null)).toMatchObject({ active: false, key: "unlisted" });
+    expect(activityOf({ active: 0 }, null)).toMatchObject({ active: false, key: "active" });
+    expect(activityOf({}, { status: "Inactive" })).toMatchObject({ active: false, key: "listing_info.status" });
+    expect(activityOf({ status: "live" }, null)).toMatchObject({ active: true, key: "status" });
+    expect(activityOf({ status: "something else" }, null)).toMatchObject({ active: null, key: null });
+    expect(activityOf({}, null)).toMatchObject({ active: null, key: null });
   });
 });
 
@@ -344,12 +344,77 @@ describe("still listed, read off the last ninety days' calendar", () => {
     ).toBe(true);
   });
 
+  /**
+   * The link, decided separately and more strictly than membership.
+   *
+   * A comp set is trailing-twelve-month evidence, so it carries
+   * listings that earned in the year and have since come down — and
+   * the room page of one of those is the platform's "something went
+   * wrong" screen, which is what two people in five were landing on.
+   * The one thing in the payload that speaks to it is the last ninety
+   * days: a listing nobody could have stayed in for a whole quarter is
+   * as likely to be gone as to be somebody's own house for the season,
+   * and the payload cannot tell those apart. So the year's figures
+   * stay and the promise does not.
+   */
+  describe("the room link", () => {
+    it("is withheld when no night of the window was open or booked", () => {
+      const c = mapComp(
+        withCalendar({ l90d_available_days: 0, l90d_days_reserved: 0, l90d_blocked_days: 90 }),
+        0
+      );
+      expect(c?.linkWithheld).toBe("calendar-closed");
+      expect(c?.listingUrl).toBeUndefined();
+      // And the comp is still a comp: every figure the projection
+      // stands on is untouched.
+      expect(c?.adr).toBe(215);
+      expect(c?.occupancy).toBeCloseTo(0.63);
+      expect(c?.id).toBe("sc-live-41234567");
+    });
+
+    it("survives a single bookable night, open or taken", () => {
+      for (const metrics of [
+        { l90d_available_days: 1, l90d_days_reserved: 0, l90d_blocked_days: 89 },
+        { l90d_available_days: 0, l90d_days_reserved: 12, l90d_blocked_days: 78 },
+      ]) {
+        const c = mapComp(withCalendar(metrics), 0);
+        expect(c?.linkWithheld).toBeUndefined();
+        expect(c?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567");
+      }
+    });
+
+    it("is kept when the feed states neither count — nothing inferred from silence", () => {
+      // A payload with only a window length, or no calendar at all,
+      // says nothing about whether anybody could have stayed.
+      const unjudgeable: Record<string, number>[] = [
+        { l90d_total_days: 90 },
+        { l90d_blocked_days: 90 },
+      ];
+      for (const metrics of unjudgeable) {
+        expect(mapComp(withCalendar(metrics), 0)?.listingUrl).toBe(
+          "https://www.airbnb.com/rooms/41234567"
+        );
+      }
+      expect(mapComp(realComp(), 0)?.listingUrl).toBe("https://www.airbnb.com/rooms/41234567");
+    });
+
+    it("reads the two counts that mean somebody could have stayed", () => {
+      const bookable = (m: Record<string, number>) => activityOf(m, null).bookable;
+      expect(bookable({ l90d_available_days: 0, l90d_days_reserved: 0 })).toBe(false);
+      expect(bookable({ l90d_available_days: 3 })).toBe(true);
+      expect(bookable({ l90d_days_reserved: 3 })).toBe(true);
+      expect(bookable({ l90d_blocked_days: 90 })).toBeNull();
+      expect(bookable({})).toBeNull();
+    });
+  });
+
   it("keeps a comp whose payload carries no calendar, and says so", () => {
     expect(mapComp(realComp(), 0)?.active).toBeUndefined();
-    expect(activityOf(realComp(), null)).toEqual({ active: null, key: null });
+    expect(activityOf(realComp(), null)).toEqual({ active: null, key: null, bookable: null });
     expect(activityOf(withCalendar({ l90d_total_days: 12 }), null)).toEqual({
       active: true,
       key: "performance_metrics.l90d_total_days",
+      bookable: null,
     });
   });
 
@@ -385,5 +450,99 @@ describe("whole places only", () => {
     expect(mapComp(realComp(), 0)).not.toBeNull();
     expect(wholePlace({}, null)).toBe(true);
     expect(wholePlace({}, { room_type: "Private room" })).toBe(false);
+  });
+});
+
+/**
+ * The staff diagnostic, which exists because this file has twice been
+ * given a rule about which comps are still listed, written from one
+ * row of one payload, and twice the links went on failing. A sample of
+ * one cannot say whether a rule fires — a JSON feed omits null fields
+ * per row, so the first comp does not know what the twentieth carries.
+ * So it counts, across the whole set, and the counts are the thing
+ * that settles an argument about the vendor's schema.
+ */
+describe("what the whole comp payload looks like", () => {
+  const comp = (over: Record<string, unknown> = {}) => realComp(over);
+  /** A nineteen-digit id, and the printed form of the double nearest
+   *  it — the pair the id tally has to tell apart. */
+  const EXACT_ID = "1482756537092586123";
+  const ROUNDED_ID = "1482756537092586000";
+  const closed = {
+    performance_metrics: {
+      ttm_avg_rate: 200,
+      ttm_occupancy: 0.4,
+      l90d_total_days: 90,
+      l90d_available_days: 0,
+      l90d_days_reserved: 0,
+      l90d_blocked_days: 90,
+    },
+  };
+  const open = {
+    performance_metrics: {
+      ttm_avg_rate: 300,
+      ttm_occupancy: 0.6,
+      l90d_total_days: 90,
+      l90d_available_days: 40,
+      l90d_days_reserved: 30,
+      l90d_blocked_days: 20,
+    },
+  };
+
+  it("counts how many comps each rule removes or unlinks", () => {
+    rememberCompShape([comp(closed), comp(open), comp()], ["revenue", "comparable_listings"]);
+    const shape = compFieldsSeen()!;
+    expect((shape.$withheld as string[])[0]).toContain("1 of 3 with no open or booked night");
+    // The comp with no calendar at all is the one no rule can judge.
+    expect((shape.$withheld as string[])[1]).toContain("1 of 3 the calendar cannot judge");
+    expect((shape.$inactive as string[])[0]).toContain("0 of 3");
+  });
+
+  it("says on how many comps the feed states each calendar count", () => {
+    rememberCompShape([comp(closed), comp(open), comp()]);
+    const calendar = compFieldsSeen()!.$calendar as Record<string, string>;
+    expect(calendar.l90d_total_days).toBe("stated on 2 of 3");
+    expect(calendar.l90d_available_days).toBe("stated on 2 of 3");
+    expect(calendar.l90d_days_reserved).toBe("stated on 2 of 3");
+  });
+
+  it("tallies every id in the set, not only the first", () => {
+    // One rounded id among twenty-five is a broken link invisible in a
+    // sample of one. ROUNDED is the printed form of a double.
+    rememberCompShape([
+      comp({ listing_info: { listing_id: 41234567, listing_name: "a" } }),
+      comp({ listing_info: { listing_id: EXACT_ID, listing_name: "b" } }),
+      comp({ listing_info: { listing_id: ROUNDED_ID, listing_name: "c" } }),
+    ]);
+    const ids = compFieldsSeen()!.$ids as Record<string, string>;
+    expect(ids.byLength).toBe("1x 8 digits, 2x 19 digits");
+    expect(ids.exact).toBe("2");
+    expect(ids.rounded).toBe("1");
+  });
+
+  it("unions the field names across every comp, with how many carry each", () => {
+    // The field that exists on one listing in fifty is exactly the one
+    // a first-row glance reports as absent.
+    rememberCompShape([
+      comp(),
+      comp({ listing_info: { listing_id: 2, listing_name: "b", status: "active" } }),
+    ]);
+    const fields = compFieldsSeen()!.$fields as Record<string, { present: number }>;
+    expect(fields["listing_info.status"].present).toBe(1);
+    expect(fields["performance_metrics.ttm_avg_rate"].present).toBe(2);
+  });
+
+  it("records the response's own keys, where a data-as-of stamp would be", () => {
+    rememberCompShape([comp()], ["occupancy", "revenue", "as_of"]);
+    expect(compFieldsSeen()!.$response).toEqual(["as_of", "occupancy", "revenue"]);
+  });
+
+  it("carries names and counts, never a value", () => {
+    rememberCompShape([comp(), comp(closed)], ["revenue"]);
+    const text = JSON.stringify(compFieldsSeen());
+    expect(text).not.toContain("PROSE");
+    expect(text).not.toContain("Riverside");
+    expect(text).not.toContain("41234567");
+    expect(text).not.toContain("30.3255");
   });
 });

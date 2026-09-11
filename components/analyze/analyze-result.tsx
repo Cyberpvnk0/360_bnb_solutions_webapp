@@ -102,6 +102,7 @@ export function AnalyzeResult({
   marketCenter,
   propertyPoint = null,
   liveComps = false,
+  compsBoughtAt = null,
   searchedAddress = null,
   quota = null,
   listingId = null,
@@ -125,6 +126,10 @@ export function AnalyzeResult({
   propertyPoint?: { lat: number; lon: number } | null;
   /** True when the comp set came from the live STR feed. */
   liveComps?: boolean;
+  /** When those listings were read, ISO. Printed beside them: a comp
+   *  set is a photograph of a market on a day, and a listing in it can
+   *  come down the day after. */
+  compsBoughtAt?: string | null;
   /**
    * Where this analysis left the account's monthly plan, when there is
    * an account. `allowed` false means no comps were bought for it and
@@ -726,6 +731,7 @@ export function AnalyzeResult({
           propertyPoint={propertyPoint}
           marketCenter={marketCenter}
           live={liveComps}
+          boughtAt={compsBoughtAt}
         />
         <LtrCompsTable comps={analysis.ltrComps} />
       </div>
