@@ -91,11 +91,24 @@ const LANES = 6;
  *  scraper is an analysis nobody is reading. */
 const BUDGET_MS = 25_000;
 
+/**
+ * OFF UNLESS SWITCHED ON, and it was not always.
+ *
+ * The first live pass settled it: fifteen listings asked, ZERO came
+ * back live, fourteen unreadable, and about three hundred and twenty
+ * scraper credits spent. The platform does not serve a room page to
+ * this scraper at either tier we are willing to pay for, so the check
+ * cannot answer its own question and every credit it spends buys an
+ * "unknown" that keeps the comp anyway.
+ *
+ * It stays in the tree because the diagnostic below now says WHY each
+ * page was unreadable, which is what decides whether a cheaper tier,
+ * a different marker or a different vendor would work. It does not
+ * run again until somebody sets AIRBNB_LIVE_CHECK to 1 on purpose.
+ */
 function on(): boolean {
-  // One variable turns it off. Anything but "0" or "off" leaves it on,
-  // so an empty or missing value is the working default.
   const raw = process.env.AIRBNB_LIVE_CHECK?.trim().toLowerCase();
-  return raw !== "0" && raw !== "off" && raw !== "false";
+  return raw === "1" || raw === "true" || raw === "on";
 }
 
 /** The listing id inside a comp's own id, or null for a seeded one. */
@@ -129,18 +142,47 @@ export function readLiveness(doc: string, id: string): Liveness {
   );
   const ogUrl = new RegExp(`content=["'][^"']*airbnb\\.[a-z.]+/rooms/${id}\\b`, "i");
   if (canonical.test(head) || ogUrl.test(head)) return "live";
-  if (
-    /(we can'?t find|no longer available|isn'?t available|page not found|something went wrong)/i.test(
-      head
-    )
-  ) {
-    return "gone";
-  }
+  /**
+   * "Something went wrong" ALONE IS NOT PROOF, and treating it as
+   * proof cost a live comp on the first pass. The platform serves that
+   * shell for a listing it no longer has, but so does a proxy that
+   * failed, an anti-bot wall, and any error page anywhere — and the
+   * whole reason this module exists is that the same words came back
+   * for real listings too. A page has to be recognisably the
+   * platform's own AND say the listing is missing before a comp is
+   * dropped from somebody's projection.
+   */
+  const theirs = /airbnb/i.test(head.slice(0, 4_000));
+  const missing = /(we can'?t find|no longer available|isn'?t available|page not found)/i.test(head);
+  if (theirs && missing) return "gone";
   return "unknown";
 }
 
+/** Why a page could not be read, in the words the next decision needs.
+ *  Counted, never a listing: this is the difference between "try a
+ *  cheaper marker" and "this vendor cannot reach the platform". */
+type Why =
+  | "live"
+  | "gone-404"
+  | "gone-page"
+  /** An anti-bot wall. The vendor cannot get through at this price. */
+  | "challenged"
+  /** A page came back and carried none of the platform's own markers. */
+  | "no-markers"
+  /** The vendor refused, timed out, or answered an error. */
+  | "refused";
+
+const WHY_TO_STATE: Record<Why, Liveness> = {
+  live: "live",
+  "gone-404": "gone",
+  "gone-page": "gone",
+  challenged: "unknown",
+  "no-markers": "unknown",
+  refused: "unknown",
+};
+
 /** One listing, asked of the platform. Never throws. */
-async function ask(id: string): Promise<Liveness> {
+async function ask(id: string): Promise<Why> {
   try {
     const { outcome, challenged } = await readListingPage(roomUrl(id), {
       from: "standard",
@@ -148,15 +190,16 @@ async function ask(id: string): Promise<Liveness> {
     });
     // An anti-bot screen is a failure, never a source — the same rule
     // the scraping module states for every other reader.
-    if (challenged) return "unknown";
-    return readLiveness(outcome.doc, id);
+    if (challenged) return "challenged";
+    const state = readLiveness(outcome.doc, id);
+    return state === "live" ? "live" : state === "gone" ? "gone-page" : "no-markers";
   } catch (error) {
     // The platform's own 404 or 410 IS the answer; every other refusal
     // is our inability to ask, and keeps the comp.
     if (error instanceof ScraperApiError && (error.status === 404 || error.status === 410)) {
-      return "gone";
+      return "gone-404";
     }
-    return "unknown";
+    return "refused";
   }
 }
 
@@ -178,7 +221,17 @@ export interface LivenessRun {
   /** Verdict per listing id asked about. */
   states: Map<string, Liveness>;
   /** How the pass went, for the staff diagnostic — counts only. */
-  tally: { cached: number; asked: number; live: number; gone: number; unknown: number };
+  tally: {
+    cached: number;
+    asked: number;
+    live: number;
+    gone: number;
+    unknown: number;
+    /** Why each fetched page ended as it did. A pass that is all
+     *  "challenged" is a vendor that cannot reach the platform; one
+     *  that is all "no-markers" is a page shape this does not know. */
+    why: Record<string, number>;
+  };
 }
 
 /**
@@ -191,7 +244,14 @@ export async function checkListings(
 ): Promise<LivenessRun> {
   const states = new Map<string, Liveness>();
   const wanted = [...new Set(ids)].filter((id) => /^\d{5,}$/.test(id));
-  const tally = { cached: 0, asked: 0, live: 0, gone: 0, unknown: 0 };
+  const tally = {
+    cached: 0,
+    asked: 0,
+    live: 0,
+    gone: 0,
+    unknown: 0,
+    why: {} as Record<string, number>,
+  };
   if (!on() || wanted.length === 0) return { states, tally };
 
   const held = await readKeyedBlobs(wanted.map((id) => `${KEY_PREFIX}${id}`)).catch(
@@ -216,9 +276,11 @@ export async function checkListings(
       const i = next++;
       if (i >= queue.length || Date.now() > deadline) return;
       const id = queue[i];
-      const state = await ask(id);
+      const why = await ask(id);
+      const state = WHY_TO_STATE[why];
       states.set(id, state);
       tally.asked += 1;
+      tally.why[why] = (tally.why[why] ?? 0) + 1;
       // An answer nobody can read again is an answer bought twice. A
       // failed write is survivable, so it is not awaited into the
       // caller's own failure path.

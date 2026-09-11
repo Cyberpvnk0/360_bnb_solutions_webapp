@@ -18,10 +18,13 @@ const livePage = `<!doctype html><html><head>
   <link rel="canonical" href="https://www.airbnb.com/rooms/${ID}"/>
 </head><body>…</body></html>`;
 
-const errorPage = `<!doctype html><html><head><title>Airbnb</title></head>
+const shell = `<!doctype html><html><head><title>Airbnb</title></head>
   <body><h1>Something went wrong</h1>
   <p>Airbnb may be undergoing maintenance or your connection may have timed out.</p>
   </body></html>`;
+
+const missingPage = `<!doctype html><html><head><title>Airbnb</title></head>
+  <body><h1>We can't find that page</h1></body></html>`;
 
 describe("what a room page says about itself", () => {
   it("is live when the page names this listing as its own", () => {
@@ -31,8 +34,21 @@ describe("what a room page says about itself", () => {
     ).toBe("live");
   });
 
-  it("is gone on the platform's own error shell", () => {
-    expect(readLiveness(errorPage, ID)).toBe("gone");
+  it("is gone when the platform's own page says the listing is missing", () => {
+    expect(readLiveness(missingPage, ID)).toBe("gone");
+  });
+
+  it("is NOT gone on a bare 'something went wrong', which cost a live comp", () => {
+    // The first live pass dropped a comp on this shell alone. The
+    // platform serves it for a listing it no longer has, and so does a
+    // proxy that failed and an anti-bot wall — and the whole reason
+    // this module exists is that those words came back for real
+    // listings too.
+    expect(readLiveness(shell, ID)).toBe("unknown");
+  });
+
+  it("does not take somebody else's error page for the platform's", () => {
+    expect(readLiveness("<html><body>We can't find that page</body></html>", ID)).toBe("unknown");
   });
 
   it("is unknown when the page is neither, rather than guessing", () => {
