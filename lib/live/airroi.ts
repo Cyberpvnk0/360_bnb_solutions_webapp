@@ -402,6 +402,28 @@ const L90D_BOOKED_KEYS = ["l90d_days_reserved"];
  * an explicit flag if a feed ever sends one. A calendar that is merely
  * quiet — blocked, or unbooked — is a live listing and stays.
  *
+ * MEASURED, AND THE ANSWER IS THAT THIS VENDOR CANNOT SAY. Two live
+ * sets, seven comps and twenty-five, described field by field across
+ * every row (rememberCompShape, read at /api/usage). No status, no
+ * listing URL, no platform, no as-of stamp on the response. The
+ * calendar is complete on every comp and healthy on every comp, and
+ * `l90d_total_days` reads 90 for all of them while `ttm_total_days`
+ * reads 365 for all of them — so those two are the LENGTHS of their
+ * windows, not the days a listing was seen, and they carry no
+ * liveness either. Every field here describes a listing that traded;
+ * none says whether it is still there.
+ *
+ * So both rules below fire on nothing against this vendor, and the
+ * room links they guard go on failing for listings that have since
+ * come down. They are kept because they are right, and because a feed
+ * that one day sends a status word, or a window short of its length,
+ * would be read correctly the day it does. What the reader is owed in
+ * the meantime is a way out of a page that errors, which the comp
+ * card carries (components/analyze/comps-street-map), and a date on
+ * the set, which its header carries. Do not write a fourth heuristic
+ * against these fields: the diagnostic above is what says whether
+ * there is one to write, and today it says there is not.
+ *
  * AND A SECOND, WEAKER FACT, FOR THE LINK ONLY: whether any night in
  * that window was OPEN OR BOOKED. `bookable` is false when the feed
  * states both counts and both are zero — ninety days in which nobody
