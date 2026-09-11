@@ -7,7 +7,7 @@
  */
 
 import * as React from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, RotateCcw, Trash2 } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
@@ -18,7 +18,10 @@ import { MetricLabel } from "@/components/primitives/metric-label";
 import { CompsStreetMap } from "./comps-street-map";
 import { cn } from "@/lib/utils";
 
-const STR_COLUMNS: DataTableColumn<StrComp>[] = [
+function strColumns(
+  onStrike: ((id: string) => void) | undefined
+): DataTableColumn<StrComp>[] {
+  return [
   {
     key: "name",
     header: "Listing",
@@ -101,7 +104,30 @@ const STR_COLUMNS: DataTableColumn<StrComp>[] = [
     cell: (c) => fmtMiles(c.distanceMiles),
     sortValue: (c) => c.distanceMiles,
   },
-];
+  {
+    key: "strike",
+    header: <span className="sr-only">Remove</span>,
+    align: "right",
+    cell: (c) =>
+      onStrike ? (
+        <button
+          type="button"
+          aria-label={`Remove ${c.name} from the comp set`}
+          title="Remove this comp — every figure above follows"
+          onClick={(e) => {
+            // The row itself docks the card on the map; this does not.
+            e.stopPropagation();
+            onStrike(c.id);
+          }}
+          className="rounded-sm p-1 text-muted-foreground opacity-60 transition-[color,opacity,background-color] duration-150 hover:bg-neg/10 hover:text-neg hover:opacity-100 focus-visible:opacity-100"
+        >
+          <Trash2 aria-hidden className="size-3.5" />
+        </button>
+      ) : null,
+    className: "w-8",
+  },
+  ];
+}
 
 /** How far the set reaches: "within 1 mi" when it all sits inside a
  *  mile, "within 2 mi" inside two, and "nearby" for a set bought before
@@ -122,6 +148,9 @@ export function CompsExplorer({
   marketCenter,
   live = false,
   boughtAt = null,
+  onStrike,
+  struckCount = 0,
+  onRestore,
 }: {
   comps: StrComp[];
   address: string;
@@ -139,10 +168,17 @@ export function CompsExplorer({
    *  real listings as they stood on a day, and one of them can be off
    *  the platform by the time somebody clicks it. */
   boughtAt?: string | null;
+  /** Strike a comp out of the set. Absent when the set is down to the
+   *  last one every figure on the page divides by. */
+  onStrike?: (id: string) => void;
+  /** How many the reader has struck, so the footer can say so. */
+  struckCount?: number;
+  onRestore?: () => void;
 }) {
   // A plain date, because fmtDate is handed bare YYYY-MM-DD across this
   // product and appends a time of its own to whatever it gets.
   const readOn = boughtAt ? fmtDate(boughtAt.slice(0, 10)) : null;
+  const columns = React.useMemo(() => strColumns(onStrike), [onStrike]);
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   /** The comp whose card is docked on the map — from a row or a pin. */
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -211,7 +247,7 @@ export function CompsExplorer({
               red and lifts the pin; clicking docks that comp's card on
               the map. Styles for .comp-row live in globals.css. */}
           <DataTable
-            columns={STR_COLUMNS}
+            columns={columns}
             rows={comps}
             rowKey={(c) => c.id}
             initialSort={{ key: "distance", dir: "asc" }}
@@ -238,6 +274,28 @@ export function CompsExplorer({
             </span>{" "}
             occupancy — exactly the assumptions the projection uses.
           </p>
+          {/* What was struck, and the way back. Said here rather than
+              left to the comp count changing, because a figure that
+              moved and a set that shrank are the same event and the
+              reader should be able to undo it in one click. */}
+          {struckCount > 0 ? (
+            <p className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pb-3 text-xs text-muted-foreground">
+              <span>
+                <span className="font-medium text-foreground tabular">{struckCount}</span>{" "}
+                {struckCount === 1 ? "comp" : "comps"} removed from this reading.
+              </span>
+              {onRestore ? (
+                <button
+                  type="button"
+                  onClick={onRestore}
+                  className="inline-flex items-center gap-1 font-medium text-gold transition-colors duration-150 hover:text-gold-bright"
+                >
+                  <RotateCcw aria-hidden className="size-3" />
+                  Put them back
+                </button>
+              ) : null}
+            </p>
+          ) : null}
         </div>
 
         <CompsStreetMap

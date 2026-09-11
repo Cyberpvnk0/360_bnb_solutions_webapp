@@ -54,6 +54,9 @@ import { useListingContact } from "@/components/deals/use-listing-contact";
 import { RevenueRange } from "./revenue-range";
 import { cn } from "@/lib/utils";
 
+/** Stable empty set, so "no strikes" is one reference every render. */
+const NONE_STRUCK: ReadonlySet<string> = new Set<string>();
+
 const PROPERTY_TYPE_LABEL: Record<Analysis["propertyType"], string> = {
   apartment: "Apartment",
   house: "House",
@@ -226,9 +229,53 @@ export function AnalyzeResult({
     searchedAddress !== null && searchedAddress.milesAway > 25;
   const [inputs, setInputs] = React.useState<DealInputs>(analysis.defaults);
 
+  /**
+   * Comps the reader has struck out, by id.
+   *
+   * A comp set is drawn by distance and size, not by judgement, so it
+   * can hold a listing that is nothing like the subject — a mansion on
+   * the same street, a listing that has come down, a rate three times
+   * the block's. Underwriting on an average that includes it is how a
+   * lease gets signed on a number nobody believed. So the set is the
+   * reader's to cut, every figure on the page follows the cut
+   * immediately, and putting one back is one click.
+   *
+   * Kept in the page, not in the store: this is a reader deciding what
+   * to believe about one property in one sitting, not a correction to
+   * the market's evidence — the same set of comps is what the next
+   * person starts from.
+   */
+  const [strikes, setStrikes] = React.useState<{
+    /** Which property they belong to. A different one starts clean,
+     *  derived rather than reset, so nothing is assigned in render. */
+    of: string;
+    ids: ReadonlySet<string>;
+  }>(() => ({ of: analysis.id, ids: new Set<string>() }));
+  const struck = strikes.of === analysis.id ? strikes.ids : NONE_STRUCK;
+  const comps = React.useMemo(
+    () => analysis.strComps.filter((c) => !struck.has(c.id)),
+    [analysis.strComps, struck]
+  );
+  /** Never below one: every figure on the page divides by this set. */
+  const canStrike = comps.length > 1;
+  const strikeComp = React.useCallback(
+    (id: string) => {
+      setStrikes((prev) => {
+        const ids = new Set(prev.of === analysis.id ? prev.ids : []);
+        ids.add(id);
+        return { of: analysis.id, ids };
+      });
+    },
+    [analysis.id]
+  );
+  const restoreComps = React.useCallback(
+    () => setStrikes({ of: analysis.id, ids: new Set<string>() }),
+    [analysis.id]
+  );
+
   const assumptions = React.useMemo(
-    () => deriveMarketAssumptions(analysis.strComps),
-    [analysis.strComps]
+    () => deriveMarketAssumptions(comps),
+    [comps]
   );
   const p = React.useMemo(
     () => projectDeal(inputs, assumptions),
@@ -291,7 +338,7 @@ export function AnalyzeResult({
       figures: {
         adr: assumptions.adr,
         occupancy: assumptions.marketOccupancy,
-        comps: analysis.strComps.length,
+        comps: comps.length,
         measured: liveComps,
         monthlyRevenue: p.monthlyRevenue,
         netCashFlow: p.netCashFlow,
@@ -300,7 +347,7 @@ export function AnalyzeResult({
         grade: gradeDeal(pts).label,
       },
     };
-  }, [analysis, listing, contact, searchedAddress, inputs.monthlyRent, propertyPoint, assumptions, liveComps, p, neverBreaksEven, marginPts]);
+  }, [analysis, listing, contact, comps.length, searchedAddress, inputs.monthlyRent, propertyPoint, assumptions, liveComps, p, neverBreaksEven, marginPts]);
   // Annual figures display as rounded-monthly × 12 so a reader who
   // multiplies the two on-screen numbers gets an exact match.
   const annualRevenueDisplay = Math.round(p.monthlyRevenue) * 12;
@@ -495,7 +542,7 @@ export function AnalyzeResult({
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {fmtMoney(revpar(assumptions.adr, assumptions.marketOccupancy))}{" "}
-                RevPAR · {analysis.strComps.length} comps
+                RevPAR · {comps.length} comps
               </p>
             </div>
             {/* Breakeven — important, deliberately not the centerpiece. */}
@@ -554,7 +601,7 @@ export function AnalyzeResult({
         {/* Comp revenue range */}
         <div className="border-t border-border px-6 py-5">
           <RevenueRange
-            comps={analysis.strComps}
+            comps={comps}
             subjectAnnualRevenue={annualRevenueDisplay}
           />
         </div>
@@ -597,7 +644,7 @@ export function AnalyzeResult({
             <h2 className="text-sm font-semibold text-foreground">Projection</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               At the market&apos;s actual {fmtPct(p.marketOccupancy)} occupancy,
-              from {analysis.strComps.length} comps below.
+              from {comps.length} comps below.
             </p>
           </div>
 
@@ -726,8 +773,11 @@ export function AnalyzeResult({
       {/* Evidence */}
       <div className="mt-14 space-y-14 pb-14">
         <CompsExplorer
-          comps={analysis.strComps}
+          comps={comps}
           address={analysis.address}
+          onStrike={canStrike ? strikeComp : undefined}
+          struckCount={struck.size}
+          onRestore={restoreComps}
           propertyPoint={propertyPoint}
           marketCenter={marketCenter}
           live={liveComps}
