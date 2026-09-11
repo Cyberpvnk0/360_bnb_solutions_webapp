@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Binoculars,
+  CalendarRange,
   Loader2,
   MapPin,
   Search,
@@ -54,7 +55,7 @@ import {
   fmtPct,
   fmtWhen,
 } from "@/lib/format";
-import { AREA_MEASURE_CREDITS } from "@/config/app";
+import { AREA_MEASURE_CREDITS, MARKET_HISTORY_CREDITS } from "@/config/app";
 import { HINTS } from "@/lib/copy/hints";
 import {
   AREA_SORTS,
@@ -69,6 +70,7 @@ import { RULE_LABEL, RULE_TONE, TERRAIN_LABEL } from "@/lib/markets/explorer";
 import { benchmark2brInputs } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import type { StoredMarketStats } from "@/lib/db/market-store";
+import type { LiveMarketMonth } from "@/lib/live/airroi";
 import {
   asTooltipContent,
   AXIS_PROPS,
@@ -88,6 +90,9 @@ import { cn } from "@/lib/utils";
 /** What a measure costs, said the way a reader says it. */
 const PRICE = `${AREA_MEASURE_CREDITS} ${AREA_MEASURE_CREDITS === 1 ? "credit" : "credits"}`;
 
+/** What the twelve-month series costs, likewise. */
+const YEAR_PRICE = `${MARKET_HISTORY_CREDITS} ${MARKET_HISTORY_CREDITS === 1 ? "credit" : "credits"}`;
+
 /** A figure nobody has measured. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
@@ -95,6 +100,10 @@ interface Props {
   market: Market;
   stats: StoredMarketStats | null;
   statsAt: string | null;
+  /** The twelve measured months, from wherever they were kept: inline
+   *  on the stats row when both were bought together, or under their
+   *  own key when the year was bought on its own. */
+  months: LiveMarketMonth[];
   listingsAt: string | null;
   areas: AreaRow[];
   /** Short-let listings this product has seen in the market, total. */
@@ -166,6 +175,7 @@ export function MarketDetail({
   market,
   stats,
   statsAt,
+  months,
   listingsAt,
   areas,
   poolSize,
@@ -173,6 +183,10 @@ export function MarketDetail({
   const { creditsRemaining, credits, openUpgrade, refreshUsage } = useSession();
   const [sort, setSort] = React.useState<AreaSort>("revenue");
   const [trend, setTrend] = React.useState<Trend>("adr");
+  /** The year, as the page got it — replaced in place when somebody
+   *  buys it, so the chart draws without a reload. */
+  const [year, setYear] = React.useState<LiveMarketMonth[]>(months);
+  const [loadingYear, setLoadingYear] = React.useState(false);
   /** ZIPs bought in this session, merged over what the page arrived
    *  with so a row updates without a reload. */
   const [bought, setBought] = React.useState<Record<string, MeasuredArea>>({});
@@ -218,13 +232,13 @@ export function MarketDetail({
 
   const monthly = React.useMemo(
     () =>
-      (stats?.monthly ?? []).map((m) => ({
+      year.map((m) => ({
         month: m.month,
         adr: Math.round(m.adr),
         occupancy: Math.round(m.occupancy * 100),
         revpar: Math.round(m.revpar ?? revpar(m.adr, m.occupancy)),
       })),
-    [stats]
+    [year]
   );
 
   /**
@@ -236,7 +250,8 @@ export function MarketDetail({
    * this one is a courtesy, and a stale client must not be able to
    * spend anything.
    */
-  const affordable = creditsRemaining + credits >= AREA_MEASURE_CREDITS;
+  const affordable =
+    creditsRemaining + credits >= Math.min(AREA_MEASURE_CREDITS, MARKET_HISTORY_CREDITS);
 
   const measureArea = async (row: AreaRow) => {
     if (!affordable) {
@@ -287,6 +302,59 @@ export function MarketDetail({
       toast.error("Those figures could not be fetched.");
     } finally {
       setBuying(null);
+    }
+  };
+
+  /**
+   * Buy this market's twelve months.
+   *
+   * Separate from the headline figures because the feed sells them
+   * separately: a backfill run at the cheap setting buys the figures
+   * and not the year, which is the right trade across four hundred
+   * markets and leaves this chart empty until somebody wants it.
+   */
+  const loadYear = async () => {
+    if (!affordable) {
+      openUpgrade({ reason: "credits" });
+      return;
+    }
+    setLoadingYear(true);
+    try {
+      const res = await fetch("/api/markets/history", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market: market.slug }),
+      });
+      const data = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            months?: LiveMarketMonth[];
+            message?: string;
+            reason?: string;
+            charged?: number;
+          }
+        | null;
+      if (res.status === 402 || data?.reason === "no-credits") {
+        openUpgrade({ reason: "credits" });
+        return;
+      }
+      if (!res.ok || !data?.ok || !data.months?.length) {
+        toast.error(data?.message ?? "The year could not be fetched.");
+        return;
+      }
+      setYear(data.months);
+      const charged = data.charged ?? 0;
+      toast.success(`${market.name}'s year loaded`, {
+        description:
+          charged > 0
+            ? `${charged} ${charged === 1 ? "credit" : "credits"}. Everybody reads this chart free from now on.`
+            : "Already on file — no credits taken.",
+      });
+      if (charged > 0) void refreshUsage();
+    } catch {
+      toast.error("The year could not be fetched.");
+    } finally {
+      setLoadingYear(false);
     }
   };
 
@@ -633,9 +701,29 @@ export function MarketDetail({
           ) : (
             <div className="px-5 py-10">
               <EmptyState
-                icon={Search}
-                title="No monthly history for this market yet"
-                description="The twelve-month series arrives with the market's measured figures. Nobody has run an analysis here yet."
+                icon={CalendarRange}
+                title="The year has not been bought for this market"
+                description={
+                  stats
+                    ? `${market.name}'s headline figures are on file, but the twelve-month series is a separate call to the data provider and was not part of them. Load it once and everybody reads it free.`
+                    : `Nothing has been measured here yet. The year can still be loaded on its own — the headline figures arrive the first time somebody runs an analysis in ${market.name}.`
+                }
+                action={
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={loadingYear}
+                    onClick={() => void loadYear()}
+                    className="gap-1.5"
+                  >
+                    {loadingYear ? (
+                      <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles aria-hidden className="size-3.5" />
+                    )}
+                    Load the year · {YEAR_PRICE}
+                  </Button>
+                }
               />
             </div>
           )}

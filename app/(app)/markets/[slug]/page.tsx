@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { readMarketStore } from "@/lib/db/market-store";
 import { readPool } from "@/lib/live/comp-pool";
 import { readAreaStats } from "@/lib/live/area-stats";
+import { readMarketHistory } from "@/lib/live/market-history";
 import { buildAreas } from "@/lib/markets/areas";
 import { zipOf } from "@/lib/live/zip";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
@@ -36,9 +37,12 @@ export default async function MarketPage({
   const market = MARKET_BY_SLUG.get(slug);
   if (!market) notFound();
 
-  const [store, pool] = await Promise.all([
+  const [store, pool, history] = await Promise.all([
     readMarketStore(slug).catch(() => null),
     readPool(slug).catch(() => ({ comps: [], anchors: [] })),
+    // The twelve-month series, when it was bought apart from the
+    // headline figures — which is what a cheap backfill run leaves.
+    readMarketHistory(slug).catch(() => null),
   ]);
 
   const listings = store?.listings ?? [];
@@ -55,6 +59,7 @@ export default async function MarketPage({
       market={market}
       stats={store?.stats ?? null}
       statsAt={store?.statsAt ?? null}
+      months={store?.stats?.monthly ?? history?.months ?? []}
       listingsAt={store?.listingsAt ?? null}
       areas={areas}
       poolSize={pool.comps.length}
