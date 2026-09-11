@@ -263,6 +263,24 @@ export function DealsExplorer({
     listings: RentalListing[];
   } | null>(null);
 
+  /* Furnished's own state, declared here because the ZIP search below
+     turns the filter off when the ZIP it resolved has no city to ask
+     about. See the block further down for what answers it. */
+  const [redfin, setRedfin] = React.useState<{
+    slug: string;
+    listings: RentalListing[];
+  } | null>(null);
+  /** Why the last ask came back empty, and for which market — so the
+   *  note it puts in the toolbar is never about a market that was not
+   *  asked. */
+  const [redfinReason, setRedfinReason] = React.useState<{
+    slug: string;
+    reason: RedfinFailureReason;
+  } | null>(null);
+  /** The market Redfin has answered for — "checking" is derived from
+   *  it, so nothing is assigned synchronously inside an effect. */
+  const [redfinChecked, setRedfinChecked] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (!zip) return;
     let cancelled = false;
@@ -279,6 +297,20 @@ export function DealsExplorer({
         listings: result.listings,
       });
       if (result.reason === "monthly-cap") openUpgrade({ reason: "credits" });
+      /**
+       * Furnished is a city search, and a ZIP borrows the city it sits
+       * in. A ZIP outside every covered market has no city to borrow,
+       * and leaving the filter on then asked every row a question
+       * nobody had answered — so every row failed it and the pane
+       * emptied with no reason given. It comes back off, with the note
+       * the chip already knows how to show.
+       */
+      if (!result.market) {
+        setRedfinReason({ slug: `zip:${zip}`, reason: "no-city" });
+        setFilters((prev) =>
+          prev.furnishedOnly ? { ...prev, furnishedOnly: false } : prev
+        );
+      }
     });
     return () => {
       cancelled = true;
@@ -369,20 +401,6 @@ export function DealsExplorer({
      site's navigation footer. One request per market, cached a day.    */
   /* ---------------------------------------------------------------- */
 
-  const [redfin, setRedfin] = React.useState<{
-    slug: string;
-    listings: RentalListing[];
-  } | null>(null);
-  /** Why the last ask came back empty, and for which market — so the
-   *  note it puts in the toolbar is never about a market that was not
-   *  asked. */
-  const [redfinReason, setRedfinReason] = React.useState<{
-    slug: string;
-    reason: RedfinFailureReason;
-  } | null>(null);
-  /** The market Redfin has answered for — "checking" is derived from
-   *  it, so nothing is assigned synchronously inside an effect. */
-  const [redfinChecked, setRedfinChecked] = React.useState<string | null>(null);
 
   /**
    * The market Furnished gets asked about.
@@ -403,9 +421,15 @@ export function DealsExplorer({
 
   const furnishedTarget =
     filters.furnishedOnly && furnishedMarket ? furnishedMarket.slug : null;
+
   /** The miss for the market on screen, if the last ask was for it. */
   const redfinMiss =
-    redfinReason && redfinReason.slug === furnishedMarket?.slug ? redfinReason.reason : null;
+    redfinReason &&
+    (redfinReason.slug === furnishedMarket?.slug ||
+      redfinReason.slug === "none" ||
+      (zip !== null && redfinReason.slug === `zip:${zip}`))
+      ? redfinReason.reason
+      : null;
   /** True once Redfin has answered for the market we're asking about. */
   const redfinActive = Boolean(
     furnishedTarget && redfin?.slug === furnishedTarget
@@ -879,6 +903,15 @@ export function DealsExplorer({
             // last answer's market are forgotten, so the ask shows as
             // one in progress rather than as the old result.
             if (patch.furnishedOnly === true) {
+              // Nothing here can answer it: say so instead of turning
+              // it on over rows that will all fail the test.
+              if (!furnishedMarket) {
+                setRedfinReason({
+                  slug: zip ? `zip:${zip}` : "none",
+                  reason: "no-city",
+                });
+                return;
+              }
               setRedfinReason(null);
               setRedfinChecked(null);
             }

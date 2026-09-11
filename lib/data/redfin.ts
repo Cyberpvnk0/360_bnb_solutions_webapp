@@ -34,12 +34,26 @@ const EMPTY: RentalListing[] = [];
 
 /** Furnished rentals for one market. Never throws: a miss leaves the
  *  caller to say why, not to show the wrong inventory. */
+/**
+ * Longer than the route's own budget, and finite.
+ *
+ * The route may spend a minute reading a whole city, and the scraper
+ * behind it waits longer still, so a browser that gave up early would
+ * throw away an answer that was coming. What it must never do is wait
+ * for ever: a fetch with no deadline on a route that can be cut off
+ * mid-flight leaves the promise unsettled, and the caller that was
+ * waiting on it shows a spinner nobody can clear without a reload.
+ * That is what "Finding furnished rentals…" did for good.
+ */
+const ASK_TIMEOUT_MS = 90_000;
+
 export async function getRedfinFurnished(
   marketSlug: string
 ): Promise<RedfinResult> {
   try {
     const res = await fetch(
-      `/api/redfin?market=${encodeURIComponent(marketSlug)}&furnished=1`
+      `/api/redfin?market=${encodeURIComponent(marketSlug)}&furnished=1`,
+      { signal: AbortSignal.timeout(ASK_TIMEOUT_MS) }
     );
     const data = (await res.json().catch(() => null)) as
       | (RedfinResult & { listings?: RentalListing[] })

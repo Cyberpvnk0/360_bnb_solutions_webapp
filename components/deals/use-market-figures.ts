@@ -69,8 +69,19 @@ const marketCache = new Map<string, CityFigures | null>();
 const rowCache = new Map<string, RowFigures | null>();
 /** Rows answered since the last time the grid asked again. */
 const answered = new Set<string>();
-/** Markets with a request under way. */
-const inFlight = new Set<string>();
+/**
+ * The pass under way for a market, so a second one can WAIT rather
+ * than skip.
+ *
+ * It was a set of slugs and the second caller simply moved on, which
+ * is the bug that left cards blank: turning Furnished on while a
+ * market was still loading swaps the whole row set, the effect re-runs
+ * for the new rows, finds a pass already running for that market and
+ * skips it — and the running pass was started for rows that no longer
+ * exist, so it never asks about the new ones. Nobody asks again, and
+ * every card sits without a revenue range until the page is reloaded.
+ */
+const inFlight = new Map<string, Promise<void>>();
 
 const BATCH = 24;
 
@@ -159,25 +170,38 @@ export function useMarketFigures(wanted: WantedFigures, enabled: boolean): Figur
     let live = true;
     const run = async () => {
       for (const slug of latest.current.markets) {
-        if (inFlight.has(slug)) continue;
-        inFlight.add(slug);
-        try {
-          // The city's figures ride along with the first page of rows;
-          // whatever is still unanswered when a page lands — the rows
-          // may have grown meanwhile — goes in the next.
-          for (;;) {
-            const missing = latest.current.rows.filter(
-              (r) => r.marketSlug === slug && !answered.has(r.id)
-            );
-            if (marketCache.has(slug) && missing.length === 0) break;
-            await ask(slug, missing.slice(0, BATCH));
-            if (!live) return;
-            rerender();
-          }
-        } finally {
-          inFlight.delete(slug);
+        // Wait out a pass already running for this market, then look
+        // again: it was started for a row set that may have changed
+        // under it, and skipping is what left the new rows unasked.
+        // Bounded, so a pass that somehow never settles cannot spin
+        // this loop for ever.
+        for (let waits = 0; inFlight.has(slug) && waits < 8; waits++) {
+          await inFlight.get(slug);
         }
-        if (live) rerender();
+        // The city's figures ride along with the first page of rows;
+        // whatever is still unanswered when a page lands — the rows
+        // may have grown meanwhile — goes in the next.
+        const pass = (async () => {
+          try {
+            for (;;) {
+              const missing = latest.current.rows.filter(
+                (r) => r.marketSlug === slug && !answered.has(r.id)
+              );
+              if (marketCache.has(slug) && missing.length === 0) break;
+              await ask(slug, missing.slice(0, BATCH));
+              rerender();
+            }
+          } finally {
+            inFlight.delete(slug);
+          }
+        })();
+        inFlight.set(slug, pass);
+        // Run it to the end whether or not this effect is still the
+        // current one: the answers go in a cache every card reads, so
+        // work abandoned here is work a later render has to buy again.
+        await pass;
+        if (!live) return;
+        rerender();
       }
     };
     void run();
