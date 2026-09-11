@@ -176,8 +176,23 @@ function basisCaption(basis: DealRead["basis"]): string {
   }
 }
 
-export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
-  function ListingCard(
+/**
+ * MEMOISED, AND THE REASON IS THE GRID AROUND IT.
+ *
+ * The explorer holds the hovered id, so every card the pointer touches
+ * re-rendered every other card on screen — two dozen cards of images,
+ * menus, badges and tooltips to change the border of one. Measured on a
+ * sweep across the grid, that was seventeen long tasks and 1.3 seconds
+ * of frozen main thread.
+ *
+ * The props it is given have to stay comparison-stable for this to do
+ * anything: `listing` and `deal` come from a memoised row array, the
+ * handlers from setState and useCallback, and the ref callback from the
+ * explorer's per-id cache — an inline `ref={(el) => …}` is a new
+ * function every render and would defeat the whole thing.
+ */
+export const ListingCard = React.memo(
+  React.forwardRef<HTMLDivElement, ListingCardProps>(function ListingCard(
     {
       listing: l,
       deal,
@@ -199,6 +214,12 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
     return (
       <div
         ref={ref}
+        // How the map finds this card to scroll it into view on a pin
+        // click. A data attribute rather than a ref handed down from
+        // the grid: a ref is a prop, a fresh one each render defeats
+        // this component's memo, and one stable per listing is a cache
+        // the grid then has to keep.
+        data-listing={l.id}
         onMouseEnter={() => onHoverChange(l.id)}
         onMouseLeave={() => onHoverChange(null)}
         onClick={() => onOpen(l.id)}
@@ -339,4 +360,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
       </div>
     );
   }
+)
 );
+
+ListingCard.displayName = "ListingCard";

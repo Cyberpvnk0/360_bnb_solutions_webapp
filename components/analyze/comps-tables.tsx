@@ -36,7 +36,8 @@ import { Button } from "@/components/ui/button";
 /** A field the feed did not state. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
-const COLUMNS: DataTableColumn<LeaseComp>[] = [
+function columnsFor(marketSlug: string): DataTableColumn<LeaseComp>[] {
+  return [
   {
     key: "address",
     header: "Address",
@@ -100,18 +101,39 @@ const COLUMNS: DataTableColumn<LeaseComp>[] = [
     key: "open",
     header: "",
     align: "right",
-    cell: (c) =>
-      c.sourceUrl ? (
-        <Button asChild variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px]">
-          <Link href={c.sourceUrl} target="_blank" rel="noopener noreferrer">
-            Open
-            <ArrowUpRight aria-hidden className="size-3" />
-          </Link>
-        </Button>
-      ) : null,
+    /**
+     * Into our own Deal Finder, not out to whoever listed it.
+     *
+     * The row IS a rental this product holds, so the place to open it
+     * is the screen built to read one — its panel, with the short-let
+     * projection on it — rather than the portal's page, which has
+     * everything except the thing somebody came here for.
+     */
+    cell: (c) => (
+      <Button asChild variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px]">
+        <Link href={openHref(c, marketSlug)}>
+          Open
+          <ArrowUpRight aria-hidden className="size-3" />
+        </Link>
+      </Button>
+    ),
     className: "min-w-20",
-  },
-];
+    },
+  ];
+}
+
+/**
+ * Where a lease comp opens.
+ *
+ * The panel only exists once its search has landed, so the link has to
+ * carry one: the row's own ZIP where it has one, and the market it sits
+ * in otherwise. A bare ?listing= would arrive at an empty grid with an
+ * id nothing on the page matches.
+ */
+function openHref(c: LeaseComp, marketSlug: string): string {
+  const where = c.zip ? `zip=${c.zip}` : `market=${marketSlug}`;
+  return `/deals?${where}&listing=${encodeURIComponent(c.id)}`;
+}
 
 export function LtrCompsTable({
   comps,
@@ -158,7 +180,7 @@ export function LtrCompsTable({
       {comps.length > 0 ? (
         <>
           <DataTable
-            columns={COLUMNS}
+            columns={columnsFor(marketSlug)}
             rows={comps}
             rowKey={(c) => c.id}
             initialSort={{ key: "distance", dir: "asc" }}

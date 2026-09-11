@@ -44,6 +44,7 @@ import {
 import type { MarketTerrain, RegulationStatus } from "@/lib/mock/types";
 import type { StoredMarketStats } from "@/lib/db/market-store";
 import { MarketsMap } from "./markets-map";
+import { useSession } from "@/components/providers/session-provider";
 import { MeasureMarketButton } from "./measure-market-button";
 import { SaveMarketButton } from "./save-market-button";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
@@ -72,6 +73,10 @@ const PRESETS: { id: MarketSort; label: string; hint: string }[] = [
 
 export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const router = useRouter();
+  /** Signed out there is no measure button, so the dash has to stay
+   *  put: swapping it for something that renders nothing would empty
+   *  the cell on hover. */
+  const { user } = useSession();
   const [query, setQuery] = React.useState<MarketQuery>(EMPTY_QUERY);
   const [sort, setSort] = React.useState<MarketSort>("revenue");
   const [panel, setPanel] = React.useState<string | null>(null);
@@ -124,20 +129,25 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
 
   const patch = (next: Partial<MarketQuery>) =>
     setQuery((prev) => ({ ...prev, ...next }));
-  /** A market somebody just bought, in the shape a row reads. */
-  const measured = (slug: string, stats: StoredMarketStats, at: string | null) =>
-    setFresh((prev) => ({
-      ...prev,
-      [slug]: {
-        adr: stats.adr,
-        occupancy: stats.occupancy,
-        revenue: stats.revenue,
-        revpar: stats.revpar,
-        activeListings: stats.activeListings,
-        scope: stats.scope,
-        at,
-      },
-    }));
+  /** A market somebody just bought, in the shape a row reads. Stable
+   *  because the columns memo closes over it, and every row's memo
+   *  closes over the columns. */
+  const measured = React.useCallback(
+    (slug: string, stats: StoredMarketStats, at: string | null) =>
+      setFresh((prev) => ({
+        ...prev,
+        [slug]: {
+          adr: stats.adr,
+          occupancy: stats.occupancy,
+          revenue: stats.revenue,
+          revpar: stats.revpar,
+          activeListings: stats.activeListings,
+          scope: stats.scope,
+          at,
+        },
+      })),
+    []
+  );
   const chip = (id: string) => ({
     open: panel === id,
     onOpenChange: (open: boolean) => setPanel(open ? id : null),
@@ -192,9 +202,30 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         key: "revenue",
         header: "Revenue/yr",
         align: "right",
+        // Where the figure is missing is where the way to get it
+        // belongs. On hover, in place of the dash — no extra column,
+        // so the market names keep their width.
         cell: (r) =>
-          r.measured?.revenue != null ? fmtMoneyShort(r.measured.revenue) : NONE,
+          r.measured?.revenue != null ? (
+            fmtMoneyShort(r.measured.revenue)
+          ) : user ? (
+            <>
+              <span className="group-hover:hidden">{NONE}</span>
+              <span className="hidden group-hover:inline-flex">
+                <MeasureMarketButton
+                  slug={r.slug}
+                  name={r.name}
+                  variant="outline"
+                  compact
+                  onMeasured={(stats, at) => measured(r.slug, stats, at)}
+                />
+              </span>
+            </>
+          ) : (
+            NONE
+          ),
         sortValue: (r) => r.measured?.revenue ?? -1,
+        className: "min-w-28",
       },
       {
         key: "adr",
@@ -244,7 +275,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         sortValue: (r) => r.spread ?? -Infinity,
       },
     ],
-    []
+    [measured, user]
   );
 
   const exportCsv = () => {
@@ -479,7 +510,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
                 {RULE_LABEL[chosen.regulation.status]} · {chosen.regulation.note}
               </p>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                <Button asChild size="sm" className="gap-1.5">
+                <Button asChild variant="brand" size="sm" className="gap-1.5">
                   <Link href={`/markets/${chosen.slug}`}>
                     Open market
                     <ArrowUpRight aria-hidden className="size-3.5" />

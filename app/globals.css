@@ -59,6 +59,10 @@
   /* A shade above the brand red, so a gradient has somewhere to come
      from. Deliberately close to --select: the same red, lifted. */
   --red-lift: #d7263d;
+  /* Where the gradient lands, which is NOT --red-deep (#8f1521): that
+     one is dark enough to read as brown at the corner of a button. A
+     shade under the brand red, and no further. */
+  --red-sink: #ad2131;
 
   --accent: var(--hover);
   --accent-foreground: var(--text);
@@ -76,8 +80,8 @@
    * the one chip that says what is selected, the pill that says where a
    * row goes. Anywhere else and it stops meaning "act here".
    */
-  --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, var(--red-deep) 100%);
-  --grad-brand-hover: linear-gradient(140deg, #e03b4f 0%, var(--red-lift) 55%, #a81826 100%);
+  --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, var(--red-sink) 100%);
+  --grad-brand-hover: linear-gradient(140deg, #e03b4f 0%, var(--red-lift) 55%, #bd2536 100%);
   /* The same idea in the product's gold, for the one action that is
      deliberately gold rather than brand red. Light enough throughout
      that the dark ink on it stays legible at every stop. */
@@ -154,13 +158,14 @@
   --hover-strong: #3a3a42;
   --primary-hover: #e0303f;
   --red-lift: #e8404f;
+  --red-sink: #b8283a;
 
   --accent: var(--hover);
   --accent-foreground: var(--text);
   --destructive: var(--red-muted);
   --destructive-foreground: var(--text);
-  --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, #9d1826 100%);
-  --grad-brand-hover: linear-gradient(140deg, #f2545f 0%, var(--red-lift) 55%, #b01c2b 100%);
+  --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, var(--red-sink) 100%);
+  --grad-brand-hover: linear-gradient(140deg, #f2545f 0%, var(--red-lift) 55%, #c72d40 100%);
   --grad-gold: linear-gradient(140deg, #f0c862 0%, var(--gold-fill) 55%, #cf9f2c 100%);
   --grad-gold-hover: linear-gradient(140deg, #f7d67f 0%, #ecc154 55%, #dcac38 100%);
   --input: var(--border);

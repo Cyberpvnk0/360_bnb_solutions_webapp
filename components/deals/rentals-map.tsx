@@ -388,10 +388,24 @@ export function RentalsMap({
     safeDrawBoundary(map, boundary);
   }, [boundary]);
 
-  // Card hover / pill click → pin highlight (map hover feeds back
-  // through onHover, so both directions stay in sync).
+  /**
+   * Card hover / pill click → pin highlight (map hover feeds back
+   * through onHover, so both directions stay in sync).
+   *
+   * ONLY THE PINS THAT CHANGED. This fires on every card the pointer
+   * crosses, and walking every pin on screen to light one is work
+   * repeated for nothing — the three ids involved are the two from last
+   * time and the two from now.
+   */
+  const litRef = React.useRef<{ hovered: string | null; selected: string | null }>({
+    hovered: null,
+    selected: null,
+  });
   React.useEffect(() => {
-    for (const [id, el] of markerElsRef.current) {
+    const paint = (id: string | null) => {
+      if (!id) return;
+      const el = markerElsRef.current.get(id);
+      if (!el) return;
       const selected = id === selectedId;
       const hot = id === hoveredId && !selected;
       el.classList.toggle("is-hot", hot);
@@ -401,8 +415,25 @@ export function RentalsMap({
         "z-index",
         selected ? "40" : hot ? "30" : "10"
       );
+    };
+    const was = litRef.current;
+    for (const id of new Set([was.hovered, was.selected, hoveredId, selectedId])) {
+      paint(id);
     }
-  }, [hoveredId, selectedId, listings]);
+    litRef.current = { hovered: hoveredId, selected: selectedId };
+  }, [hoveredId, selectedId]);
+
+  /** A new set of pins starts unlit, so nothing is remembered about
+   *  the old ones. Separate from the effect above, which must not know
+   *  about the listings at all — that dependency is what made it walk
+   *  every pin in the first place. */
+  React.useEffect(() => {
+    for (const [id, el] of markerElsRef.current) {
+      el.classList.remove("is-hot", "is-selected");
+      (el.parentElement ?? el).style.setProperty("z-index", "10");
+      void id;
+    }
+  }, [listings]);
 
   return (
     <div className={cn("relative min-w-0 bg-secondary/60", className)}>

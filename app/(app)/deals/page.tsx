@@ -7,11 +7,16 @@ export const metadata = { title: "Deal Finder" };
 export default async function DealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ market?: string; zip?: string; list?: string }>;
+  searchParams: Promise<{
+    market?: string;
+    zip?: string;
+    list?: string;
+    listing?: string;
+  }>;
 }) {
   // No inventory ships with the page — Deal Finder is search-first, so
   // rentals load for the market or ZIP the user actually asks for.
-  const [{ market, zip, list }, markets, totals] = await Promise.all([
+  const [{ market, zip, list, listing }, markets, totals] = await Promise.all([
     searchParams,
     getMarkets(),
     getRentalTotals(),
@@ -45,6 +50,13 @@ export default async function DealsPage({
       totals={totals}
       initialQuery={initialQuery}
       initialZip={area}
+      /**
+       * ?listing=<id> arrives from a lease comp on an analysis: open
+       * that rental's panel once the search it came with has landed.
+       * The rental is not on this page yet — the ZIP search brings it
+       * in — so this is an id to watch for rather than a row.
+       */
+      initialListing={listing ?? null}
       // ?list=<id> arrives from the Saved page: open on that list's rows.
       initialList={list ?? null}
     />

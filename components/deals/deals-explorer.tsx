@@ -203,6 +203,8 @@ interface DealsExplorerProps {
    *  ZIP search itself rather than the text box, so the page arrives
    *  already searching instead of merely pre-filled. */
   initialZip?: string | null;
+  /** A rental to open the panel on, from ?listing=. */
+  initialListing?: string | null;
   /** A saved list to open on, from ?list= — the Saved page's way in. */
   initialList?: string | null;
 }
@@ -212,6 +214,7 @@ export function DealsExplorer({
   totals,
   initialQuery = "",
   initialZip = null,
+  initialListing = null,
   initialList = null,
 }: DealsExplorerProps) {
   const [filters, setFilters] = React.useState<DealFilters>(
@@ -224,7 +227,7 @@ export function DealsExplorer({
   const [sort, setSort] = React.useState<SortKey>("spread");
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedId, setSelectedId] = React.useState<string | null>(initialListing);
   /** The map's viewport once the person has moved it; the grid shows
    *  only rentals inside. Null until they do, and again after a new
    *  search frames the map. */
@@ -232,7 +235,11 @@ export function DealsExplorer({
   /** Bumped by "Show all" so the map re-frames the searched area. */
   const [fitNonce, setFitNonce] = React.useState(0);
   const [mobilePane, setMobilePane] = React.useState<"list" | "map">("list");
-  const [detailId, setDetailId] = React.useState<string | null>(null);
+  // Seeded from ?listing=, so a lease comp on an analysis opens that
+  // rental's panel the moment the search it arrived with resolves. The
+  // panel renders off `detailRow`, which stays undefined until the row
+  // is on the page — so this is simply set and waited on.
+  const [detailId, setDetailId] = React.useState<string | null>(initialListing);
   /** The listing whose card is docked on the map — set by a pin click,
    *  cleared by its close button or a click on the map itself. */
   const [dockId, setDockId] = React.useState<string | null>(null);
@@ -248,7 +255,6 @@ export function DealsExplorer({
       .filter((m): m is Market => m !== undefined)
       .sort((a, b) => a.name.localeCompare(b.name) || a.stateCode.localeCompare(b.stateCode));
   }, [markets]);
-  const cardRefs = React.useRef(new Map<string, HTMLDivElement>());
   const listRef = React.useRef<HTMLDivElement>(null);
 
   // ZIP mode: a 5-digit search hits the live feed directly (ZIP search
@@ -749,8 +755,12 @@ export function DealsExplorer({
     setSelectedId(id);
     setDockId(id);
     requestAnimationFrame(() => {
-      cardRefs.current
-        .get(id)
+      // Found in the DOM by the attribute the card puts on itself. The
+      // grid used to hold a map of elements keyed by listing id, which
+      // meant a ref prop per card — and a ref prop is what a memoised
+      // card cannot have changing every render.
+      listRef.current
+        ?.querySelector(`[data-listing="${CSS.escape(id)}"]`)
         ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
   }, []);
@@ -775,11 +785,6 @@ export function DealsExplorer({
         : null,
     [detailRow, markets]
   );
-
-  const setRef = (key: string) => (el: HTMLDivElement | null) => {
-    if (el) cardRefs.current.set(key, el);
-    else cardRefs.current.delete(key);
-  };
 
   /** Nothing searched, no list open — the opening state. */
   const idle = !zip && !liveTarget && !listFilter;
@@ -1268,7 +1273,6 @@ export function DealsExplorer({
                 {visible.map((r, i) => (
                   <ListingCard
                     key={r.listing.id}
-                    ref={setRef(r.listing.id)}
                     listing={r.listing}
                     priority={i < EAGER_IMAGES}
                     deal={r.deal}
@@ -1310,7 +1314,10 @@ export function DealsExplorer({
         listing={detailRow?.listing ?? null}
         market={detailMarket}
         deal={detailRow?.deal ?? null}
-        open={detailId !== null}
+        // Not simply `detailId !== null`: an id from ?listing= is set
+        // before its search has landed, and opening a panel with no
+        // listing behind it is an empty sheet over an empty grid.
+        open={detailRow !== undefined}
         onOpenChange={(next) => {
           if (!next) setDetailId(null);
         }}

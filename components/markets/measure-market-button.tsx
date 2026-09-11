@@ -35,6 +35,7 @@ export function MeasureMarketButton({
   className,
   variant = "default",
   size = "sm",
+  compact = false,
 }: {
   slug: string;
   name: string;
@@ -42,8 +43,12 @@ export function MeasureMarketButton({
    *  them without a reload. */
   onMeasured?: (stats: StoredMarketStats, at: string | null) => void;
   className?: string;
-  variant?: "default" | "outline" | "secondary" | "ghost";
+  variant?: "default" | "brand" | "outline" | "secondary" | "ghost";
   size?: "sm" | "default";
+  /** Inside a table cell: the word alone, with the price on the title.
+   *  A column wide enough for "Measure · 1 credit" is a column taken
+   *  off the market names beside it. */
+  compact?: boolean;
 }) {
   const { user, creditsRemaining, credits, openUpgrade, refreshUsage } = useSession();
   const [busy, setBusy] = React.useState(false);
@@ -114,14 +119,15 @@ export function MeasureMarketButton({
         e.stopPropagation();
         void run();
       }}
-      className={cn("gap-1.5", className)}
+      aria-label={`Measure ${name}, ${MEASURE_PRICE}`}
+      className={cn("gap-1.5", compact && "h-7 px-2 text-[11px]", className)}
     >
       {busy ? (
-        <Loader2 aria-hidden className="size-3.5 animate-spin" />
+        <Loader2 aria-hidden className={compact ? "size-3 animate-spin" : "size-3.5 animate-spin"} />
       ) : (
-        <Sparkles aria-hidden className="size-3.5" />
+        <Sparkles aria-hidden className={compact ? "size-3" : "size-3.5"} />
       )}
-      Measure · {MEASURE_PRICE}
+      {compact ? "Measure" : `Measure · ${MEASURE_PRICE}`}
     </Button>
   );
 }

@@ -565,12 +565,12 @@ export function MarketDetail({
             <MeasureMarketButton
               slug={market.slug}
               name={market.name}
-              variant="outline"
+              variant="brand"
               onMeasured={() => router.refresh()}
             />
           )}
           <SaveMarketButton slug={market.slug} name={market.name} />
-          <Button asChild size="sm" className="gap-1.5">
+          <Button asChild variant="brand" size="sm" className="gap-1.5">
             <Link href={dealsHref}>
               <Binoculars aria-hidden className="size-3.5" />
               Open in Deal Finder
