@@ -3,6 +3,7 @@ import {
   Bookmark,
   Columns3,
   Crosshair,
+  Globe2,
   Settings,
   ShieldCheck,
   type LucideIcon,
@@ -25,6 +26,15 @@ export const NAV_MAIN: NavItem[] = [
     label: "Deal Finder",
     icon: Binoculars,
     match: (p) => p.startsWith("/deals"),
+  },
+  // Where to look, before which property: the one question the Deal
+  // Finder cannot answer, because a city's rule on nightly letting is
+  // not a fact about any listing in it.
+  {
+    href: "/markets",
+    label: "Markets",
+    icon: Globe2,
+    match: (p) => p.startsWith("/markets"),
   },
   {
     href: "/analyze",
