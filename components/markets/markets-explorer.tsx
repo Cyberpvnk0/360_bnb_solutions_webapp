@@ -55,14 +55,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 /** A figure the vendor did not measure. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
 const PRESETS: { id: MarketSort; label: string; hint: string }[] = [
-  { id: "measured", label: "Measured first", hint: "Markets the platform holds figures for, biggest year first." },
   { id: "revenue", label: "Highest revenue", hint: "What a typical listing earned there over the last twelve months." },
   { id: "spread", label: "Widest spread", hint: "Measured letting revenue less a year of the estimated lease." },
   { id: "occupancy", label: "Best occupancy", hint: "The share of nights listings there are actually booked." },
@@ -73,7 +71,7 @@ const PRESETS: { id: MarketSort; label: string; hint: string }[] = [
 export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const router = useRouter();
   const [query, setQuery] = React.useState<MarketQuery>(EMPTY_QUERY);
-  const [sort, setSort] = React.useState<MarketSort>("measured");
+  const [sort, setSort] = React.useState<MarketSort>("revenue");
   const [panel, setPanel] = React.useState<string | null>(null);
   /** Open. This page was asked for as a map view, and the country is
    *  half of what four hundred rows say — the toggle is for the
@@ -82,10 +80,6 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   /** The market lit on the map, from a pin or a row. */
   const [selected, setSelected] = React.useState<string | null>(null);
 
-  const states = React.useMemo(
-    () => [...new Set(rows.map((r) => r.stateCode))].sort(),
-    [rows]
-  );
   const measuredCount = React.useMemo(
     () => rows.filter((r) => r.measured).length,
     [rows]
@@ -267,16 +261,6 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         </div>
 
         <MultiChip
-          {...chip("state")}
-          label="State"
-          summary={query.states.length > 0 ? `${query.states.length} selected` : undefined}
-          options={states.map((s) => ({ value: s, label: s }))}
-          selected={query.states}
-          onToggle={(v) => patch({ states: toggle(query.states, v) })}
-          onClear={() => patch({ states: [] })}
-          grid
-        />
-        <MultiChip
           {...chip("rules")}
           label="Regulation"
           summary={
@@ -302,15 +286,6 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           onToggle={(v) => patch({ terrain: toggle(query.terrain, v as MarketTerrain) })}
           onClear={() => patch({ terrain: [] })}
         />
-
-        <label className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border bg-card px-3.5 text-xs font-medium text-muted-foreground">
-          <Switch
-            checked={query.measuredOnly}
-            onCheckedChange={(on) => patch({ measuredOnly: on })}
-            aria-label="Only markets with measured figures"
-          />
-          Measured only
-        </label>
 
         {isFiltered(query) ? (
           <button
@@ -473,7 +448,6 @@ function MultiChip({
   onClear,
   open,
   onOpenChange,
-  grid = false,
 }: {
   label: string;
   summary?: string;
@@ -483,8 +457,6 @@ function MultiChip({
   onClear: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** For the long list: three across rather than fifty down. */
-  grid?: boolean;
 }) {
   const active = selected.length > 0;
   return (
@@ -519,12 +491,7 @@ function MultiChip({
             </button>
           ) : null}
         </div>
-        <div
-          className={cn(
-            "max-h-72 overflow-y-auto",
-            grid ? "grid grid-cols-4 gap-1" : "flex flex-col gap-0.5"
-          )}
-        >
+        <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
           {options.map((o) => {
             const on = selected.includes(o.value);
             return (
@@ -535,7 +502,6 @@ function MultiChip({
                 onClick={() => onToggle(o.value)}
                 className={cn(
                   "rounded-sm px-2 py-1.5 text-left text-xs transition-colors duration-150",
-                  grid && "text-center tabular",
                   on
                     ? "bg-gold-fill/15 font-medium text-foreground"
                     : "text-muted-foreground hover:bg-secondary hover:text-foreground"

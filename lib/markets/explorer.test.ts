@@ -119,10 +119,6 @@ describe("sorting", () => {
     expect(sortMarkets(rows, "listings").map((r) => r.slug)).toEqual(["a", "c", "b"]);
   });
 
-  it("opens on measured first, biggest year down", () => {
-    expect(sortMarkets(rows, "measured").map((r) => r.slug)).toEqual(["c", "a", "b"]);
-  });
-
   it("sorts by name when asked, measured or not", () => {
     expect(sortMarkets(rows, "name").map((r) => r.slug)).toEqual(["a", "b", "c"]);
   });
@@ -159,21 +155,22 @@ describe("filtering", () => {
     expect(marketMatches(rows[0], "denver")).toBe(false);
   });
 
-  it("narrows by state, rule and market type", () => {
-    expect(filterMarkets(rows, { ...EMPTY_QUERY, states: ["CO"] })).toHaveLength(1);
+  it("narrows by rule and market type", () => {
     expect(filterMarkets(rows, { ...EMPTY_QUERY, rules: ["banned"] })[0].slug).toBe("denver");
     expect(filterMarkets(rows, { ...EMPTY_QUERY, terrain: ["coastal"] })[0].slug).toBe("jax");
   });
 
-  it("can hide everything nobody has measured", () => {
-    expect(filterMarkets(rows, { ...EMPTY_QUERY, measuredOnly: true }).map((r) => r.slug)).toEqual([
-      "jax",
+  it("narrows to a state through the search box, which has no chip", () => {
+    expect(filterMarkets(rows, { ...EMPTY_QUERY, query: "CO" }).map((r) => r.slug)).toEqual([
+      "denver",
     ]);
+    expect(filterMarkets(rows, { ...EMPTY_QUERY, query: "colorado" })).toHaveLength(1);
   });
 
   it("knows when it is doing nothing", () => {
     expect(isFiltered(EMPTY_QUERY)).toBe(false);
     expect(isFiltered({ ...EMPTY_QUERY, query: " " })).toBe(false);
-    expect(isFiltered({ ...EMPTY_QUERY, measuredOnly: true })).toBe(true);
+    expect(isFiltered({ ...EMPTY_QUERY, rules: ["banned"] })).toBe(true);
+    expect(isFiltered({ ...EMPTY_QUERY, terrain: ["metro"] })).toBe(true);
   });
 });

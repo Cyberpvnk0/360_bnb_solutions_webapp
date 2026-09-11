@@ -24,9 +24,9 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Binoculars,
-  CalendarRange,
   Loader2,
   MapPin,
+  Ruler,
   Search,
   Sparkles,
 } from "lucide-react";
@@ -55,7 +55,7 @@ import {
   fmtPct,
   fmtWhen,
 } from "@/lib/format";
-import { AREA_MEASURE_CREDITS, MARKET_HISTORY_CREDITS } from "@/config/app";
+import { AREA_MEASURE_CREDITS } from "@/config/app";
 import { HINTS } from "@/lib/copy/hints";
 import {
   AREA_SORTS,
@@ -67,6 +67,7 @@ import {
   type MeasuredArea,
 } from "@/lib/markets/areas";
 import { RULE_LABEL, RULE_TONE, TERRAIN_LABEL } from "@/lib/markets/explorer";
+import { MIN_RENTALS, bestSize, type SizeRow } from "@/lib/markets/sizes";
 import { benchmark2brInputs } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import type { StoredMarketStats } from "@/lib/db/market-store";
@@ -90,9 +91,6 @@ import { cn } from "@/lib/utils";
 /** What a measure costs, said the way a reader says it. */
 const PRICE = `${AREA_MEASURE_CREDITS} ${AREA_MEASURE_CREDITS === 1 ? "credit" : "credits"}`;
 
-/** What the twelve-month series costs, likewise. */
-const YEAR_PRICE = `${MARKET_HISTORY_CREDITS} ${MARKET_HISTORY_CREDITS === 1 ? "credit" : "credits"}`;
-
 /** A figure nobody has measured. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
@@ -106,6 +104,9 @@ interface Props {
   months: LiveMarketMonth[];
   listingsAt: string | null;
   areas: AreaRow[];
+  /** What each bedroom count earns and costs here, from the same real
+   *  listings the areas are built from. */
+  sizes: SizeRow[];
   /** Short-let listings this product has seen in the market, total. */
   poolSize: number;
 }
@@ -178,15 +179,13 @@ export function MarketDetail({
   months,
   listingsAt,
   areas,
+  sizes,
   poolSize,
 }: Props) {
   const { creditsRemaining, credits, openUpgrade, refreshUsage } = useSession();
   const [sort, setSort] = React.useState<AreaSort>("revenue");
   const [trend, setTrend] = React.useState<Trend>("adr");
-  /** The year, as the page got it — replaced in place when somebody
-   *  buys it, so the chart draws without a reload. */
-  const [year, setYear] = React.useState<LiveMarketMonth[]>(months);
-  const [loadingYear, setLoadingYear] = React.useState(false);
+
   /** ZIPs bought in this session, merged over what the page arrived
    *  with so a row updates without a reload. */
   const [bought, setBought] = React.useState<Record<string, MeasuredArea>>({});
@@ -232,13 +231,13 @@ export function MarketDetail({
 
   const monthly = React.useMemo(
     () =>
-      year.map((m) => ({
+      months.map((m) => ({
         month: m.month,
         adr: Math.round(m.adr),
         occupancy: Math.round(m.occupancy * 100),
         revpar: Math.round(m.revpar ?? revpar(m.adr, m.occupancy)),
       })),
-    [year]
+    [months]
   );
 
   /**
@@ -250,8 +249,7 @@ export function MarketDetail({
    * this one is a courtesy, and a stale client must not be able to
    * spend anything.
    */
-  const affordable =
-    creditsRemaining + credits >= Math.min(AREA_MEASURE_CREDITS, MARKET_HISTORY_CREDITS);
+  const affordable = creditsRemaining + credits >= AREA_MEASURE_CREDITS;
 
   const measureArea = async (row: AreaRow) => {
     if (!affordable) {
@@ -305,58 +303,80 @@ export function MarketDetail({
     }
   };
 
-  /**
-   * Buy this market's twelve months.
-   *
-   * Separate from the headline figures because the feed sells them
-   * separately: a backfill run at the cheap setting buys the figures
-   * and not the year, which is the right trade across four hundred
-   * markets and leaves this chart empty until somebody wants it.
-   */
-  const loadYear = async () => {
-    if (!affordable) {
-      openUpgrade({ reason: "credits" });
-      return;
-    }
-    setLoadingYear(true);
-    try {
-      const res = await fetch("/api/markets/history", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ market: market.slug }),
-      });
-      const data = (await res.json().catch(() => null)) as
-        | {
-            ok?: boolean;
-            months?: LiveMarketMonth[];
-            message?: string;
-            reason?: string;
-            charged?: number;
-          }
-        | null;
-      if (res.status === 402 || data?.reason === "no-credits") {
-        openUpgrade({ reason: "credits" });
-        return;
-      }
-      if (!res.ok || !data?.ok || !data.months?.length) {
-        toast.error(data?.message ?? "The year could not be fetched.");
-        return;
-      }
-      setYear(data.months);
-      const charged = data.charged ?? 0;
-      toast.success(`${market.name}'s year loaded`, {
-        description:
-          charged > 0
-            ? `${charged} ${charged === 1 ? "credit" : "credits"}. Everybody reads this chart free from now on.`
-            : "Already on file — no credits taken.",
-      });
-      if (charged > 0) void refreshUsage();
-    } catch {
-      toast.error("The year could not be fetched.");
-    } finally {
-      setLoadingYear(false);
-    }
-  };
+  const best = React.useMemo(() => bestSize(sizes), [sizes]);
+
+  const sizeColumns = React.useMemo<DataTableColumn<SizeRow>[]>(
+    () => [
+      {
+        key: "size",
+        header: "Size",
+        cell: (r) => (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="font-sans font-medium text-foreground">{r.label}</span>
+            {best && r.bedrooms === best.bedrooms ? (
+              <StatusChip tone="gold">Widest</StatusChip>
+            ) : null}
+          </span>
+        ),
+        className: "w-full min-w-28 max-w-0",
+      },
+      {
+        key: "seen",
+        header: "Seen",
+        align: "right",
+        cell: (r) =>
+          r.comps > 0 ? (
+            <span className="text-muted-foreground">{fmtNum(r.comps)}</span>
+          ) : (
+            NONE
+          ),
+      },
+      {
+        key: "adr",
+        header: "Nightly",
+        align: "right",
+        cell: (r) => (r.adr === null ? NONE : fmtMoney(r.adr)),
+      },
+      {
+        key: "occ",
+        header: "Occupancy",
+        align: "right",
+        cell: (r) => (r.occupancy === null ? NONE : fmtPct(r.occupancy)),
+      },
+      {
+        key: "rev",
+        header: "Revenue/yr",
+        align: "right",
+        cell: (r) => (r.revenue === null ? NONE : fmtMoneyShort(r.revenue)),
+      },
+      {
+        key: "rent",
+        header: "Asking rent",
+        align: "right",
+        cell: (r) =>
+          r.rent === null ? (
+            NONE
+          ) : (
+            <span className="text-muted-foreground">{fmtMoney(r.rent)}</span>
+          ),
+      },
+      {
+        key: "spread",
+        header: "Spread/yr",
+        align: "right",
+        cell: (r) =>
+          r.spread === null ? (
+            NONE
+          ) : (
+            <span className={r.spread >= 0 ? "text-gold" : "text-neg"}>
+              {r.spread < 0 ? "−" : ""}
+              {fmtMoneyShort(Math.abs(r.spread))}
+            </span>
+          ),
+      },
+    ],
+    [best]
+  );
 
   const columns = React.useMemo<DataTableColumn<AreaRow>[]>(
     () => [
@@ -619,114 +639,47 @@ export function MarketDetail({
       </section>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-        {/* Seasonality, only where twelve real months exist. A chart of
-            a seeded curve would be decoration with an axis on it.
-
-            ONE SERIES, ONE AXIS. A rate and an occupancy on the same
-            picture needs two y-scales, and two y-scales let a reader
-            see a crossing that is an artefact of where the axes were
-            put. The chips switch the measure instead. */}
+        {/* What size to lease — the question a market is actually
+            opened with, answered entirely from listings already on
+            hand. Nothing here costs a call. */}
         <section className="min-w-0 overflow-hidden rounded-sm border border-border bg-card elev-card">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-3.5">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-foreground">
-                Through the year
-              </h2>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Twelve measured months in {market.name}.
-              </p>
-            </div>
-            {monthly.length > 0 ? (
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {TRENDS.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    aria-pressed={trend === t.id}
-                    title={t.hint}
-                    onClick={() => setTrend(t.id)}
-                    className={cn(
-                      "shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150",
-                      trend === t.id
-                        ? "border-select bg-select text-white"
-                        : "border-border bg-card text-muted-foreground hover:border-select/40 hover:text-foreground"
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+          <div className="border-b border-border px-5 py-3.5">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              What size to lease
+              <InfoHint label="the size table">
+                The middle nightly rate and occupancy of the short-let listings
+                this product has seen at each size, against the middle asking
+                lease of the rentals listed at that size. Both sides are real
+                listings and both are samples that grow as the market gets
+                worked — never the whole supply.
+              </InfoHint>
+            </h2>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {best
+                ? `${best.label} clears the widest spread here — ${fmtMoneyShort(best.spread ?? 0)} a year over a ${fmtMoney(best.rent ?? 0)} lease.`
+                : `Rates need ${MIN_COMPS} short-let listings seen and a lease needs ${MIN_RENTALS} rentals before a size can be read.`}
+            </p>
           </div>
-          {monthly.length > 0 ? (
-            <div className="px-2 pb-4 pt-5">
-              <ResponsiveContainer width="100%" height={252}>
-                <AreaChart data={monthly} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-                  <CartesianGrid {...GRID_PROPS} />
-                  <XAxis
-                    {...AXIS_PROPS}
-                    dataKey="month"
-                    tickFormatter={(m: string) => fmtMonth(m)}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    {...AXIS_PROPS}
-                    width={52}
-                    domain={trend === "occupancy" ? [0, 100] : [0, "auto"]}
-                    tickFormatter={(v: number) => showTrend(v, trend)}
-                  />
-                  <Tooltip
-                    cursor={{ stroke: CHART.grid }}
-                    content={asTooltipContent(
-                      makeTooltip(
-                        (value) => showTrend(value, trend),
-                        (label) => fmtMonth(String(label))
-                      )
-                    )}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey={trend}
-                    name={TRENDS.find((t) => t.id === trend)?.label ?? ""}
-                    stroke={CHART.primary}
-                    strokeWidth={2}
-                    fill={CHART.areaFill}
-                    fillOpacity={CHART.areaFillOpacity}
-                    dot={false}
-                    activeDot={{ r: 4, strokeWidth: 0, fill: CHART.primary }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="px-5 py-10">
+          <DataTable
+            columns={sizeColumns}
+            rows={sizes}
+            rowKey={(r) => String(r.bedrooms)}
+            rowClassName={(r) =>
+              best && r.bedrooms === best.bedrooms ? "bg-gold-fill/[0.07]" : undefined
+            }
+            emptyState={
               <EmptyState
-                icon={CalendarRange}
-                title="The year has not been bought for this market"
-                description={
-                  stats
-                    ? `${market.name}'s headline figures are on file, but the twelve-month series is a separate call to the data provider and was not part of them. Load it once and everybody reads it free.`
-                    : `Nothing has been measured here yet. The year can still be loaded on its own — the headline figures arrive the first time somebody runs an analysis in ${market.name}.`
-                }
-                action={
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={loadingYear}
-                    onClick={() => void loadYear()}
-                    className="gap-1.5"
-                  >
-                    {loadingYear ? (
-                      <Loader2 aria-hidden className="size-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles aria-hidden className="size-3.5" />
-                    )}
-                    Load the year · {YEAR_PRICE}
-                  </Button>
-                }
+                icon={Ruler}
+                title="Nothing to compare yet"
+                description={`Sizes are read from real listings — the short-let comps analyses leave behind and the rentals a search brings in. Search ${market.name} in the Deal Finder and run an analysis, and this fills in for everybody.`}
               />
-            </div>
-          )}
+            }
+          />
+          <p className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">
+            Spread is a year at the rate seen, less a year of the lease listed.
+            It is the size comparison, not a quote on any unit — run a property
+            for that.
+          </p>
         </section>
 
         {/* What those figures mean for the unit this product is about. */}
@@ -785,6 +738,89 @@ export function MarketDetail({
           </div>
         </aside>
       </div>
+
+      {/* Seasonality, ONLY where the stats row already carries twelve
+          months — a market measured at the full setting. The series is
+          a separate billed call and this page does not make it, so a
+          market without one shows no chart rather than an empty box
+          asking to be paid for.
+
+          ONE SERIES, ONE AXIS. A rate and an occupancy on the same
+          picture needs two y-scales, and two y-scales let a reader see
+          a crossing that is an artefact of where the axes were put.
+          The chips switch the measure instead. */}
+      {monthly.length > 0 ? (
+        <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-3.5">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground">
+                Through the year
+              </h2>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Twelve measured months in {market.name}.
+              </p>
+            </div>
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {TRENDS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={trend === t.id}
+                  title={t.hint}
+                  onClick={() => setTrend(t.id)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150",
+                    trend === t.id
+                      ? "border-select bg-select text-white"
+                      : "border-border bg-card text-muted-foreground hover:border-select/40 hover:text-foreground"
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="px-2 pb-4 pt-5">
+            <ResponsiveContainer width="100%" height={252}>
+              <AreaChart data={monthly} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+                <CartesianGrid {...GRID_PROPS} />
+                <XAxis
+                  {...AXIS_PROPS}
+                  dataKey="month"
+                  tickFormatter={(m: string) => fmtMonth(m)}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  {...AXIS_PROPS}
+                  width={52}
+                  domain={trend === "occupancy" ? [0, 100] : [0, "auto"]}
+                  tickFormatter={(v: number) => showTrend(v, trend)}
+                />
+                <Tooltip
+                  cursor={{ stroke: CHART.grid }}
+                  content={asTooltipContent(
+                    makeTooltip(
+                      (value) => showTrend(value, trend),
+                      (label) => fmtMonth(String(label))
+                    )
+                  )}
+                />
+                <Area
+                  type="monotone"
+                  dataKey={trend}
+                  name={TRENDS.find((t) => t.id === trend)?.label ?? ""}
+                  stroke={CHART.primary}
+                  strokeWidth={2}
+                  fill={CHART.areaFill}
+                  fillOpacity={CHART.areaFillOpacity}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0, fill: CHART.primary }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      ) : null}
 
       {/* The areas. */}
       <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">

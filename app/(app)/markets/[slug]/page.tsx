@@ -12,8 +12,8 @@ import { notFound } from "next/navigation";
 import { readMarketStore } from "@/lib/db/market-store";
 import { readPool } from "@/lib/live/comp-pool";
 import { readAreaStats } from "@/lib/live/area-stats";
-import { readMarketHistory } from "@/lib/live/market-history";
 import { buildAreas } from "@/lib/markets/areas";
+import { buildSizes } from "@/lib/markets/sizes";
 import { zipOf } from "@/lib/live/zip";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import { MarketDetail } from "@/components/markets/market-detail";
@@ -37,12 +37,9 @@ export default async function MarketPage({
   const market = MARKET_BY_SLUG.get(slug);
   if (!market) notFound();
 
-  const [store, pool, history] = await Promise.all([
+  const [store, pool] = await Promise.all([
     readMarketStore(slug).catch(() => null),
     readPool(slug).catch(() => ({ comps: [], anchors: [] })),
-    // The twelve-month series, when it was bought apart from the
-    // headline figures — which is what a cheap backfill run leaves.
-    readMarketHistory(slug).catch(() => null),
   ]);
 
   const listings = store?.listings ?? [];
@@ -53,15 +50,21 @@ export default async function MarketPage({
   const measured = await readAreaStats(slug, zips).catch(() => new Map());
 
   const areas = buildAreas({ market, listings, comps: pool.comps, measured });
+  const sizes = buildSizes({ comps: pool.comps, listings });
 
   return (
     <MarketDetail
       market={market}
       stats={store?.stats ?? null}
       statsAt={store?.statsAt ?? null}
-      months={store?.stats?.monthly ?? history?.months ?? []}
+      // Only ever what the stats row already carries. The year is a
+      // separate billed call and this page does not make it; a market
+      // backfilled at the cheap setting simply has no chart, and the
+      // size panel — which costs nothing — is the one that matters.
+      months={store?.stats?.monthly ?? []}
       listingsAt={store?.listingsAt ?? null}
       areas={areas}
+      sizes={sizes}
       poolSize={pool.comps.length}
     />
   );

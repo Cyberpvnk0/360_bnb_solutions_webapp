@@ -106,22 +106,19 @@ export function buildRows(
 /* ------------------------------------------------------------------ */
 
 export interface MarketQuery {
-  /** Name or state, loosely matched. */
+  /** Name or state, loosely matched — which is why there is no state
+   *  chip beside it: "fl" in the box already filters to Florida, and a
+   *  second control for the same thing is one a reader has to reconcile
+   *  with the first. */
   query: string;
-  /** Empty means every state. */
-  states: string[];
   rules: RegulationStatus[];
   terrain: MarketTerrain[];
-  /** Only markets somebody has bought figures for. */
-  measuredOnly: boolean;
 }
 
 export const EMPTY_QUERY: MarketQuery = {
   query: "",
-  states: [],
   rules: [],
   terrain: [],
-  measuredOnly: false,
 };
 
 function loose(value: string): string {
@@ -141,8 +138,6 @@ export function filterMarkets(
   q: MarketQuery
 ): MarketRow[] {
   return rows.filter((row) => {
-    if (q.measuredOnly && !row.measured) return false;
-    if (q.states.length > 0 && !q.states.includes(row.stateCode)) return false;
     if (q.rules.length > 0 && !q.rules.includes(row.regulation.status)) return false;
     if (q.terrain.length > 0 && !q.terrain.includes(row.terrain)) return false;
     return marketMatches(row, q.query);
@@ -150,13 +145,7 @@ export function filterMarkets(
 }
 
 export function isFiltered(q: MarketQuery): boolean {
-  return (
-    q.query.trim() !== "" ||
-    q.states.length > 0 ||
-    q.rules.length > 0 ||
-    q.terrain.length > 0 ||
-    q.measuredOnly
-  );
+  return q.query.trim() !== "" || q.rules.length > 0 || q.terrain.length > 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -164,7 +153,6 @@ export function isFiltered(q: MarketQuery): boolean {
 /* ------------------------------------------------------------------ */
 
 export type MarketSort =
-  | "measured"
   | "revenue"
   | "adr"
   | "occupancy"
@@ -173,7 +161,7 @@ export type MarketSort =
   | "rent"
   | "name";
 
-const VALUE: Record<Exclude<MarketSort, "measured" | "name">, (r: MarketRow) => number | null> = {
+const VALUE: Record<Exclude<MarketSort, "name">, (r: MarketRow) => number | null> = {
   revenue: (r) => r.measured?.revenue ?? null,
   adr: (r) => r.measured?.adr ?? null,
   occupancy: (r) => r.measured?.occupancy ?? null,
@@ -187,7 +175,10 @@ const VALUE: Record<Exclude<MarketSort, "measured" | "name">, (r: MarketRow) => 
  *
  * A market with no figures is not a market with the lowest figures, and
  * letting a null sort as a zero would bury every measured market under
- * three hundred blanks the moment somebody sorted by revenue.
+ * three hundred blanks the moment somebody sorted by revenue. It is
+ * also why there is no "measured first" preset: every figure sort
+ * already puts them first, and a preset for it was a second name for
+ * what the other six do.
  */
 export function sortMarkets(rows: readonly MarketRow[], sort: MarketSort): MarketRow[] {
   const out = [...rows];
@@ -195,14 +186,6 @@ export function sortMarkets(rows: readonly MarketRow[], sort: MarketSort): Marke
     a.name.localeCompare(b.name) || a.stateCode.localeCompare(b.stateCode);
 
   if (sort === "name") return out.sort(byName);
-  if (sort === "measured") {
-    return out.sort((a, b) => {
-      const d = Number(Boolean(b.measured)) - Number(Boolean(a.measured));
-      if (d !== 0) return d;
-      const r = (b.measured?.revenue ?? 0) - (a.measured?.revenue ?? 0);
-      return r !== 0 ? r : byName(a, b);
-    });
-  }
   const read = VALUE[sort];
   return out.sort((a, b) => {
     const x = read(a);
