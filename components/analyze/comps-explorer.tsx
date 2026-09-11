@@ -14,7 +14,9 @@ import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtDate, fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
+import { InfoHint } from "@/components/primitives/info-hint";
 import { MetricLabel } from "@/components/primitives/metric-label";
+import { HINTS } from "@/lib/copy/hints";
 import { CompsStreetMap } from "./comps-street-map";
 import { cn } from "@/lib/utils";
 
@@ -263,8 +265,12 @@ export function CompsExplorer({
               )
             }
           />
-          <p className="border-t border-border py-3 text-xs text-muted-foreground">
-            Comp average:{" "}
+          <p className="flex flex-wrap items-center gap-x-1 border-t border-border py-3 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              Comp average
+              <InfoHint label="the comp average">{HINTS.compAverage}</InfoHint>
+            </span>
+            :{" "}
             <span className="font-medium text-foreground tabular">
               {fmtMoney(adr)}
             </span>{" "}

@@ -24,10 +24,11 @@ import {
 import type { DealInputs, MarketAssumptions } from "@/lib/calc/arbitrage";
 import { fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import { MetricLabel } from "@/components/primitives/metric-label";
+import { HINTS } from "@/lib/copy/hints";
 import { cn } from "@/lib/utils";
 
 /** Pixel height of each half of the chart (above and below zero). */
-const HALF = 64;
+const HALF = 52;
 
 export function SeasonalityStrip({
   inputs,
@@ -47,12 +48,11 @@ export function SeasonalityStrip({
   if (!risk) return null;
 
   const peak = Math.max(...months.map((m) => Math.abs(m.net)), 1);
-  const negatives = months.filter((m) => m.net < 0);
 
   return (
     <div className={className}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <MetricLabel>Cash flow by month</MetricLabel>
+        <MetricLabel hint={HINTS.seasonality}>Cash flow by month</MetricLabel>
         <span className="text-[11px] text-muted-foreground tabular">
           Net <span className="font-medium text-foreground">{fmtMoneyShort(risk.annualNet)}</span>{" "}
           on <span className="text-foreground">{fmtMoneyShort(risk.annualRevenue)}</span> gross for
@@ -60,32 +60,31 @@ export function SeasonalityStrip({
         </span>
       </div>
 
-      {/* The answer, in words. */}
-      <p className="mt-2 text-sm text-foreground">
+      {/* The answer, in one line. The months that lose money are named
+          on the chart itself, in red, under their own bars — listing
+          them again in prose was the same fact printed twice. */}
+      <p className="mt-1.5 text-[13px] text-muted-foreground">
         {risk.negativeMonths === 0 ? (
           <>
-            <span className="font-semibold">Every month clears its costs.</span> Best is{" "}
-            {risk.strongest.label} at{" "}
-            <span className="font-semibold tabular">{fmtMoney(risk.strongest.net)}</span>,
-            thinnest {risk.weakest.label} at{" "}
-            <span className="font-semibold tabular">{fmtMoney(risk.weakest.net)}</span>.
+            <span className="font-medium text-foreground">Every month clears its costs.</span>{" "}
+            Thinnest is {risk.weakest.label} at{" "}
+            <span className="tabular text-foreground">{fmtMoney(risk.weakest.net)}</span>.
           </>
         ) : (
           <>
-            <span className="font-semibold text-neg">
+            <span className="font-medium text-neg">
               {risk.negativeMonths} {risk.negativeMonths === 1 ? "month loses" : "months lose"} money
-            </span>{" "}
-            ({negatives.map((m) => m.label).join(", ")}
-            {risk.longestNegativeRun > 1 ? `, ${risk.longestNegativeRun} in a row` : ""}). Keep{" "}
-            <span className="font-semibold tabular">{fmtMoney(risk.worstCaseDrawdown)}</span> on
-            hand to carry them; the strong months repay it.
+            </span>
+            {risk.longestNegativeRun > 1 ? `, ${risk.longestNegativeRun} in a row` : ""}. Keep{" "}
+            <span className="tabular text-foreground">{fmtMoney(risk.worstCaseDrawdown)}</span> on
+            hand to carry them.
           </>
         )}
       </p>
 
       {/* One bar per month from a shared zero line. */}
       <div className="relative mt-5">
-        <div className="flex items-stretch gap-1.5 sm:gap-2" role="list">
+        <div className="flex items-stretch gap-1" role="list">
           {months.map((m, i) => (
             <MonthBar
               key={m.month}
@@ -112,11 +111,6 @@ export function SeasonalityStrip({
         ) : null}
       </div>
 
-      <p className="mt-3 text-[11px] text-muted-foreground">
-        Net cash flow after rent, fees and cleaning, at this address&apos;s own seasonality
-        applied to {fmtPct(assumptions.marketOccupancy)} average occupancy. Gold months earn;
-        red months cost.
-      </p>
     </div>
   );
 }
@@ -160,7 +154,7 @@ function MonthBar({
               className={cn(
                 "mb-1 text-[10px] font-medium tabular",
                 hot ? "text-foreground" : "text-muted-foreground",
-                !named && !hot && "max-sm:invisible"
+                !named && !hot && "invisible"
               )}
             >
               {fmtMoneyShort(month.net)}
@@ -168,14 +162,14 @@ function MonthBar({
             <div
               style={{ height: h }}
               className={cn(
-                "w-full rounded-t-sm bg-gold-fill transition-colors duration-150",
-                hot ? "opacity-100" : "opacity-85"
+                "w-[58%] max-w-9 rounded-t-[3px] bg-gold-fill transition-opacity duration-150",
+                hot ? "opacity-100" : "opacity-70"
               )}
             />
           </>
         ) : null}
       </div>
-      <div className="h-px w-full bg-foreground/30" />
+      <div className="h-px w-full bg-border" />
       {/* Below the line: the bar, then the figure (negative only). */}
       <div className="flex w-full flex-col items-center justify-start" style={{ height: HALF }}>
         {negative ? (
@@ -183,11 +177,11 @@ function MonthBar({
             <div
               style={{ height: h, backgroundColor: "var(--red)" }}
               className={cn(
-                "w-full rounded-b-sm transition-opacity duration-150",
-                hot ? "opacity-100" : "opacity-85"
+                "w-[58%] max-w-9 rounded-b-[3px] transition-opacity duration-150",
+                hot ? "opacity-100" : "opacity-70"
               )}
             />
-            <span className={cn("mt-1 text-[10px] font-medium text-neg tabular", !named && !hot && "max-sm:invisible")}>
+            <span className={cn("mt-1 text-[10px] font-medium text-neg tabular", !named && !hot && "invisible")}>
               −{fmtMoneyShort(Math.abs(month.net))}
             </span>
           </>
@@ -195,8 +189,8 @@ function MonthBar({
       </div>
       <span
         className={cn(
-          "mt-1.5 text-[10px] tabular",
-          negative ? "font-medium text-neg" : hot ? "text-foreground" : "text-muted-foreground"
+          "mt-1.5 text-[10px] tabular transition-colors duration-150",
+          hot ? "text-foreground" : negative ? "text-neg/80" : "text-muted-foreground"
         )}
       >
         {month.label}

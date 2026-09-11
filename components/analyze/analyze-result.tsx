@@ -37,6 +37,7 @@ import type { Analysis, Market } from "@/lib/mock/types";
 import { useSession } from "@/components/providers/session-provider";
 import { AnimatedNumber } from "@/components/primitives/animated-number";
 import { BreakevenGauge } from "@/components/primitives/breakeven-gauge";
+import { InfoHint } from "@/components/primitives/info-hint";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ import { ContactDetails } from "@/components/deals/contact-details";
 import { PhotosLink } from "@/components/deals/photos-link";
 import { useListingContact } from "@/components/deals/use-listing-contact";
 import { RevenueRange } from "./revenue-range";
+import { HINTS } from "@/lib/copy/hints";
 import { cn } from "@/lib/utils";
 
 /** Stable empty set, so "no strikes" is one reference every render. */
@@ -69,17 +71,20 @@ function OutputTile({
   children,
   sub,
   tone,
+  hint,
   className,
 }: {
   label: string;
   children: React.ReactNode;
   sub?: React.ReactNode;
   tone?: "gold" | "neg";
+  /** What the label means, for anyone who does not already know. */
+  hint?: React.ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("px-6 py-6", className)}>
-      <MetricLabel>{label}</MetricLabel>
+      <MetricLabel hint={hint}>{label}</MetricLabel>
       <div
         className={cn(
           "mt-2 flex items-center gap-1 text-[1.375rem] font-semibold leading-tight tracking-tight tabular",
@@ -513,7 +518,7 @@ export function AnalyzeResult({
         <div className="border-t border-border sm:overflow-x-auto">
           <div className="grid grid-cols-2 sm:flex sm:min-w-max sm:items-stretch sm:divide-x sm:divide-border [&>*]:border-border max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t">
             <div className="px-5 py-4 sm:px-6 sm:py-5 sm:first:pl-6">
-              <MetricLabel>Projected annual revenue</MetricLabel>
+              <MetricLabel hint={HINTS.grossRevenue}>Projected annual revenue</MetricLabel>
               <AnimatedNumber
                 value={annualRevenueDisplay}
                 format={fmtMoney}
@@ -527,7 +532,7 @@ export function AnalyzeResult({
               </p>
             </div>
             <div className="px-5 py-4 sm:px-6 sm:py-5">
-              <MetricLabel>Occupancy</MetricLabel>
+              <MetricLabel hint={HINTS.occupancy}>Occupancy</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight tabular">
                 {fmtPct(assumptions.marketOccupancy)}
               </div>
@@ -536,7 +541,7 @@ export function AnalyzeResult({
               </p>
             </div>
             <div className="px-5 py-4 sm:px-6 sm:py-5">
-              <MetricLabel>ADR</MetricLabel>
+              <MetricLabel hint={HINTS.adr}>ADR</MetricLabel>
               <div className="mt-1.5 text-[1.625rem] font-semibold leading-tight tracking-tight tabular">
                 {fmtMoney(assumptions.adr)}
               </div>
@@ -554,7 +559,7 @@ export function AnalyzeResult({
                 strokeWidth={3.5}
               />
               <div>
-                <MetricLabel>Breakeven occupancy</MetricLabel>
+                <MetricLabel hint={HINTS.breakeven}>Breakeven occupancy</MetricLabel>
                 <div
                   className={cn(
                     "mt-1 text-[1.625rem] font-semibold leading-tight tracking-tight tabular",
@@ -585,11 +590,13 @@ export function AnalyzeResult({
                     <>
                       <MoveUpRight aria-hidden className="size-3" />
                       {marginPts} pts of cushion under {fmtPct(p.marketOccupancy)}
+                      <InfoHint label="cushion">{HINTS.cushion}</InfoHint>
                     </>
                   ) : (
                     <>
                       <TriangleAlert aria-hidden className="size-3" />
                       market runs {Math.abs(marginPts)} pts short
+                      <InfoHint label="cushion">{HINTS.cushion}</InfoHint>
                     </>
                   )}
                 </p>
@@ -651,18 +658,21 @@ export function AnalyzeResult({
           <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:[&>*:nth-child(odd)]:border-r sm:[&>*:nth-child(-n+2)]:border-t-0 [&>*]:border-border">
             <OutputTile
               label="Projected monthly STR revenue"
+              hint={HINTS.grossRevenue}
               sub={`${fmtMoney(assumptions.adr)} ADR × ${Math.round(p.occupiedNights)} booked nights${p.cleaningCosts > 0 ? " + cleaning fees" : ""}`}
             >
               <AnimatedNumber value={p.monthlyRevenue} format={fmtMoney} />
             </OutputTile>
             <OutputTile
               label="Total monthly costs"
+              hint={HINTS.monthlyCosts}
               sub={`${fmtMoney(p.fixedCosts)} fixed · ${fmtMoney(p.feeCosts)} fees${p.cleaningCosts > 0 ? ` · ${fmtMoney(p.cleaningCosts)} cleaning` : ""}`}
             >
               <AnimatedNumber value={p.monthlyCosts} format={fmtMoney} />
             </OutputTile>
             <OutputTile
               label="Net monthly cash flow"
+              hint={HINTS.netCashFlow}
               tone={p.netCashFlow >= 0 ? "gold" : "neg"}
               sub="Revenue minus every cost, monthly"
             >
@@ -670,6 +680,7 @@ export function AnalyzeResult({
             </OutputTile>
             <OutputTile
               label="Annual profit"
+              hint={HINTS.annualProfit}
               tone={p.annualProfit >= 0 ? undefined : "neg"}
               sub="12 months at market occupancy"
             >
@@ -677,6 +688,7 @@ export function AnalyzeResult({
             </OutputTile>
             <OutputTile
               label="Total startup capital"
+              hint={HINTS.startupCapital}
               sub={
                 p.startupCapital <= 0
                   ? "Nothing in yet — no deposit, no furnishing, first month waived"
@@ -689,6 +701,7 @@ export function AnalyzeResult({
             </OutputTile>
             <OutputTile
               label="Cash-on-cash return"
+              hint={HINTS.cashOnCash}
               tone={p.cashOnCash >= 0.3 ? "gold" : p.cashOnCash < 0 ? "neg" : undefined}
               sub={
                 Number.isFinite(p.cashOnCash)
@@ -705,6 +718,7 @@ export function AnalyzeResult({
             </OutputTile>
             <OutputTile
               label="Furnishing payback"
+              hint={HINTS.furnishingPayback}
               tone={
                 inputs.furnishingBudget <= 0 ||
                 Number.isFinite(p.furnishingPaybackMonths)
@@ -730,6 +744,7 @@ export function AnalyzeResult({
             </OutputTile>
             <OutputTile
               label="Margin of safety"
+              hint={HINTS.marginOfSafety}
               tone={comfortable ? "gold" : "neg"}
               sub="Market occupancy minus your breakeven"
             >

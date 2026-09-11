@@ -29,6 +29,7 @@ import { TriangleAlert, X } from "lucide-react";
 import { fmtMoney, fmtMonth, fmtNum, fmtPct, localityLine } from "@/lib/format";
 import { basisLabel, estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
+import { HINTS } from "@/lib/copy/hints";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
 import {
@@ -99,12 +100,15 @@ function Figure({
   value,
   sub,
   tone = "plain",
+  hint,
   dense = false,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "plain" | "good" | "bad";
+  /** What the label means, for anyone who does not already know. */
+  hint?: React.ReactNode;
   /** A step smaller, for a figure with two ends. */
   dense?: boolean;
 }) {
@@ -114,7 +118,7 @@ function Figure({
     // white box.
     <div className="flex flex-col justify-center px-5 py-3.5 sm:py-4">
       <div className="flex items-baseline justify-between gap-3 sm:block">
-        <MetricLabel>{label}</MetricLabel>
+        <MetricLabel hint={hint}>{label}</MetricLabel>
         <p
           className={cn(
             "font-semibold tabular sm:mt-1.5",
@@ -405,7 +409,7 @@ export function ListingDetailDialog({
                     short ? "bg-neg/[0.06]" : "bg-gold-fill/[0.08]"
                   )}
                 >
-                  <MetricLabel>Cushion</MetricLabel>
+                  <MetricLabel hint={HINTS.cushion}>Cushion</MetricLabel>
                   <p
                     className={cn(
                       "mt-1 font-display text-3xl font-semibold tracking-tight tabular sm:text-4xl",
@@ -434,12 +438,14 @@ export function ListingDetailDialog({
                 <div className="grid divide-y divide-border sm:grid-cols-[1fr_1.55fr_1fr] sm:divide-x sm:divide-y-0">
                   <Figure
                     label="Breakeven"
+                    hint={HINTS.breakeven}
                     value={fmtPct(read.breakeven)}
                     sub="Nights to cover costs"
                   />
                   {read.netRange ? (
                     <Figure
                       label="Net profit"
+                      hint={HINTS.netProfitRange}
                       value={rangeText(read.netRange)}
                       sub="A month, estimated · run the numbers for the exact figure"
                       tone={rangeTone(read.netRange)}
@@ -448,6 +454,7 @@ export function ListingDetailDialog({
                   ) : (
                     <Figure
                       label="Net profit"
+                      hint={HINTS.netCashFlow}
                       value={`${money(read.netCashFlow)}/mo`}
                       sub={`${fmtMoney(read.monthlyRevenue)} revenue − ${fmtMoney(read.monthlyCosts)} costs`}
                       tone={read.netCashFlow < 0 ? "bad" : "good"}
@@ -455,6 +462,7 @@ export function ListingDetailDialog({
                   )}
                   <Figure
                     label="Startup"
+                    hint={HINTS.startupCapital}
                     value={fmtMoney(read.startupCapital)}
                     sub="Deposit + first month"
                   />
