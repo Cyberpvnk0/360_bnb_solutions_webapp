@@ -86,7 +86,7 @@ import { InfoHint } from "@/components/primitives/info-hint";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/providers/session-provider";
-import { MEASURE_PRICE, MeasureMarketButton } from "./measure-market-button";
+import { MEASURE_PRICE, useMeasureMarket } from "./use-measure-market";
 import { SaveMarketButton } from "./save-market-button";
 import { cn } from "@/lib/utils";
 
@@ -193,6 +193,28 @@ export function MarketDetail({
    *  with so a row updates without a reload. */
   const [bought, setBought] = React.useState<Record<string, MeasuredArea>>({});
   const [buying, setBuying] = React.useState<string | null>(null);
+
+  /**
+   * OPENING THIS MARKET IS ASKING FOR ITS FIGURES.
+   *
+   * There used to be a "Measure · 1 credit" button here, and on the
+   * table, and on the map card — asking somebody to press it on a
+   * market they had just clicked into. It runs on arrival now. Same
+   * price, same protections (see use-measure-market); the reader no
+   * longer has to say it twice.
+   *
+   * Only where there is nothing on file. A measured market is free to
+   * open, forever and for everybody.
+   */
+  const measure = useMeasureMarket({
+    slug: market.slug,
+    name: market.name,
+    wanted: stats === null,
+    onDone: () => router.refresh(),
+  });
+  React.useEffect(() => {
+    measure.run();
+  }, [measure]);
 
   const rows = React.useMemo(
     () =>
@@ -558,17 +580,6 @@ export function MarketDetail({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {/* The gap, with the way to close it beside it. A market with
-              figures needs no button; one without had no way at all to
-              ask for them from the page that shows the dashes. */}
-          {stats ? null : (
-            <MeasureMarketButton
-              slug={market.slug}
-              name={market.name}
-              variant="brand"
-              onMeasured={() => router.refresh()}
-            />
-          )}
           <SaveMarketButton slug={market.slug} name={market.name} />
           <Button asChild variant="brand" size="sm" className="gap-1.5">
             <Link href={dealsHref}>
@@ -662,9 +673,37 @@ export function MarketDetail({
             {listingsAt ? ` · rentals last pulled ${fmtWhen(listingsAt)}` : null}
           </p>
         ) : (
-          <p className="border-t border-border bg-secondary/40 px-5 py-2 text-[11px] text-muted-foreground">
-            No measured figures for this market yet — measure it for{" "}
-            {MEASURE_PRICE}, or run an analysis on a property here.
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border bg-secondary/40 px-5 py-2 text-[11px] text-muted-foreground">
+            {measure.state.status === "measuring" ? (
+              <>
+                <Loader2 aria-hidden className="size-3 animate-spin" />
+                Measuring {market.name}…
+              </>
+            ) : measure.state.status === "no-credits" ? (
+              <>
+                <span>
+                  No measured figures yet, and no credits left to buy them
+                  with.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openUpgrade({ reason: "credits" })}
+                  className="font-medium text-gold underline-offset-2 hover:underline"
+                >
+                  Plans &amp; packs
+                </button>
+              </>
+            ) : measure.state.status === "failed" ? (
+              <span>
+                {measure.state.message} Nothing was charged — reload to try
+                again.
+              </span>
+            ) : (
+              <span>
+                Measuring this market costs {MEASURE_PRICE}, once, and it is
+                then on file whenever anybody opens it.
+              </span>
+            )}
           </p>
         )}
       </section>

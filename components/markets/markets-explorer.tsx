@@ -42,10 +42,7 @@ import {
   type MarketSort,
 } from "@/lib/markets/explorer";
 import type { MarketTerrain, RegulationStatus } from "@/lib/mock/types";
-import type { StoredMarketStats } from "@/lib/db/market-store";
 import { MarketsMap } from "./markets-map";
-import { useSession } from "@/components/providers/session-provider";
-import { MeasureMarketButton } from "./measure-market-button";
 import { SaveMarketButton } from "./save-market-button";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
@@ -73,10 +70,6 @@ const PRESETS: { id: MarketSort; label: string; hint: string }[] = [
 
 export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const router = useRouter();
-  /** Signed out there is no measure button, so the dash has to stay
-   *  put: swapping it for something that renders nothing would empty
-   *  the cell on hover. */
-  const { user } = useSession();
   const [query, setQuery] = React.useState<MarketQuery>(EMPTY_QUERY);
   const [sort, setSort] = React.useState<MarketSort>("revenue");
   const [panel, setPanel] = React.useState<string | null>(null);
@@ -86,41 +79,19 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const [mapOpen, setMapOpen] = React.useState(true);
   /** The market lit on the map, from a pin or a row. */
   const [selected, setSelected] = React.useState<string | null>(null);
-  /**
-   * Markets measured in this session, over the rows the page arrived
-   * with. The figures are shared the moment they are bought, but this
-   * page was rendered before that happened — and a row that stays
-   * dashed after somebody paid for it reads as a failure.
-   */
-  const [fresh, setFresh] = React.useState<Record<string, MarketRow["measured"]>>({});
 
 
   const states = React.useMemo(
     () => [...new Set(rows.map((r) => r.stateCode))].sort(),
     [rows]
   );
-  const live = React.useMemo(
-    () =>
-      rows.map((r) => {
-        const hit = fresh[r.slug];
-        if (!hit) return r;
-        const revenue = hit.revenue ?? null;
-        return {
-          ...r,
-          measured: hit,
-          spread:
-            revenue === null ? null : Math.round(revenue - r.rentEstimate * 12),
-        };
-      }),
-    [rows, fresh]
-  );
   const measuredCount = React.useMemo(
-    () => live.filter((r) => r.measured).length,
-    [live]
+    () => rows.filter((r) => r.measured).length,
+    [rows]
   );
   const shown = React.useMemo(
-    () => sortMarkets(filterMarkets(live, query), sort),
-    [live, query, sort]
+    () => sortMarkets(filterMarkets(rows, query), sort),
+    [rows, query, sort]
   );
   const chosen = React.useMemo(
     () => (selected ? (shown.find((r) => r.slug === selected) ?? null) : null),
@@ -129,25 +100,6 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
 
   const patch = (next: Partial<MarketQuery>) =>
     setQuery((prev) => ({ ...prev, ...next }));
-  /** A market somebody just bought, in the shape a row reads. Stable
-   *  because the columns memo closes over it, and every row's memo
-   *  closes over the columns. */
-  const measured = React.useCallback(
-    (slug: string, stats: StoredMarketStats, at: string | null) =>
-      setFresh((prev) => ({
-        ...prev,
-        [slug]: {
-          adr: stats.adr,
-          occupancy: stats.occupancy,
-          revenue: stats.revenue,
-          revpar: stats.revpar,
-          activeListings: stats.activeListings,
-          scope: stats.scope,
-          at,
-        },
-      })),
-    []
-  );
   const chip = (id: string) => ({
     open: panel === id,
     onOpenChange: (open: boolean) => setPanel(open ? id : null),
@@ -202,30 +154,9 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         key: "revenue",
         header: "Revenue/yr",
         align: "right",
-        // Where the figure is missing is where the way to get it
-        // belongs. On hover, in place of the dash — no extra column,
-        // so the market names keep their width.
         cell: (r) =>
-          r.measured?.revenue != null ? (
-            fmtMoneyShort(r.measured.revenue)
-          ) : user ? (
-            <>
-              <span className="group-hover:hidden">{NONE}</span>
-              <span className="hidden group-hover:inline-flex">
-                <MeasureMarketButton
-                  slug={r.slug}
-                  name={r.name}
-                  variant="outline"
-                  compact
-                  onMeasured={(stats, at) => measured(r.slug, stats, at)}
-                />
-              </span>
-            </>
-          ) : (
-            NONE
-          ),
+          r.measured?.revenue != null ? fmtMoneyShort(r.measured.revenue) : NONE,
         sortValue: (r) => r.measured?.revenue ?? -1,
-        className: "min-w-28",
       },
       {
         key: "adr",
@@ -275,7 +206,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         sortValue: (r) => r.spread ?? -Infinity,
       },
     ],
-    [measured, user]
+    []
   );
 
   const exportCsv = () => {
@@ -306,7 +237,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           Every US market this product covers, with the local rule on nightly
           letting. Performance figures are measured, and so far they exist for{" "}
           <span className="tabular text-foreground">{fmtNum(measuredCount)}</span>{" "}
-          of them. Pick any of the rest on the map to measure it.
+          of them. Opening one that has none measures it.
         </p>
       </header>
 
@@ -520,14 +451,6 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
                   <Link href={`/deals?market=${chosen.slug}`}>Rentals here</Link>
                 </Button>
                 <SaveMarketButton slug={chosen.slug} name={chosen.name} />
-                {chosen.measured ? null : (
-                  <MeasureMarketButton
-                    slug={chosen.slug}
-                    name={chosen.name}
-                    variant="outline"
-                    onMeasured={(stats, at) => measured(chosen.slug, stats, at)}
-                  />
-                )}
               </div>
             </div>
           ) : null}
