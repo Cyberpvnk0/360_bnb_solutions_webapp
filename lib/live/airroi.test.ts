@@ -532,6 +532,32 @@ describe("what the whole comp payload looks like", () => {
     expect(fields["performance_metrics.ttm_avg_rate"].present).toBe(2);
   });
 
+  it("spreads the day counts, which is what says whether they mean anything", () => {
+    // The only fields in the payload that could separate a listing
+    // that is still up from one that came down — if they count days
+    // observed rather than the length of the window.
+    const days = (l90: number, ttm: number) =>
+      comp({
+        performance_metrics: {
+          ttm_avg_rate: 200,
+          ttm_occupancy: 0.5,
+          l90d_total_days: l90,
+          ttm_total_days: ttm,
+        },
+      });
+    rememberCompShape([days(90, 365), days(90, 365), days(44, 365), days(20, 40)]);
+    const span = compFieldsSeen()!.$span as Record<string, string>;
+    expect(span.l90d_total_days).toBe("2 of 4 at 90, 1 at 30-59, 1 at 1-29");
+    expect(span.ttm_total_days).toBe("3 of 4 at 365, 1 at 1-89");
+  });
+
+  it("says so when the feed states no day counts at all", () => {
+    rememberCompShape([comp()]);
+    const span = compFieldsSeen()!.$span as Record<string, string>;
+    expect(span.l90d_total_days).toBe("not stated");
+    expect(span.ttm_total_days).toBe("not stated");
+  });
+
   it("records the response's own keys, where a data-as-of stamp would be", () => {
     rememberCompShape([comp()], ["occupancy", "revenue", "as_of"]);
     expect(compFieldsSeen()!.$response).toEqual(["as_of", "occupancy", "revenue"]);

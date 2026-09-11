@@ -373,6 +373,9 @@ const GONE_WORDS = /^(inactive|unlisted|delisted|deleted|removed|suspended|pause
 
 /** The last-90-days calendar, as the feed keeps it. */
 const L90D_TOTAL_KEYS = ["l90d_total_days"];
+/** Its twelve-month twin, which separates a listing that stopped from
+ *  one that had not started. Read by the diagnostic only, for now. */
+const TTM_TOTAL_KEYS = ["ttm_total_days"];
 const L90D_PART_KEYS = ["l90d_available_days", "l90d_days_reserved", "l90d_blocked_days"];
 /** The two of those that mean somebody could have stayed: a night the
  *  host left open, and a night a guest took. */
@@ -607,6 +610,53 @@ export function rememberCompShape(rows: unknown[], responseKeys: string[] = []):
       `stated on ${objects.filter((r) => pickNumber(metricsOf(r), [k]) !== null).length} of ${rows.length}`,
     ])
   );
+  /**
+   * THE LAST UNKNOWN, and the one that decides whether a dead link can
+   * ever be told from a live one.
+   *
+   * Every other field in this payload describes a listing that is
+   * trading; none of them says whether it is still there. These two
+   * might, depending on what the vendor means by them. If
+   * `l90d_total_days` is the LENGTH of the window it will read 90 for
+   * every comp and nothing here can help. If it is the number of days
+   * the listing was actually OBSERVED in that window, a comp that
+   * stopped partway through is a comp that came off the platform, and
+   * the short reading says when.
+   *
+   * Its twin separates that from an ordinary new listing: one created
+   * six weeks ago is short on both counts, while one that has traded
+   * for a year and stopped last month is long on the year and short on
+   * the quarter.
+   *
+   * Bucketed rather than listed. A spread of day counts is a fact
+   * about the feed's schema, which is what this diagnostic is for; a
+   * day count per listing would be a fact about somebody's calendar,
+   * which is not.
+   */
+  const spread = (key: string, full: number, edges: number[]) => {
+    const seen = objects
+      .map((r) => pickNumber(metricsOf(r), [key]))
+      .filter((n): n is number => n !== null);
+    if (seen.length === 0) return "not stated";
+    const at = seen.filter((n) => n >= full).length;
+    const bands = edges.map((lo, i) => {
+      const hi = i === 0 ? full - 1 : edges[i - 1] - 1;
+      return [`${lo}-${hi}`, seen.filter((n) => n >= lo && n <= hi).length] as const;
+    });
+    return [
+      `${at} of ${seen.length} at ${full}`,
+      ...bands.filter(([, n]) => n > 0).map(([band, n]) => `${n} at ${band}`),
+      ...(seen.filter((n) => n === 0).length > 0
+        ? [`${seen.filter((n) => n === 0).length} at 0`]
+        : []),
+    ].join(", ");
+  };
+  shape.$span = {
+    l90d_total_days: spread(L90D_TOTAL_KEYS[0], 90, [60, 30, 1]),
+    ttm_total_days: spread(TTM_TOTAL_KEYS[0], 365, [270, 180, 90, 1]),
+    reading:
+      "All at the full figure means these are window lengths and carry no liveness. Anything short of it means the count is days observed — and a comp short on the quarter but long on the year is one that stopped being seen, which is the signal this product has had no way to read.",
+  };
   // Every id in the set by length and exactness, not just the first —
   // one rounded id among twenty-five is a broken link nobody would see
   // in a sample of one.

@@ -359,10 +359,11 @@ export function CompsStreetMap({
                 // difference nobody can account for — and it is a fact
                 // about the listing, not an apology for the product.
                 const note = compLinkNote(active);
+                const area = airbnbAreaUrl(active.lat, active.lon);
                 return (
                   <div className="mt-2 flex flex-col gap-1">
                     <a
-                      href={page ?? airbnbAreaUrl(active.lat, active.lon)}
+                      href={page ?? area}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex w-fit items-center gap-1 text-xs font-medium text-select transition-colors duration-150 hover:underline"
@@ -373,6 +374,29 @@ export function CompsStreetMap({
                     {note ? (
                       <p className="text-[11px] leading-snug text-muted-foreground">
                         {note}
+                      </p>
+                    ) : page ? (
+                      /* The way out of a page that errors.
+                         A comp set is a year's evidence, so it carries
+                         listings that have since come down, and nothing
+                         the feed sends says which — checked against a
+                         live payload: no status, no URL, and a calendar
+                         that reads healthy for every one of them. The
+                         page above is right more often than not and
+                         wrong often enough that a reader who lands on
+                         the platform's error screen deserves somewhere
+                         to go rather than a back button. */
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        If that page is gone,{" "}
+                        <a
+                          href={area}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:text-gold hover:underline"
+                        >
+                          open this area instead
+                        </a>
+                        .
                       </p>
                     ) : null}
                   </div>
