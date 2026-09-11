@@ -26,6 +26,7 @@ import { fmtMoney, fmtMoneyShort } from "@/lib/format";
 import type { RentalListing } from "@/lib/mock/types";
 import type { ZipBoundary } from "@/lib/map/zip-boundary";
 import { createPricePin } from "@/lib/map/price-pin";
+import { autoCollapseAttribution } from "@/lib/map/attribution";
 import { cn } from "@/lib/utils";
 import type { GeoJSON } from "geojson";
 
@@ -236,6 +237,10 @@ export function RentalsMap({
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right"
     );
+    // The credits have to be on the map (ODbL + the tile provider's
+    // terms); they do not have to be open. Folded to the ⓘ badge until
+    // the reader clicks it.
+    const uncollapse = autoCollapseAttribution(map);
     // Sources and layers may be added once the STYLE is in — not once
     // the map is "loaded", which also waits on every sprite, glyph and
     // tile and never arrives when one of those quietly fails, while the
@@ -294,6 +299,7 @@ export function RentalsMap({
 
     return () => {
       resizer.disconnect();
+      uncollapse();
       markers.clear();
       els.clear();
       map.remove();

@@ -28,6 +28,7 @@ import {
   type BasemapTheme,
 } from "@/lib/map/basemap";
 import { fmtMoneyShort, fmtPct } from "@/lib/format";
+import { autoCollapseAttribution } from "@/lib/map/attribution";
 import { RULE_LABEL, type MarketRow } from "@/lib/markets/explorer";
 import { cn } from "@/lib/utils";
 
@@ -204,6 +205,10 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    // The credits have to be on the map (ODbL + the tile provider's
+    // terms); they do not have to be open. Folded to the ⓘ badge until
+    // the reader clicks it.
+    const uncollapse = autoCollapseAttribution(map);
     map.on("load", () => {
       setLive(true);
       void loadStyle(basemapStyle(styleThemeRef.current)).then((loaded) => {
@@ -228,6 +233,7 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     return () => {
       alive = false;
       resize.disconnect();
+      uncollapse();
       for (const m of markersRef.current) m.remove();
       markersRef.current = [];
       map.remove();

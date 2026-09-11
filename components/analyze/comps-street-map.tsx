@@ -23,6 +23,7 @@ import { fmtMiles, fmtMoney, fmtMoneyShort, fmtPct } from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { PropertyThumb } from "./property-thumb";
 import { createPricePin } from "@/lib/map/price-pin";
+import { autoCollapseAttribution } from "@/lib/map/attribution";
 import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
 import { cn } from "@/lib/utils";
 
@@ -203,6 +204,10 @@ export function CompsStreetMap({
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right"
     );
+    // The credits have to be on the map (ODbL + the tile provider's
+    // terms); they do not have to be open. Folded to the ⓘ badge until
+    // the reader clicks it.
+    const uncollapse = autoCollapseAttribution(map);
 
     // Tiles can't load in offline previews — pins still place to scale.
     // Report, never intervene. An earlier cut swapped in an empty
@@ -238,6 +243,7 @@ export function CompsStreetMap({
     setMapEpoch((n) => n + 1);
 
     return () => {
+      uncollapse();
       map.remove();
       mapRef.current = null;
     };
