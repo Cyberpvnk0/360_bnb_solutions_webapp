@@ -68,10 +68,25 @@ function maxTier(): ScrapeTier {
   return raw && TIER_ORDER.includes(raw) ? raw : "ultra";
 }
 
-function tiersToTry(): ScrapeTier[] {
-  const from = TIER_ORDER.indexOf(startTier());
-  const to = TIER_ORDER.indexOf(maxTier());
+function tiersToTry(opts: TierRange = {}): ScrapeTier[] {
+  const from = TIER_ORDER.indexOf(opts.from ?? startTier());
+  const to = TIER_ORDER.indexOf(opts.to ?? maxTier());
   return to < from ? [TIER_ORDER[from]] : TIER_ORDER.slice(from, to + 1);
+}
+
+/**
+ * Where one caller's ladder starts and stops, overriding the defaults.
+ *
+ * The defaults are set for a portal that challenges every plain
+ * request, so they start at `premium` and may climb to `ultra`. Not
+ * every target is that target: a page that answers the cheap tier
+ * should be asked for on the cheap tier, and a caller checking
+ * hundreds of pages for one cheap fact has no business paying the
+ * rendering tier for any of them.
+ */
+export interface TierRange {
+  from?: ScrapeTier;
+  to?: ScrapeTier;
 }
 
 export type ScraperApiReason =
@@ -446,7 +461,10 @@ async function scrape(
  * the function that reads it. lib/live/redfin-contact is the one such
  * caller today, and it takes a name and a telephone number.
  */
-async function readPage(url: string): Promise<{
+async function readPage(
+  url: string,
+  tiers: TierRange = {}
+): Promise<{
   outcome: FetchOutcome;
   spent: number;
   challenged: boolean;
@@ -455,7 +473,7 @@ async function readPage(url: string): Promise<{
   let last: FetchOutcome | null = null;
   let refusal: ScraperApiError | null = null;
 
-  for (const tier of tiersToTry()) {
+  for (const tier of tiersToTry(tiers)) {
     let attempt: FetchOutcome;
     try {
       attempt = await scrape(url, tier);

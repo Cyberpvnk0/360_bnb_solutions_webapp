@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/gate";
 import { scraperUsage } from "@/lib/live/scraper-usage";
 import { airRoiBudget, COMP_SHAPE_KEY, compFieldsSeen, hasAirRoiKey } from "@/lib/live/airroi";
+import { lastLivenessTally } from "@/lib/live/listing-live";
 import { rentcastBudget } from "@/lib/live/quota";
 import { planTablesReady } from "@/lib/db/usage";
 import {
@@ -62,12 +63,31 @@ export async function GET() {
   // Memory first (same process), then the store (any process).
   const compsShape =
     compFieldsSeen() ?? (await readKeyedBlob(COMP_SHAPE_KEY).catch(() => null))?.value ?? null;
+  // How the last comp set fared when its listings were asked of the
+  // platform itself — the check the feed's own fields cannot make.
+  const liveness = await lastLivenessTally().catch(() => null);
   const health = await storeStatus().catch(() => ({
     ok: false,
     detail: "health check threw",
   }));
 
   return NextResponse.json({
+    /**
+     * The last comp set's listings, asked of the platform one page
+     * each: how many answers came from the shared cache, how many were
+     * fetched, and how many listings the platform no longer has and so
+     * were left out of the projection.
+     *
+     * `unknown` is the honest third answer and it keeps its comp: a
+     * page that could not be read is not a listing that is gone. A run
+     * that is all unknown means the scraper cannot reach the platform
+     * at all, and the check is doing nothing but spending credits.
+     */
+    listingLiveness: liveness,
+    listingLivenessNote:
+      liveness === null
+        ? "No comp set has been bought since this was added, or the check is off (AIRBNB_LIVE_CHECK=0). Cached analyses never reach either vendor; analyze a NEW address once, then reload."
+        : "gone = listings the platform no longer has, left out of the comp set and its averages. unknown = pages that could not be read, kept. cached = answered from the shared store at no cost. A verdict is shared across every student, so the second analysis in a market pays for almost none of it.",
     /** The comps feed's field names from the last analysis this
      *  server ran — names only. How the link and photo readers get
      *  checked against what the feed really sends. */

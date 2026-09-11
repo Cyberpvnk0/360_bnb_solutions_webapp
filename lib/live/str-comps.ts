@@ -34,7 +34,9 @@ import {
   readEstimate,
   writeEstimate,
 } from "@/lib/db/market-store";
+import { checkListings, listingIdOf, LIVENESS_TALLY_KEY } from "@/lib/live/listing-live";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
+import { writeKeyed } from "@/lib/db/market-store";
 import type { Analysis, StrComp } from "@/lib/mock/types";
 
 export { MIN_COMPS } from "@/lib/calc/comps";
@@ -77,6 +79,8 @@ export const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  *                 cannot be padded with listings from across the city;
  *                 the projection stands on the one-mile subset when
  *                 there is one (lib/calc/comps, selectNearbyComps).
+ *   6             every listing asked of the platform itself, and the
+ *                 ones it no longer has left out (lib/live/listing-live).
  *
  * A set written in an older format is bought again, once: it may hold
  * comps that are not comps any more, and nothing in it says which. A
@@ -85,16 +89,16 @@ export const ESTIMATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * so, and buying again would only buy the same; those links are
  * dropped at render instead (lib/live/comp-links).
  *
- * NOT BUMPED FOR THE WITHHELD-LINK RULE, deliberately. That rule
- * (lib/live/airroi, activityOf's `bookable`) changes which comps are
- * offered a link, not a single figure any projection stands on, and a
- * version bump buys every stored set again at the vendor's per-call
- * price to correct a link. New purchases carry it; sets already held
- * keep the links they were stored with until they age out below,
- * which is a month at the outside. A rule that moved a number would be
- * a different judgement.
+ * The link-only rule at 5 was deliberately NOT a bump: it changed
+ * which comps were offered a link, not a figure, and buying every
+ * stored set again to correct a link is not worth the vendor's
+ * per-call price. Version 6 is the other case. Leaving a listing the
+ * platform no longer has out of the set moves the rate and the
+ * occupancy every projection stands on, so a set built without that
+ * check is a set of different numbers, and a student reading one is
+ * owed the corrected version rather than a month of the old one.
  */
-export const ESTIMATE_VERSION = 5;
+export const ESTIMATE_VERSION = 6;
 
 /** The vendor spec for an analysis at a point — the thing a comp set
  *  is bought for. One builder, so the plan meter and the cache agree
@@ -233,6 +237,40 @@ export async function withLiveComps(
     const estimate = await fetchEstimate({ ...spec, radiusMiles: COMPS_RADIUS_MAX_MILES });
     commitLiveSearch(key);
 
+    /**
+     * The one question the feed cannot answer, asked of the platform.
+     *
+     * A comp set is a year's evidence, so it arrives holding listings
+     * that have since come down — and their rate and occupancy are
+     * averaged into the figure somebody signs a lease against. Nothing
+     * the vendor sends says which (lib/live/listing-live opens with
+     * the measurement). So each listing's own page is asked once, the
+     * answers are shared with every other student through the store,
+     * and the ones the platform no longer has are left out here, at
+     * the one moment a set is built — never on a page view.
+     *
+     * Only "gone" removes a comp. A page that could not be read leaves
+     * the listing in: a scraper having a bad minute must not thin a
+     * projection.
+     */
+    const live = await checkListings(
+      estimate.comps.map((c) => listingIdOf(c.id)).filter((id): id is string => id !== null)
+    ).catch(() => null);
+    const comps0 = live
+      ? estimate.comps.filter((c) => {
+          const id = listingIdOf(c.id);
+          return !id || live.states.get(id) !== "gone";
+        })
+      : estimate.comps;
+    if (live && live.tally.asked + live.tally.cached > 0) {
+      void writeKeyed(LIVENESS_TALLY_KEY, {
+        ...live.tally,
+        of: estimate.comps.length,
+        dropped: estimate.comps.length - comps0.length,
+        at: new Date().toISOString(),
+      }).catch(() => undefined);
+    }
+
     // Just paid for this; make it the last time — a thin set included,
     // because a thin answer bought again is the same thin answer. A
     // write failure is survivable — the answer still renders — but it
@@ -240,7 +278,7 @@ export async function withLiveComps(
     // ignored silently the way a pure cache write would be.
     const stored = {
       v: ESTIMATE_VERSION,
-      comps: estimate.comps,
+      comps: comps0,
       monthlyRevenue: estimate.monthlyRevenue,
       revenue: estimate.revenue,
       adr: estimate.adr,
@@ -251,8 +289,8 @@ export async function withLiveComps(
     // property: its Deal Finder card reads the set back by either.
     const byAddress = opts.atProperty ? addressEstimateKey(analysis) : null;
     if (byAddress) void writeEstimate(byAddress, stored).catch(() => undefined);
-    const comps = selectNearbyComps(estimate.comps).comps;
-    void addToPool(analysis.marketSlug, estimate.comps, point, anchorFor(analysis, comps)).catch(
+    const comps = selectNearbyComps(comps0).comps;
+    void addToPool(analysis.marketSlug, comps0, point, anchorFor(analysis, comps)).catch(
       () => undefined
     );
     if (comps.length < MIN_COMPS) return { analysis, liveComps: false };

@@ -568,6 +568,53 @@ export async function readKeyedBlob(
   );
 }
 
+/**
+ * Several blobs by key in one round trip.
+ *
+ * The same `in.(...)` read `readEstimates` uses, for the small keyed
+ * facts rather than comp sets: asking about twenty-five listings one
+ * request at a time is twenty-five round trips on the page's critical
+ * path, which is how a cheap cache turns into the slow part.
+ */
+export async function readKeyedBlobs(
+  keys: readonly string[]
+): Promise<Map<string, { value: Record<string, unknown>; at: string | null }>> {
+  const out = new Map<string, { value: Record<string, unknown>; at: string | null }>();
+  const cfg = config();
+  const wanted = [...new Set(keys)].filter((k) => k.length > 0 && k.length < 200);
+  if (!cfg || wanted.length === 0) return out;
+  const list = wanted.map((k) => `"${k.replace(/"/g, "")}"`).join(",");
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/listing_cache?listing_url=in.(${encodeURIComponent(list)})&select=listing_url,detail,detail_at`,
+      {
+        headers: headers(cfg.key),
+        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return out;
+    const rows = (await res.json()) as {
+      listing_url?: string;
+      detail?: unknown;
+      detail_at?: string | null;
+    }[];
+    for (const row of rows) {
+      const value = row.detail;
+      if (!row.listing_url || !value || typeof value !== "object" || Array.isArray(value)) {
+        continue;
+      }
+      out.set(row.listing_url, {
+        value: value as Record<string, unknown>,
+        at: row.detail_at ?? null,
+      });
+    }
+  } catch {
+    // A cache that cannot be read is a cache miss, never a failure.
+  }
+  return out;
+}
+
 export async function readEstimate(
   key: string
 ): Promise<{ estimate: StoredEstimate; at: string | null } | null> {
