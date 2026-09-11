@@ -972,7 +972,19 @@ export function DealsExplorer({
 
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-3 pl-3">
+        {/* THE SECOND SCROLLER, AND IT HAS TO BE ONE.
+            Below sm the band stacks, so this group becomes its own row
+            — and a row of `shrink-0` children wider than a phone with
+            no scroller is a row whose right half simply does not exist:
+            alerts, the live badge, export and the sort were off the
+            screen with no way to reach them. `ml-auto` also has to wait
+            for the row layout, or it pushes the group off the left edge
+            of a column it is the only child of.
+
+            The vertical padding is pulled back out by the negative
+            margin: overflow-x clips the other axis too, and a control
+            flush against the box loses its focus ring. */}
+        <div className="-mx-4 -my-1 flex items-center gap-3 overflow-x-auto px-4 py-1 [scrollbar-width:none] sm:mx-0 sm:ml-auto sm:shrink-0 sm:overflow-visible sm:px-0 sm:pl-3 [&::-webkit-scrollbar]:hidden">
           {/* Amenity lookup — a feature filter that had to go read the
               listings says so, and says when it couldn't. */}
           {redfinChecking ? (
