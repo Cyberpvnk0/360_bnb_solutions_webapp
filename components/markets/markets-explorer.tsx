@@ -23,7 +23,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, FileDown, Map as MapIcon, Search, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, FileDown, Map as MapIcon, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/csv";
 import { fmtMoney, fmtMoneyShort, fmtNum, fmtPct } from "@/lib/format";
@@ -89,6 +89,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
    */
   const [fresh, setFresh] = React.useState<Record<string, MarketRow["measured"]>>({});
 
+
   const states = React.useMemo(
     () => [...new Set(rows.map((r) => r.stateCode))].sort(),
     [rows]
@@ -148,10 +149,25 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         key: "name",
         header: "Market",
         cell: (r) => (
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-sans font-medium text-foreground">{r.name}</span>
-            <span className="truncate text-[11px] text-muted-foreground">
-              {r.stateCode} · {TERRAIN_LABEL[r.terrain]}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-sans font-medium text-foreground">
+                {r.name}
+              </span>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {r.stateCode} · {TERRAIN_LABEL[r.terrain]}
+              </span>
+            </span>
+            {/* The row goes somewhere and nothing said so but the
+                cursor. Not a button: the row itself is the target, and
+                a control inside a clickable row is two targets where
+                somebody expects one. */}
+            <span
+              aria-hidden
+              className="-translate-x-1 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-white opacity-0 shadow-[0_4px_12px_rgba(196,30,46,0.3)] transition-all duration-150 ease-out grad-brand group-hover:translate-x-0 group-hover:opacity-100 max-sm:hidden"
+            >
+              Analyze market
+              <ArrowRight className="size-3" />
             </span>
           </span>
         ),
@@ -275,7 +291,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
             className={cn(
               "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors duration-150",
               sort === p.id
-                ? "border-select bg-select text-white"
+                ? "border-transparent bg-select text-white grad-brand shadow-[0_2px_8px_rgba(196,30,46,0.28)]"
                 : "border-border bg-card text-muted-foreground hover:border-select/50 hover:bg-hover hover:text-foreground"
             )}
           >
@@ -392,7 +408,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
             if (r) setSelected(r.slug);
           }}
           rowClassName={(r) =>
-            cn("cursor-pointer", selected === r.slug && "bg-gold-fill/[0.07]")
+            cn("group cursor-pointer", selected === r.slug && "bg-gold-fill/[0.07]")
           }
           emptyState={
             <EmptyState

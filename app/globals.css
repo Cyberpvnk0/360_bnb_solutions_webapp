@@ -56,11 +56,28 @@
   --hover: #e2e5ee;
   --hover-strong: #d5d9e5;
   --primary-hover: #a81826;
+  /* A shade above the brand red, so a gradient has somewhere to come
+     from. Deliberately close to --select: the same red, lifted. */
+  --red-lift: #d7263d;
 
   --accent: var(--hover);
   --accent-foreground: var(--text);
   --destructive: var(--red-muted);
   --destructive-foreground: #ffffff;
+  /*
+   * THE BRAND GRADIENT. One diagonal, three stops, all of them the
+   * product's own red — lifted at the top corner, brand in the middle,
+   * deep at the bottom. It is what separates a primary action from a
+   * rectangle of flat colour, and it is deliberately shallow: a wide
+   * hue swing would read as a consumer app, and this one underwrites
+   * property.
+   *
+   * Used sparingly and always on the same things — the primary button,
+   * the one chip that says what is selected, the pill that says where a
+   * row goes. Anywhere else and it stops meaning "act here".
+   */
+  --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, var(--red-deep) 100%);
+  --grad-brand-hover: linear-gradient(140deg, #e03b4f 0%, var(--red-lift) 55%, #a81826 100%);
   --input: var(--border);
   --ring: var(--gold-bright);
 
@@ -131,11 +148,14 @@
   --hover: #2c2c32;
   --hover-strong: #3a3a42;
   --primary-hover: #e0303f;
+  --red-lift: #e8404f;
 
   --accent: var(--hover);
   --accent-foreground: var(--text);
   --destructive: var(--red-muted);
   --destructive-foreground: var(--text);
+  --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, #9d1826 100%);
+  --grad-brand-hover: linear-gradient(140deg, #f2545f 0%, var(--red-lift) 55%, #b01c2b 100%);
   --input: var(--border);
   --ring: var(--gold-bright);
 
@@ -372,6 +392,23 @@
 /* Deeper shadow for hovered interactive cards (no-op in dark). */
 @utility elev-raised {
   box-shadow: var(--elev-raised);
+}
+
+/*
+ * The brand gradient, and its brighter self on hover.
+ *
+ * A background-image over whatever background-color the element already
+ * carries, so the flat colour stays underneath as the fallback and the
+ * element keeps working if the gradient is ever removed.
+ */
+@utility grad-brand {
+  background-image: var(--grad-brand);
+}
+
+@utility grad-brand-hover {
+  &:hover {
+    background-image: var(--grad-brand-hover);
+  }
 }
 
 /* A card lifted at rest, on every edge (no-op in dark). */

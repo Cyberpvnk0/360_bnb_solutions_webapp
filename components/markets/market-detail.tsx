@@ -824,7 +824,7 @@ export function MarketDetail({
                   className={cn(
                     "shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150",
                     trend === t.id
-                      ? "border-select bg-select text-white"
+                      ? "border-transparent bg-select text-white grad-brand shadow-[0_2px_8px_rgba(196,30,46,0.28)]"
                       : "border-border bg-card text-muted-foreground hover:border-select/50 hover:bg-hover hover:text-foreground"
                   )}
                 >
@@ -907,7 +907,7 @@ export function MarketDetail({
                 className={cn(
                   "shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150",
                   sort === s.id
-                    ? "border-select bg-select text-white"
+                    ? "border-transparent bg-select text-white grad-brand shadow-[0_2px_8px_rgba(196,30,46,0.28)]"
                     : "border-border bg-card text-muted-foreground hover:border-select/50 hover:bg-hover hover:text-foreground"
                 )}
               >

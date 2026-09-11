@@ -9,8 +9,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // The brand gradient rides over the flat primary, which stays
+        // underneath as the fallback. Hover brightens the gradient
+        // rather than the colour beneath it — a background-color
+        // change would be invisible under an image.
         default:
-          "bg-primary text-primary-foreground hover:bg-primary-hover",
+          "bg-primary text-primary-foreground grad-brand grad-brand-hover",
         destructive:
           "bg-destructive text-white hover:brightness-110 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         // An outline button is transparent at rest, so its hover has to

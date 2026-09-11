@@ -29,7 +29,7 @@ function NavLink({
       className={cn(
         "flex items-center gap-3 px-5 py-2.5 text-sm transition-colors duration-150",
         active
-          ? "bg-select font-medium text-white"
+          ? "bg-select font-medium text-white grad-brand"
           : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
       )}
     >
