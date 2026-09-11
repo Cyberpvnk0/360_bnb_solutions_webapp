@@ -2,9 +2,9 @@
 
 /**
  * /saved — everything a hunter has kept: the rental lists built in the
- * Deal Finder, and the landlord book. Tab state lives in the URL
- * (?tab=) so a deep link lands on the right pane and back/forward walk
- * the tabs.
+ * Deal Finder, the markets kept from the markets page, and the landlord
+ * book. Tab state lives in the URL (?tab=) so a deep link lands on the
+ * right pane and back/forward walk the tabs.
  */
 
 import { useSearchParams } from "next/navigation";
@@ -14,15 +14,17 @@ import { LandlordsView } from "@/components/landlords/landlords-view";
 import { useSession } from "@/components/providers/session-provider";
 import { fmtNum } from "@/lib/format";
 import { ListsTab } from "./lists-tab";
+import { MarketsTab } from "./markets-tab";
 
-export type SavedTab = "lists" | "landlords";
+export type SavedTab = "lists" | "markets" | "landlords";
 
 export function SavedScreen({ initialTab }: { initialTab: SavedTab }) {
   const searchParams = useSearchParams();
-  const { lists, landlords } = useSession();
+  const { lists, landlords, watchedMarketSlugs } = useSession();
 
   const raw = searchParams.get("tab");
-  const tab: SavedTab = raw === "landlords" || raw === "lists" ? raw : initialTab;
+  const tab: SavedTab =
+    raw === "landlords" || raw === "lists" || raw === "markets" ? raw : initialTab;
 
   // A shallow history entry, which Next mirrors into useSearchParams
   // without a server round trip: the pane switches on the click, not
@@ -36,7 +38,7 @@ export function SavedScreen({ initialTab }: { initialTab: SavedTab }) {
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
         title="Saved"
-        description="The rentals you shortlisted and the landlords behind them."
+        description="The rentals you shortlisted, the markets you are working, and the landlords behind them."
       />
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-8">
@@ -45,6 +47,12 @@ export function SavedScreen({ initialTab }: { initialTab: SavedTab }) {
             Lists
             <span className="ml-1.5 text-[11px] text-muted-foreground tabular">
               {fmtNum(lists.length)}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="markets">
+            Markets
+            <span className="ml-1.5 text-[11px] text-muted-foreground tabular">
+              {fmtNum(watchedMarketSlugs.length)}
             </span>
           </TabsTrigger>
           <TabsTrigger value="landlords">
@@ -56,6 +64,9 @@ export function SavedScreen({ initialTab }: { initialTab: SavedTab }) {
         </TabsList>
         <TabsContent value="lists" className="mt-8">
           <ListsTab />
+        </TabsContent>
+        <TabsContent value="markets" className="mt-8">
+          <MarketsTab />
         </TabsContent>
         <TabsContent value="landlords" className="mt-8">
           <LandlordsView embedded />

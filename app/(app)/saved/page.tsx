@@ -2,7 +2,7 @@ import { SavedScreen, type SavedTab } from "@/components/saved/saved-screen";
 
 export const metadata = { title: "Saved" };
 
-const TABS: SavedTab[] = ["lists", "landlords"];
+const TABS: SavedTab[] = ["lists", "markets", "landlords"];
 
 export default async function SavedPage({
   searchParams,

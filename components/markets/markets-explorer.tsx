@@ -16,8 +16,8 @@
  * opens on three hundred blanks. Sorting by any figure puts the
  * unmeasured last rather than at zero, for the same reason.
  *
- * A row goes where somebody wanted to go anyway: that market's
- * rentals, which is the screen that shows properties you can act on.
+ * A row opens that market: its areas, its measured year, and the way
+ * through to the rentals listed in it.
  */
 
 import * as React from "react";
@@ -43,6 +43,7 @@ import {
 } from "@/lib/markets/explorer";
 import type { MarketTerrain, RegulationStatus } from "@/lib/mock/types";
 import { MarketsMap } from "./markets-map";
+import { SaveMarketButton } from "./save-market-button";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { InfoHint } from "@/components/primitives/info-hint";
@@ -356,11 +357,14 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           columns={columns}
           rows={shown}
           rowKey={(r) => r.slug}
-          onRowClick={(r) =>
-            mapOpen
-              ? setSelected((prev) => (prev === r.slug ? null : r.slug))
-              : router.push(`/deals?market=${r.slug}`)
-          }
+          onRowClick={(r) => router.push(`/markets/${r.slug}`)}
+          // Hovering lights the map rather than selecting it: a click
+          // has somewhere better to go now that a market has a page,
+          // and a pointer crossing the table on its way elsewhere
+          // should not put the map back to nothing.
+          onRowHover={(r) => {
+            if (r) setSelected(r.slug);
+          }}
           rowClassName={(r) =>
             cn("cursor-pointer", selected === r.slug && "bg-gold-fill/[0.07]")
           }
@@ -394,7 +398,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           </span>
           <span>·</span>
           <span className="inline-flex items-center gap-1">
-            {mapOpen ? "pick a market to light it on the map" : "open a market for its rentals"}
+            open a market for its areas, its year and its rentals
             <ArrowUpRight aria-hidden className="size-3" />
           </span>
         </p>
@@ -425,21 +429,25 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
             className="h-[clamp(15rem,58vw,26rem)] w-full xl:h-[clamp(22rem,calc(100dvh_-_15rem),38rem)]"
           />
           {chosen ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-sm border border-border bg-card px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {chosen.name}, {chosen.stateCode}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {RULE_LABEL[chosen.regulation.status]} · {chosen.regulation.note}
-                </p>
+            <div className="mt-3 rounded-sm border border-border bg-card px-4 py-3">
+              <p className="truncate text-sm font-medium text-foreground">
+                {chosen.name}, {chosen.stateCode}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {RULE_LABEL[chosen.regulation.status]} · {chosen.regulation.note}
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <Button asChild size="sm" className="gap-1.5">
+                  <Link href={`/markets/${chosen.slug}`}>
+                    Open market
+                    <ArrowUpRight aria-hidden className="size-3.5" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="sm" className="gap-1.5">
+                  <Link href={`/deals?market=${chosen.slug}`}>Rentals here</Link>
+                </Button>
+                <SaveMarketButton slug={chosen.slug} name={chosen.name} />
               </div>
-              <Button asChild size="sm" className="shrink-0 gap-1.5">
-                <Link href={`/deals?market=${chosen.slug}`}>
-                  Rentals here
-                  <ArrowUpRight aria-hidden className="size-3.5" />
-                </Link>
-              </Button>
             </div>
           ) : null}
         </aside>

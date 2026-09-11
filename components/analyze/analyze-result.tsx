@@ -424,10 +424,10 @@ export function AnalyzeResult({
               ) : null}{" "}
               ·{" "}
               <Link
-                href={`/deals?market=${analysis.marketSlug}`}
+                href={`/markets/${analysis.marketSlug}`}
                 className="inline-flex items-center gap-0.5 text-gold transition-colors duration-150 hover:text-gold-bright"
               >
-                View market rentals
+                Open this market
                 <ArrowUpRight aria-hidden className="size-3" />
               </Link>
             </p>

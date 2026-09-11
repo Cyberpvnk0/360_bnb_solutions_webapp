@@ -104,6 +104,19 @@ export function makeTooltip(
   };
 }
 
+/**
+ * Recharts' Tooltip `content` prop is typed wider than the kit's tooltip
+ * renderer, and widening the renderer to match would give every caller a
+ * `ValueType` where it wants a number. Adapt at the one seam instead.
+ */
+export function asTooltipContent(
+  render: (props: TooltipContentProps<number, string>) => React.ReactNode
+) {
+  return function TooltipContent(props: unknown) {
+    return render(props as TooltipContentProps<number, string>);
+  };
+}
+
 /** Inline legend: colored marks beside muted text labels. */
 export function ChartLegend({
   items,

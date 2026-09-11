@@ -18,7 +18,6 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  type TooltipContentProps,
 } from "recharts";
 import { TIERS, TIER_ORDER, type TierId } from "@/config/app";
 import { fmtMonth, fmtNum } from "@/lib/format";
@@ -29,17 +28,8 @@ import {
   ChartLegend,
   GRID_PROPS,
   makeTooltip,
+  asTooltipContent,
 } from "@/components/charts/kit";
-
-/** Recharts' Tooltip content prop is typed wider than the kit's tooltip
- *  renderer; adapt without loosening the kit types. */
-function asTooltipContent(
-  render: (props: TooltipContentProps<number, string>) => React.ReactNode
-) {
-  return function TooltipContent(props: unknown) {
-    return render(props as TooltipContentProps<number, string>);
-  };
-}
 
 /** Slice color per tier, in TIER_ORDER. Starter is the gold fill knocked
  *  back to 45% so the paying ladder reads free → starter → pro. */

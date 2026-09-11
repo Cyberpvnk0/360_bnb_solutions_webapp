@@ -93,9 +93,18 @@ const RULE_COLOR: Record<string, string> = {
   banned: "#c41e2e",
 };
 
-/** One market's dot. Colour is the rule; a filled dot has measured
- *  figures behind it and a hollow one honestly has none. */
-function dotFor(row: MarketRow, selected: boolean): HTMLElement {
+/**
+ * One market's dot, inside a wrapper that is left strictly alone.
+ *
+ * THE MARKER'S OWN ELEMENT MUST NOT BE STYLED. MapLibre positions a DOM
+ * marker by writing `transform: translate(...)` onto the element it was
+ * handed, so a `style.transform` of ours — a scale on the selected one —
+ * overwrites the placement and drops every dot it touches onto the
+ * map's top-left corner until the next camera move puts it back. The
+ * wrapper is MapLibre's; the button inside it is ours to animate.
+ */
+function dotFor(row: MarketRow): HTMLElement {
+  const wrap = document.createElement("div");
   const el = document.createElement("button");
   el.type = "button";
   el.setAttribute("aria-label", `${row.name}, ${row.stateCode}`);
@@ -104,6 +113,7 @@ function dotFor(row: MarketRow, selected: boolean): HTMLElement {
   el.style.cssText = [
     `width:${size}px`,
     `height:${size}px`,
+    "display:block",
     "border-radius:9999px",
     "cursor:pointer",
     "padding:0",
@@ -111,9 +121,15 @@ function dotFor(row: MarketRow, selected: boolean): HTMLElement {
     `border:1.5px solid ${color}`,
     `opacity:${row.measured ? "0.95" : "0.55"}`,
     "transition:transform 150ms ease, box-shadow 150ms ease",
-    selected ? `transform:scale(1.6);box-shadow:0 0 0 5px ${color}38` : "",
   ].join(";");
-  return el;
+  wrap.appendChild(el);
+  return wrap;
+}
+
+/** The dot inside a marker's wrapper. */
+function dotOf(marker: maplibregl.Marker | undefined): HTMLElement | null {
+  const child = marker?.getElement().firstElementChild;
+  return child instanceof HTMLElement ? child : null;
 }
 
 /**
@@ -242,14 +258,14 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     if (!map || !live) return;
     for (const m of markersRef.current) m.remove();
     markersRef.current = rows.map((row) => {
-      const el = dotFor(row, row.slug === selectedRef.current);
-      el.addEventListener("mouseenter", () => setHovered(row));
-      el.addEventListener("mouseleave", () => setHovered(null));
-      el.addEventListener("click", (e) => {
+      const wrap = dotFor(row);
+      wrap.addEventListener("mouseenter", () => setHovered(row));
+      wrap.addEventListener("mouseleave", () => setHovered(null));
+      wrap.addEventListener("click", (e) => {
         e.stopPropagation();
         onSelectRef.current(row.slug === selectedRef.current ? null : row.slug);
       });
-      return new maplibregl.Marker({ element: el }).setLngLat([row.lon, row.lat]).addTo(map);
+      return new maplibregl.Marker({ element: wrap }).setLngLat([row.lon, row.lat]).addTo(map);
     });
     if (rows.length === 0) return;
     map.fitBounds(framing(rows), {
@@ -259,16 +275,19 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     });
   }, [rows, live]);
 
-  // The selected market, lit wherever the click came from.
+  // The selected market, lit wherever it was chosen — a pin, or a row
+  // under the pointer. Styles the dot, never the wrapper around it.
   React.useEffect(() => {
     rows.forEach((row, i) => {
-      const el = markersRef.current[i]?.getElement();
+      const el = dotOf(markersRef.current[i]);
       if (!el) return;
       const color = RULE_COLOR[row.regulation.status] ?? RULE_COLOR.unverified;
       const on = row.slug === selected;
-      el.style.transform = on ? "scale(1.6)" : "";
+      el.style.transform = on ? "scale(1.7)" : "scale(1)";
       el.style.boxShadow = on ? `0 0 0 5px ${color}38` : "";
-      el.style.zIndex = on ? "2" : "";
+      el.style.opacity = on ? "1" : row.measured ? "0.95" : "0.55";
+      const wrap = markersRef.current[i]?.getElement();
+      if (wrap) wrap.style.zIndex = on ? "2" : "";
     });
   }, [selected, rows, live]);
 

@@ -7,11 +7,11 @@ export const metadata = { title: "Deal Finder" };
 export default async function DealsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ market?: string; list?: string }>;
+  searchParams: Promise<{ market?: string; zip?: string; list?: string }>;
 }) {
   // No inventory ships with the page — Deal Finder is search-first, so
   // rentals load for the market or ZIP the user actually asks for.
-  const [{ market, list }, markets, totals] = await Promise.all([
+  const [{ market, zip, list }, markets, totals] = await Promise.all([
     searchParams,
     getMarkets(),
     getRentalTotals(),
@@ -25,7 +25,13 @@ export default async function DealsPage({
    * first.
    */
   const found = market ? MARKET_BY_SLUG.get(market) : undefined;
-  const initialQuery = found ? `${found.name}, ${found.stateCode}` : "";
+  /**
+   * ?zip=<5 digits> arrives from a market page's area table, where a
+   * row IS a ZIP. The box already speaks ZIP, so this is the same
+   * resolution one level finer rather than a second search mode.
+   */
+  const area = zip && /^\d{5}$/.test(zip) ? zip : "";
+  const initialQuery = area || (found ? `${found.name}, ${found.stateCode}` : "");
 
   return (
     <DealsExplorer
