@@ -558,6 +558,24 @@ describe("what the whole comp payload looks like", () => {
     expect(span.ttm_total_days).toBe("not stated");
   });
 
+  it("bands the last quarter's nights, which says how many comps still trade", () => {
+    const quarter = (reserved: number, available: number) =>
+      comp({
+        performance_metrics: {
+          ttm_avg_rate: 200,
+          ttm_occupancy: 0.5,
+          l90d_days_reserved: reserved,
+          l90d_available_days: available,
+          l90d_blocked_days: 90 - reserved - available,
+        },
+      });
+    rememberCompShape([quarter(0, 0), quarter(0, 40), quarter(6, 20), quarter(45, 30)]);
+    const recent = compFieldsSeen()!.$recent as Record<string, string>;
+    expect(recent.nights_booked).toBe("2 none, 1 1-9, 1 30-59");
+    // Ordered by band, so the shape of the set reads left to right.
+    expect(recent.nights_open).toBe("1 none, 1 10-29, 2 30-59");
+  });
+
   it("records the response's own keys, where a data-as-of stamp would be", () => {
     rememberCompShape([comp()], ["occupancy", "revenue", "as_of"]);
     expect(compFieldsSeen()!.$response).toEqual(["as_of", "occupancy", "revenue"]);

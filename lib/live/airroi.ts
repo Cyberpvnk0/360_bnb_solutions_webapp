@@ -679,6 +679,56 @@ export function rememberCompShape(rows: unknown[], responseKeys: string[] = []):
     reading:
       "All at the full figure means these are window lengths and carry no liveness. Anything short of it means the count is days observed — and a comp short on the quarter but long on the year is one that stopped being seen, which is the signal this product has had no way to read.",
   };
+  /**
+   * WHAT THE LAST QUARTER ACTUALLY LOOKED LIKE, comp by comp, in bands.
+   *
+   * The question this answers is not the vendor's schema but the
+   * product's: how many of the listings a projection stands on are
+   * still trading. A comp set is a year's evidence, and a year is long
+   * enough to contain listings that have since come down; their rate
+   * and occupancy are then averaged into a number somebody signs a
+   * lease against.
+   *
+   * Nights booked in the last ninety days is the closest thing to
+   * proof of life this payload holds. A listing that took a booking
+   * last month is on the platform. One that took none may be
+   * expensive, may be new, may be somebody's own house for the season,
+   * or may be gone — those four are not distinguishable here, which is
+   * exactly why the distribution is worth seeing before any of them is
+   * excluded from a comp set.
+   *
+   * Nights left open says the other half: a listing with no open
+   * nights and no bookings is one nobody could reach, whatever the
+   * reason.
+   *
+   * Bands, never a count per listing. The spread is a fact about the
+   * feed; a calendar is a fact about a host.
+   */
+  const nights = (key: string) => {
+    const seen = objects
+      .map((r) => pickNumber(metricsOf(r), [key]))
+      .filter((n): n is number => n !== null);
+    if (seen.length === 0) return "not stated";
+    const edges: [string, (n: number) => boolean][] = [
+      ["none", (n) => n <= 0],
+      ["1-9", (n) => n >= 1 && n <= 9],
+      ["10-29", (n) => n >= 10 && n <= 29],
+      ["30-59", (n) => n >= 30 && n <= 59],
+      ["60 or more", (n) => n >= 60],
+    ];
+    return edges
+      .map(([label, hit]) => [label, seen.filter(hit).length] as const)
+      .filter(([, n]) => n > 0)
+      .map(([label, n]) => `${n} ${label}`)
+      .join(", ");
+  };
+  shape.$recent = {
+    nights_booked: nights("l90d_days_reserved"),
+    nights_open: nights("l90d_available_days"),
+    nights_blocked: nights("l90d_blocked_days"),
+    reading:
+      "Of the comps a projection stands on, how many actually traded in the last quarter. Comps under 'none' for nights booked took no booking in ninety days; comps under 'none' for both booked and open were unreachable for the whole window. A set where most comps booked recently is a set of live listings, and the dead room links are then something other than dead listings.",
+  };
   // Every id in the set by length and exactness, not just the first —
   // one rounded id among twenty-five is a broken link nobody would see
   // in a sample of one.

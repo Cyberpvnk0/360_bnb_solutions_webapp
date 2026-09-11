@@ -79,6 +79,7 @@ export async function GET() {
             "The vendor's last comp payload, described across the WHOLE set. Names and counts only, never a value.",
             "$fields: every field path any comp carried, with how many carried it — the union, because a JSON feed omits a null field per row and the first comp cannot say what the twentieth holds.",
             "$calendar: on how many comps the feed states each of the last-90-day counts. All zeros means the payload carries no calendar, whatever the rest of the file assumes.",
+            "$recent: of the comps a projection stands on, how many actually traded in the last quarter — nights booked, left open and blocked, in bands. This is the closest thing to proof of life the payload holds, and it decides whether a comp set can be filtered to living listings at all.",
             "$span: the spread of l90d_total_days and ttm_total_days. This is the one pair that could tell a listing still on the platform from one that has come down, and only if the counts are days observed rather than window lengths — read its own `reading` line.",
             "$withheld: how many comps had no open or booked night in that window and so are shown without a room link, and how many the calendar cannot judge.",
             "$inactive / $rooms: how many comps were left out of the set entirely, and why.",
