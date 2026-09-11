@@ -304,6 +304,9 @@ export function MarketDetail({
   };
 
   const best = React.useMemo(() => bestSize(sizes), [sizes]);
+  /** Sizes that have a rate, which is to say sizes somebody has run an
+   *  analysis on here. The rest carry a lease and nothing else. */
+  const sized = React.useMemo(() => sizes.filter((r) => r.adr !== null), [sizes]);
 
   const sizeColumns = React.useMemo<DataTableColumn<SizeRow>[]>(
     () => [
@@ -322,14 +325,26 @@ export function MarketDetail({
       },
       {
         key: "seen",
-        header: "Seen",
+        header: (
+          <span className="inline-flex items-center gap-1">
+            Listings seen
+            <InfoHint label="listings seen" side="bottom">
+              Real short-let listings this product has pulled at this size, from
+              every analysis anybody has run in {market.name}. An analysis buys
+              the comps that match its own property&apos;s size, so a size
+              nobody has analyzed here has none — which is why a row can show a
+              lease and no rate.
+            </InfoHint>
+          </span>
+        ),
         align: "right",
         cell: (r) =>
           r.comps > 0 ? (
             <span className="text-muted-foreground">{fmtNum(r.comps)}</span>
           ) : (
-            NONE
+            <span className="text-[11px] text-muted-foreground/60">None yet</span>
           ),
+        className: "min-w-32",
       },
       {
         key: "adr",
@@ -375,7 +390,7 @@ export function MarketDetail({
           ),
       },
     ],
-    [best]
+    [best, market.name]
   );
 
   const columns = React.useMemo<DataTableColumn<AreaRow>[]>(
@@ -655,9 +670,19 @@ export function MarketDetail({
               </InfoHint>
             </h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {best
-                ? `${best.label} clears the widest spread here — ${fmtMoneyShort(best.spread ?? 0)} a year over a ${fmtMoney(best.rent ?? 0)} lease.`
-                : `Rates need ${MIN_COMPS} short-let listings seen and a lease needs ${MIN_RENTALS} rentals before a size can be read.`}
+              {best ? (
+                <>
+                  {best.label} clears the widest spread here —{" "}
+                  {fmtMoneyShort(best.spread ?? 0)} a year over a{" "}
+                  {fmtMoney(best.rent ?? 0)} lease
+                  {sized.length === 1
+                    ? ", and it is the only size analyzed here so far"
+                    : ` of the ${sized.length} sizes analyzed here`}
+                  .
+                </>
+              ) : (
+                `Rates need ${MIN_COMPS} short-let listings seen and a lease needs ${MIN_RENTALS} rentals before a size can be read.`
+              )}
             </p>
           </div>
           <DataTable
@@ -675,10 +700,22 @@ export function MarketDetail({
               />
             }
           />
-          <p className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">
-            Spread is a year at the rate seen, less a year of the lease listed.
-            It is the size comparison, not a quote on any unit — run a property
-            for that.
+          <p className="flex flex-wrap items-center gap-x-1.5 border-t border-border px-5 py-3 text-[11px] text-muted-foreground">
+            <span>
+              Spread is a year at the rate seen, less a year of the lease
+              listed — the size comparison, not a quote on any unit.
+            </span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1.5">
+              a size fills in when somebody analyzes one
+              <InfoHint label="why a size is empty">
+                The asking lease comes from every rental listed here, so it
+                shows at every size. The rate does not: an analysis buys the
+                short-let listings that match its own property&apos;s size, so
+                a size arrives the first time anybody runs a property of that
+                size in {market.name}.
+              </InfoHint>
+            </span>
           </p>
         </section>
 
