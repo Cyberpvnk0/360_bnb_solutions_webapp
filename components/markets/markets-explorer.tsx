@@ -21,8 +21,9 @@
  */
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, FileDown, Search, X } from "lucide-react";
+import { ArrowUpRight, FileDown, Map as MapIcon, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { csvFileName, downloadCsv, toCsv, type CsvColumn } from "@/lib/export/csv";
 import { fmtMoney, fmtMoneyShort, fmtNum, fmtPct } from "@/lib/format";
@@ -41,6 +42,7 @@ import {
   type MarketSort,
 } from "@/lib/markets/explorer";
 import type { MarketTerrain, RegulationStatus } from "@/lib/mock/types";
+import { MarketsMap } from "./markets-map";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { InfoHint } from "@/components/primitives/info-hint";
@@ -72,6 +74,12 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const [query, setQuery] = React.useState<MarketQuery>(EMPTY_QUERY);
   const [sort, setSort] = React.useState<MarketSort>("measured");
   const [panel, setPanel] = React.useState<string | null>(null);
+  /** Open. This page was asked for as a map view, and the country is
+   *  half of what four hundred rows say — the toggle is for the
+   *  reader who wants the table on its own, not the default. */
+  const [mapOpen, setMapOpen] = React.useState(true);
+  /** The market lit on the map, from a pin or a row. */
+  const [selected, setSelected] = React.useState<string | null>(null);
 
   const states = React.useMemo(
     () => [...new Set(rows.map((r) => r.stateCode))].sort(),
@@ -84,6 +92,10 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const shown = React.useMemo(
     () => sortMarkets(filterMarkets(rows, query), sort),
     [rows, query, sort]
+  );
+  const chosen = React.useMemo(
+    () => (selected ? (shown.find((r) => r.slug === selected) ?? null) : null),
+    [shown, selected]
   );
 
   const patch = (next: Partial<MarketQuery>) =>
@@ -111,7 +123,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
       },
       {
         key: "rules",
-        header: "Local rule",
+        header: "Regulation",
         cell: (r) => (
           <span className="inline-flex items-center gap-1.5">
             <StatusChip tone={RULE_TONE[r.regulation.status]}>
@@ -187,7 +199,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
       { header: "Market", value: (r) => r.name },
       { header: "State", value: (r) => r.stateCode },
       { header: "Type", value: (r) => TERRAIN_LABEL[r.terrain] },
-      { header: "Local rule", value: (r) => RULE_LABEL[r.regulation.status] },
+      { header: "Regulation", value: (r) => RULE_LABEL[r.regulation.status] },
       { header: "Rule note", value: (r) => r.regulation.note },
       { header: "Measured revenue/yr", value: (r) => r.measured?.revenue ?? "" },
       { header: "Measured ADR", value: (r) => r.measured?.adr ?? "" },
@@ -201,7 +213,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 md:px-10">
+    <div className="px-4 py-7 md:px-6 lg:px-8">
       <header className="flex flex-col gap-1">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
           Markets
@@ -265,7 +277,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         />
         <MultiChip
           {...chip("rules")}
-          label="Local rule"
+          label="Regulation"
           summary={
             query.rules.length > 0
               ? query.rules.map((r) => RULE_LABEL[r]).join(", ")
@@ -310,10 +322,22 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           </button>
         ) : null}
 
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2.5">
           <span className="hidden text-xs text-muted-foreground tabular sm:block">
             {fmtNum(shown.length)} of {fmtNum(rows.length)}
           </span>
+          {/* Where, rather than which — the shape of the rules across
+              the country is a thing a sorted list cannot show. */}
+          <Button
+            variant={mapOpen ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={mapOpen}
+            onClick={() => setMapOpen((v) => !v)}
+            className="gap-1.5"
+          >
+            <MapIcon aria-hidden className="size-3.5" />
+            {mapOpen ? "Hide map" : "Show map"}
+          </Button>
           <Button variant="outline" size="sm" onClick={exportCsv} className="gap-1.5">
             <FileDown aria-hidden className="size-3.5" />
             Export CSV
@@ -321,13 +345,25 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         </div>
       </div>
 
-      <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
+      <div
+        className={cn(
+          "mt-5 grid gap-5",
+          mapOpen && "xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]"
+        )}
+      >
+      <section className="min-w-0 overflow-hidden rounded-sm border border-border bg-card elev-card">
         <DataTable
           columns={columns}
           rows={shown}
           rowKey={(r) => r.slug}
-          onRowClick={(r) => router.push(`/deals?market=${r.slug}`)}
-          rowClassName={() => "cursor-pointer"}
+          onRowClick={(r) =>
+            mapOpen
+              ? setSelected((prev) => (prev === r.slug ? null : r.slug))
+              : router.push(`/deals?market=${r.slug}`)
+          }
+          rowClassName={(r) =>
+            cn("cursor-pointer", selected === r.slug && "bg-gold-fill/[0.07]")
+          }
           emptyState={
             <EmptyState
               icon={Search}
@@ -358,11 +394,57 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           </span>
           <span>·</span>
           <span className="inline-flex items-center gap-1">
-            open a market for its rentals
+            {mapOpen ? "pick a market to light it on the map" : "open a market for its rentals"}
             <ArrowUpRight aria-hidden className="size-3" />
           </span>
         </p>
       </section>
+
+      {/* Sticky beside a table that can run to four hundred rows: a map
+          that scrolled away with the first screen would be a map you
+          could only use at the top of the page. */}
+      {/* `self-start` or the panel stretches to the row, and the row is
+          four hundred table rows tall — a sticky element inside a
+          twenty-thousand-pixel box never sticks to anything.
+
+          The height is set here and never left to the grid: MapLibre
+          sizes its canvas to whatever its container measures, and a
+          container with no resolved height gets a canvas of nothing.
+          The two values frame the country rather than fill the page —
+          stacked above the table on a phone it is as wide as the screen
+          and roughly as tall as the map needs, and beside the table it
+          takes the viewport. Every space inside the arbitrary value is
+          an underscore; a calc() with real spaces is silently invalid
+          CSS and collapses the panel. */}
+      {mapOpen ? (
+        <aside className="order-first min-w-0 self-start xl:order-none xl:sticky xl:top-20">
+          <MarketsMap
+            rows={shown}
+            selected={selected}
+            onSelect={setSelected}
+            className="h-[clamp(15rem,58vw,26rem)] w-full xl:h-[clamp(22rem,calc(100dvh_-_15rem),38rem)]"
+          />
+          {chosen ? (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-sm border border-border bg-card px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {chosen.name}, {chosen.stateCode}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {RULE_LABEL[chosen.regulation.status]} · {chosen.regulation.note}
+                </p>
+              </div>
+              <Button asChild size="sm" className="shrink-0 gap-1.5">
+                <Link href={`/deals?market=${chosen.slug}`}>
+                  Rentals here
+                  <ArrowUpRight aria-hidden className="size-3.5" />
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+        </aside>
+      ) : null}
+      </div>
     </div>
   );
 }

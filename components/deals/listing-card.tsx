@@ -34,6 +34,8 @@ import { AddToListMenu } from "./add-to-list-menu";
 import { AnalyzeButton } from "./analyze-button";
 import { money, rangeText, rangeTone } from "./net-range";
 import { TYPE_LABEL } from "./deal-filters";
+import { InfoHint } from "@/components/primitives/info-hint";
+import { HINTS } from "@/lib/copy/hints";
 import { cn } from "@/lib/utils";
 
 /** Zillow's separator, and it earns its place: four facts run together
@@ -100,15 +102,25 @@ function Stat({
   label,
   value,
   tone = "plain",
+  hint,
 }: {
   label: string;
   value: string;
   tone?: "plain" | "good" | "bad";
+  /** What the word means, for the reader it was written for. A card
+   *  says "Cushion +14 pts" in eleven characters and that is the whole
+   *  trade — worth one sentence on demand. */
+  hint?: React.ReactNode;
 }) {
   return (
     <div className="px-3 py-2 text-center">
-      <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      <p className="inline-flex items-center gap-1 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
+        {hint ? (
+          <InfoHint label={label} className="size-3">
+            {hint}
+          </InfoHint>
+        ) : null}
       </p>
       <p
         className={cn(
@@ -294,7 +306,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
           <div className="grid grid-cols-2 divide-x divide-border border-t border-border">
             {deal.basis.kind === "pending" ? (
               <>
-                <Stat label="Cushion" value="—" />
+                <Stat label="Cushion" value="—" hint={HINTS.cushion} />
                 <Stat label="Nightly" value="—" />
               </>
             ) : (
@@ -303,6 +315,7 @@ export const ListingCard = React.forwardRef<HTMLDivElement, ListingCardProps>(
                   label="Cushion"
                   value={`${deal.cushionPts < 0 ? "−" : "+"}${Math.abs(deal.cushionPts)} pts`}
                   tone={deal.cushionPts < 0 ? "bad" : deal.cushionPts >= 8 ? "good" : "plain"}
+                  hint={HINTS.cushion}
                 />
                 <Stat label="Nightly" value={fmtMoney(deal.nightlyRate)} />
               </>

@@ -48,6 +48,9 @@ export interface MarketRow {
   state: string;
   stateCode: string;
   terrain: MarketTerrain;
+  /** Where it is, for the map. */
+  lat: number;
+  lon: number;
   regulation: { status: RegulationStatus; note: string };
   /** Null until somebody's analysis paid for this market's figures. */
   measured: (MeasuredMarket & { at: string | null }) | null;
@@ -88,6 +91,8 @@ export function buildRows(
       state: m.state,
       stateCode: m.stateCode,
       terrain: m.terrain,
+      lat: m.lat,
+      lon: m.lon,
       regulation: { status: m.regulation.status, note: m.regulation.note },
       measured,
       rentEstimate: m.medianRent2br,
@@ -213,10 +218,17 @@ export function sortMarkets(rows: readonly MarketRow[], sort: MarketSort): Marke
 /* Labels                                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * How strict the local rule is, in the one word an operator scanning a
+ * list actually wants. "Moderate" is not a hedge — it is the honest
+ * word for a market that allows nightly letting but gates it behind a
+ * permit, and collapsing it into either neighbour would misstate the
+ * rule for a few hundred cities.
+ */
 export const RULE_LABEL: Record<RegulationStatus, string> = {
-  permitted: "Permitted",
-  "permit-required": "Permit required",
-  banned: "Banned",
+  permitted: "Lenient",
+  "permit-required": "Moderate",
+  banned: "Strict",
   unverified: "Unverified",
 };
 
