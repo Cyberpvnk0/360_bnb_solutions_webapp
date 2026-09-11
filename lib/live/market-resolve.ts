@@ -32,7 +32,7 @@
  * going quietly unsearchable.
  */
 
-import { marketMatchesQuery } from "@/components/deals/deal-filters";
+import { marketMatchesQuery } from "@/lib/deals/filters";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 import type { Market } from "@/lib/mock/types";
 

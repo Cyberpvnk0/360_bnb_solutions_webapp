@@ -39,6 +39,7 @@ import type { Market, RentalListing } from "@/lib/mock/types";
 import { COURSE_MARKET_SLUGS } from "@/lib/mock/course-markets";
 import { marketSearchText } from "@/lib/mock/market-aliases";
 import { resolveMarketQuery } from "@/lib/live/market-resolve";
+import { clearedFilters, searchToHref } from "@/lib/deals/search-url";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -206,6 +207,10 @@ interface DealsExplorerProps {
   initialZip?: string | null;
   /** A rental to open the panel on, from ?listing=. */
   initialListing?: string | null;
+  /** The filters as the URL had them, so a refresh lands on the search
+   *  somebody had rather than on an empty one. */
+  initialFilters?: DealFilters | null;
+  initialSort?: string | null;
   /** A saved list to open on, from ?list= — the Saved page's way in. */
   initialList?: string | null;
 }
@@ -216,16 +221,22 @@ export function DealsExplorer({
   initialQuery = "",
   initialZip = null,
   initialListing = null,
+  initialFilters = null,
+  initialSort = null,
   initialList = null,
 }: DealsExplorerProps) {
   const [filters, setFilters] = React.useState<DealFilters>(
-    // Seeded from ?market=, so arriving from a deal or an analysis lands
-    // on that market's inventory rather than an empty search box.
-    initialQuery
-      ? { ...DEFAULT_DEAL_FILTERS, query: initialQuery }
-      : DEFAULT_DEAL_FILTERS
+    // Seeded from the URL, so a refresh lands on the search somebody
+    // had — and from ?market= so arriving from a deal or an analysis
+    // lands on that market's inventory rather than an empty box.
+    initialFilters ??
+      (initialQuery
+        ? { ...DEFAULT_DEAL_FILTERS, query: initialQuery }
+        : DEFAULT_DEAL_FILTERS)
   );
-  const [sort, setSort] = React.useState<SortKey>("spread");
+  const [sort, setSort] = React.useState<SortKey>(
+    (initialSort as SortKey | null) ?? "spread"
+  );
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(initialListing);
@@ -706,14 +717,24 @@ export function DealsExplorer({
     return null;
   }, [boundary, zipActive, zipResult, zip, liveTarget, fitNonce]);
 
-  const hasActiveFilters =
-    !isDefaultDealFilters(filters) || zip !== null || listFilter !== null;
+  /**
+   * Whether RESET would do anything — which is only about the filters.
+   *
+   * A ZIP and a saved list each carry their own way out (the chip's X,
+   * and the location box), so counting them here lit a button that then
+   * left them exactly where they were.
+   */
+  const hasActiveFilters = !isDefaultDealFilters({ ...filters, query: "" });
+  /**
+   * The filters, and nothing else.
+   *
+   * This used to clear the search too: one control for undoing a bed
+   * count also undid the ten seconds somebody spent finding the city,
+   * and the way back was to type it again. The location, the ZIP, the
+   * saved list and the sort all survive.
+   */
   const resetFilters = () => {
-    setFilters(DEFAULT_DEAL_FILTERS);
-    setZip(null);
-    setViewBounds(null);
-    setZipResult(null);
-    setListFilter(null);
+    setFilters(clearedFilters);
     resetPaging();
   };
 
@@ -787,6 +808,36 @@ export function DealsExplorer({
         : null,
     [detailRow, markets]
   );
+
+  /**
+   * THE ADDRESS BAR IS THE SEARCH.
+   *
+   * Written on every change rather than only on submit, because the
+   * thing being protected is a refresh — and a refresh can land between
+   * any two keystrokes. `replaceState` rather than `push`: narrowing a
+   * search is one act of searching, and a back button that walked every
+   * bedroom count somebody tried would be its own bug.
+   *
+   * It also fires on arrival, which is what normalises the shorthand
+   * links: `?market=jacksonville` becomes `?q=Jacksonville, FL` the
+   * moment the page settles. Safe because the state was seeded from
+   * those params first — this writes back what was just read, in the
+   * one language the search box speaks.
+   */
+  const href = searchToHref({
+    query: filters.query,
+    zip,
+    filters,
+    sort,
+    list: listFilter,
+    listing: detailId,
+  });
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const now = `${window.location.pathname}${window.location.search}`;
+    if (now === href) return;
+    window.history.replaceState(null, "", href);
+  }, [href]);
 
   /** Nothing searched, no list open — the opening state. */
   const idle = !zip && !liveTarget && !listFilter;
@@ -968,7 +1019,7 @@ export function DealsExplorer({
             onClick={resetFilters}
             className="shrink-0 text-muted-foreground"
           >
-            Reset all
+            Reset filters
           </Button>
         ) : null}
 
