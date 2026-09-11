@@ -72,9 +72,18 @@ const LIVE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
  *  visitor. */
 const UNKNOWN_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** How many uncached listings one analysis may check. A full set and
- *  no more; the rest keep their comps and stay unknown. */
-const MAX_CHECKS = 30;
+/**
+ * How many uncached listings one analysis may check.
+ *
+ * Fifteen, against comp sets that arrive twenty-five long, because a
+ * check is a page fetched at the scraping vendor's price and the
+ * caller hands these over NEAREST FIRST. The nearest comps are the
+ * ones the projection actually stands on — the one-mile subset when
+ * there is one (lib/calc/comps, selectNearbyComps) — so the spend
+ * lands where a dead listing would do the most damage, and the
+ * farthest few keep their comps and stay honestly unknown.
+ */
+const MAX_CHECKS = 15;
 /** How many at once. The vendor holds a protected page for over a
  *  minute, so this is about not opening thirty of those together. */
 const LANES = 6;
@@ -176,7 +185,10 @@ export interface LivenessRun {
  * Ask about a set of listing ids: the store first, the platform for
  * whatever is left, and back to the store with the answers.
  */
-export async function checkListings(ids: readonly string[]): Promise<LivenessRun> {
+export async function checkListings(
+  /** Nearest first: the cap below spends on the head of this list. */
+  ids: readonly string[]
+): Promise<LivenessRun> {
   const states = new Map<string, Liveness>();
   const wanted = [...new Set(ids)].filter((id) => /^\d{5,}$/.test(id));
   const tally = { cached: 0, asked: 0, live: 0, gone: 0, unknown: 0 };

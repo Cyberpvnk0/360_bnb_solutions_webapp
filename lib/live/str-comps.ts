@@ -253,8 +253,15 @@ export async function withLiveComps(
      * the listing in: a scraper having a bad minute must not thin a
      * projection.
      */
+    // Nearest first, because the check is capped and the near comps are
+    // the ones the projection stands on. A dead listing a quarter mile
+    // away moves the rate every figure is built from; one at the far
+    // edge of the radius may not be in the set the page uses at all.
     const live = await checkListings(
-      estimate.comps.map((c) => listingIdOf(c.id)).filter((id): id is string => id !== null)
+      [...estimate.comps]
+        .sort((a, b) => a.distanceMiles - b.distanceMiles)
+        .map((c) => listingIdOf(c.id))
+        .filter((id): id is string => id !== null)
     ).catch(() => null);
     const comps0 = live
       ? estimate.comps.filter((c) => {
