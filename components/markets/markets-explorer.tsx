@@ -385,9 +385,8 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
             Revenue, ADR, occupancy and listings are measured
             <InfoHint label="the measured figures">
               These come from a short-term rental data provider, for the
-              markets an analysis has already bought figures for, and are
-              shared across every account. A dash means nobody has run one
-              there yet — it is not a zero.
+              markets an analysis has already bought figures for. A dash
+              means nothing has been measured there yet — it is not a zero.
             </InfoHint>
           </span>
           <span>·</span>

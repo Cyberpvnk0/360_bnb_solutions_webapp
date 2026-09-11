@@ -699,10 +699,7 @@ export function MarketDetail({
                 again.
               </span>
             ) : (
-              <span>
-                Measuring this market costs {MEASURE_PRICE}, once, and it is
-                then on file whenever anybody opens it.
-              </span>
+              <span>Measuring this market costs {MEASURE_PRICE}.</span>
             )}
           </p>
         )}
@@ -751,7 +748,7 @@ export function MarketDetail({
               <EmptyState
                 icon={Ruler}
                 title="Nothing to compare yet"
-                description={`Sizes are read from real listings — the short-let comps analyses leave behind and the rentals a search brings in. Search ${market.name} in the Deal Finder and run an analysis, and this fills in for everybody.`}
+                description={`Sizes are read from real listings — the short-let comps analyses leave behind and the rentals a search brings in. Search ${market.name} in the Deal Finder and run an analysis to fill this in.`}
               />
             }
           />
@@ -817,7 +814,7 @@ export function MarketDetail({
           ) : (
             <p className="px-5 py-6 text-xs text-muted-foreground">
               This needs the market&apos;s measured rate and occupancy. Run an
-              analysis on a property here and they arrive for everybody.
+              analysis on a property here.
             </p>
           )}
           <div className="border-t border-border px-5 py-3">
@@ -963,7 +960,7 @@ export function MarketDetail({
             <EmptyState
               icon={Search}
               title="No areas in this market yet"
-              description="Areas are built from real rentals and real short-let listings. Search this market in the Deal Finder and run an analysis, and its ZIPs appear here for everybody."
+              description="Areas are built from real rentals and real short-let listings. Search this market in the Deal Finder and run an analysis to fill this in."
             />
           }
         />
@@ -983,8 +980,7 @@ export function MarketDetail({
             measuring an area costs {PRICE}
             <InfoHint label="what measuring costs">
               It buys that ZIP&apos;s own figures from the data provider,
-              including how many short-let listings are really in it. An area
-              already measured costs nothing to read.
+              including how many short-let listings are really in it.
             </InfoHint>
           </span>
         </p>
