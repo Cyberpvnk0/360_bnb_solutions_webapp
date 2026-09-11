@@ -162,7 +162,9 @@ export function AddressSearch({ className }: { className?: string }) {
         onBlur={(e) => {
           if (!listRef.current?.contains(e.relatedTarget as Node)) setOpen(false);
         }}
-        className="h-8 w-full rounded-sm border border-border bg-secondary/50 pl-8 pr-8 text-sm text-foreground placeholder:text-muted-foreground focus-visible:border-select/50"
+        // See market-search: under 16px, Safari zooms the page in on
+        // focus.
+        className="h-9 w-full rounded-sm border border-border bg-secondary/50 pl-8 pr-8 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-select/50 md:h-8 md:text-sm"
       />
       {locating || searching ? (
         <Loader2

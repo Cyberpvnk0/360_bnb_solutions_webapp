@@ -38,6 +38,7 @@ import { estimateDeal, type DealRead } from "@/lib/calc/deal-read";
 import type { Market, RentalListing } from "@/lib/mock/types";
 import { COURSE_MARKET_SLUGS } from "@/lib/mock/course-markets";
 import { marketSearchText } from "@/lib/mock/market-aliases";
+import { resolveMarketQuery } from "@/lib/live/market-resolve";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -355,10 +356,11 @@ export function DealsExplorer({
   // swap that market's preview rows for today's actual inventory.
   const liveTarget = React.useMemo(() => {
     if (zip) return null;
-    const q = filters.query.trim();
-    if (!q) return null;
-    const hits = markets.filter((m) => marketMatchesQuery(marketSearchText(m), q));
-    return hits.length === 1 ? hits[0] : null;
+    // Resolution lives in lib/live/market-resolve, which knows what to
+    // do when several markets match: this used to be "exactly one hit
+    // or nothing happens", and four markets whose names sit inside a
+    // neighbour's were unsearchable because of it.
+    return resolveMarketQuery(markets, filters.query);
   }, [filters.query, markets, zip]);
 
   const [live, setLive] = React.useState<{

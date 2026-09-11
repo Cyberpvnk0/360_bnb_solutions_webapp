@@ -113,7 +113,12 @@ export function MarketSearchBox({
           if (e.key === "Escape") setFocused(false);
         }}
         placeholder="Search a city or ZIP"
-        className="h-8 w-64 rounded-full border border-border bg-surface pl-8 pr-8 text-xs text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-select/50"
+        // 16px on a phone, and the designed 12px from md up. Safari
+        // zooms the whole page in on any input smaller than sixteen,
+        // which on this box meant tapping search threw the layout off
+        // the screen before a single character was typed. The same
+        // reason components/ui/input is text-base md:text-sm.
+        className="h-9 w-full rounded-full border border-border bg-surface pl-8 pr-8 text-base text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-select/50 md:h-8 md:w-64 md:text-xs"
       />
       {text ? (
         <button
