@@ -86,11 +86,13 @@ export function MeasureMarketButton({
       }
       onMeasured?.(data.stats, data.at ?? null);
       const charged = data.charged ?? 0;
+      // What it cost, and nothing else. A toast is not the place to
+      // explain how the store works.
       toast.success(`${name} measured`, {
         description:
           charged > 0
-            ? `${charged} ${charged === 1 ? "credit" : "credits"}. Everybody reads this market free from now on.`
-            : "Already on file — no credits taken.",
+            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
+            : "No credits taken",
       });
       if (charged > 0) void refreshUsage();
     } catch {

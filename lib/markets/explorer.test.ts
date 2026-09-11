@@ -155,12 +155,13 @@ describe("filtering", () => {
     expect(marketMatches(rows[0], "denver")).toBe(false);
   });
 
-  it("narrows by rule and market type", () => {
+  it("narrows by state, rule and market type", () => {
+    expect(filterMarkets(rows, { ...EMPTY_QUERY, states: ["CO"] })[0].slug).toBe("denver");
     expect(filterMarkets(rows, { ...EMPTY_QUERY, rules: ["banned"] })[0].slug).toBe("denver");
     expect(filterMarkets(rows, { ...EMPTY_QUERY, terrain: ["coastal"] })[0].slug).toBe("jax");
   });
 
-  it("narrows to a state through the search box, which has no chip", () => {
+  it("narrows to a state through the search box too", () => {
     expect(filterMarkets(rows, { ...EMPTY_QUERY, query: "CO" }).map((r) => r.slug)).toEqual([
       "denver",
     ]);
@@ -170,6 +171,7 @@ describe("filtering", () => {
   it("knows when it is doing nothing", () => {
     expect(isFiltered(EMPTY_QUERY)).toBe(false);
     expect(isFiltered({ ...EMPTY_QUERY, query: " " })).toBe(false);
+    expect(isFiltered({ ...EMPTY_QUERY, states: ["CO"] })).toBe(true);
     expect(isFiltered({ ...EMPTY_QUERY, rules: ["banned"] })).toBe(true);
     expect(isFiltered({ ...EMPTY_QUERY, terrain: ["metro"] })).toBe(true);
   });

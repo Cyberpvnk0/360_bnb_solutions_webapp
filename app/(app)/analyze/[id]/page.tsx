@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAnalysis, getMarket } from "@/lib/data";
+import { readMarketStore } from "@/lib/db/market-store";
+import { buildLeaseEvidence } from "@/lib/analyze/lease-evidence";
 import { resolveLiveAnalysis } from "@/lib/live/resolve";
 import { analysisUsageKey, withLiveComps } from "@/lib/live/str-comps";
 import { currentUser } from "@/lib/supabase/server";
@@ -144,6 +146,31 @@ async function claimAnalysis(
   return { check, tier };
 }
 
+/**
+ * The real rentals listed near a property, for the lease evidence
+ * table.
+ *
+ * A free read of rows a Deal Finder search already paid for. A market
+ * nobody has searched has none, and the table says so rather than
+ * generating six addresses that do not exist — which is what it used
+ * to do.
+ */
+async function leaseEvidenceFor(
+  marketSlug: string,
+  point: { lat: number; lon: number } | null,
+  bedrooms: number,
+  excludeId?: string | null
+) {
+  if (!point) return [];
+  const store = await readMarketStore(marketSlug).catch(() => null);
+  return buildLeaseEvidence({
+    listings: store?.listings ?? [],
+    point,
+    bedrooms,
+    excludeId,
+  });
+}
+
 export default async function AnalyzeResultPage({
   params,
   searchParams,
@@ -185,9 +212,17 @@ export default async function AnalyzeResultPage({
             strComps: buildStrCompsFor(market, spec.bedrooms, analysis.id),
           };
 
+    const leaseComps = await leaseEvidenceFor(
+      market.slug,
+      point,
+      spec.bedrooms,
+      spec.listingId
+    );
+
     return (
       <AnalyzeResult
         analysis={withComps}
+        leaseComps={leaseComps}
         marketCenter={point}
         // The searched address IS the property, so the curb shot is of
         // the building somebody typed rather than of a city centre.
@@ -221,9 +256,15 @@ export default async function AnalyzeResultPage({
   const { analysis, liveComps, boughtAt } = check?.allowed
     ? await withLiveComps(seeded, center)
     : { analysis: seeded, liveComps: false, boughtAt: null };
+  const leaseComps = await leaseEvidenceFor(
+    seeded.marketSlug,
+    center,
+    seeded.bedrooms
+  );
   return (
     <AnalyzeResult
       analysis={analysis}
+      leaseComps={leaseComps}
       marketCenter={center}
       liveComps={liveComps}
       compsBoughtAt={boughtAt ?? null}

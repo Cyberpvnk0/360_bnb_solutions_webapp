@@ -46,6 +46,16 @@ export interface Tier {
   /** The research assistant on the analysis and the Deal Finder,
    *  priced per message in credits (ASSISTANT_MESSAGE_CREDITS). */
   assistant: boolean;
+  /**
+   * The market analyzer: every US market with its local rule, the map,
+   * the areas inside a market and the size table.
+   *
+   * The top plan only. It is the one surface that answers "where"
+   * rather than "which property", it is what an operator running more
+   * than one market needs, and the measuring it fronts is the most
+   * expensive thing a click can buy in the product.
+   */
+  marketAnalyzer: boolean;
   /** One-line positioning used on pricing cards. */
   blurb: string;
   /** Bullet list for pricing cards, in display order. */
@@ -86,6 +96,7 @@ export const TIERS: Record<TierId, Tier> = {
     csvExport: false,
     prioritySupport: false,
     assistant: false,
+    marketAnalyzer: false,
     blurb: "Walk the product on preview inventory before you pay.",
     features: [
       "Preview inventory in every market",
@@ -105,6 +116,7 @@ export const TIERS: Record<TierId, Tier> = {
     csvExport: false,
     prioritySupport: false,
     assistant: false,
+    marketAnalyzer: false,
     blurb: "For your first market and your first few landlord calls.",
     features: [
       "45 credits / month",
@@ -125,12 +137,13 @@ export const TIERS: Record<TierId, Tier> = {
     csvExport: false,
     prioritySupport: false,
     assistant: true,
+    marketAnalyzer: false,
     recommended: true,
     blurb: "For operators underwriting deals every week.",
     features: [
       "125 credits / month",
       "Credits cover market searches, property analyses and owner lookups",
-      "AI Assistant: finds listings, owners and local rules (2 credits a message)",
+      "AI Assistant: finds listings, owners and local rules",
       "New-listing alerts by email or push",
       "Unlimited calculator",
       "Unlimited saved deals",
@@ -148,15 +161,17 @@ export const TIERS: Record<TierId, Tier> = {
     csvExport: true,
     prioritySupport: true,
     assistant: true,
+    marketAnalyzer: true,
     blurb: "For teams running a portfolio across markets.",
     features: [
       "300 credits / month",
       "Credits cover market searches, property analyses and owner lookups",
-      "AI Assistant: finds listings, owners and local rules (2 credits a message)",
+      "AI Assistant: finds listings, owners and local rules",
       "New-listing alerts by email or push",
       "Unlimited calculator",
       "Unlimited saved deals",
       "PDF landlord packet export",
+      "Market analyzer: every US market, its areas and its local rules",
       "CSV export",
       "Priority support",
     ],

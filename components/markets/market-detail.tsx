@@ -290,11 +290,13 @@ export function MarketDetail({
       }
       setBought((prev) => ({ ...prev, [row.zip]: data.stats as MeasuredArea }));
       const charged = data.charged ?? 0;
+      // What it cost, and nothing else. A toast is not the place to
+      // explain how the store works.
       toast.success(`${row.zip} measured`, {
         description:
           charged > 0
-            ? `${charged} ${charged === 1 ? "credit" : "credits"}. Everybody reads this area free from now on.`
-            : "Already on file — no credits taken.",
+            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
+            : "No credits taken",
       });
       // The meter in the header spent something; settle it from the
       // server rather than guessing at the new number here.
@@ -661,9 +663,8 @@ export function MarketDetail({
           </p>
         ) : (
           <p className="border-t border-border bg-secondary/40 px-5 py-2 text-[11px] text-muted-foreground">
-            No measured figures for this market yet. Measure it for{" "}
-            {MEASURE_PRICE} and it is on file for every account, or run an
-            analysis on a property here and they arrive the same way.
+            No measured figures for this market yet — measure it for{" "}
+            {MEASURE_PRICE}, or run an analysis on a property here.
           </p>
         )}
       </section>
@@ -812,7 +813,7 @@ export function MarketDetail({
                 Twelve measured months in {market.name}.
               </p>
             </div>
-            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-1 -my-1 flex gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {TRENDS.map((t) => (
                 <button
                   key={t.id}
@@ -895,7 +896,7 @@ export function MarketDetail({
                 : `${fmtNum(rows.length)} ${rows.length === 1 ? "area" : "areas"}, ${fmtNum(measuredCount)} measured. Rates need ${MIN_COMPS} listings seen before they show.`}
             </p>
           </div>
-          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="-mx-1 -my-1 flex gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {AREA_SORTS.map((s) => (
               <button
                 key={s.id}
@@ -943,9 +944,8 @@ export function MarketDetail({
             measuring an area costs {PRICE}
             <InfoHint label="what measuring costs">
               It buys that ZIP&apos;s own figures from the data provider,
-              including how many short-let listings are really in it. The row
-              is then on file for every account, so nobody pays for the same
-              area twice — and an area already on file costs nothing.
+              including how many short-let listings are really in it. An area
+              already measured costs nothing to read.
             </InfoHint>
           </span>
         </p>

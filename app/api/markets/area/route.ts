@@ -23,7 +23,7 @@
 
 import { NextResponse } from "next/server";
 import { AREA_MEASURE_CREDITS } from "@/config/app";
-import { requirePaid } from "@/lib/auth/gate";
+import { requireMarketAnalyzer } from "@/lib/auth/gate";
 import { canCover, spendCredits } from "@/lib/db/usage";
 import { areaKey, buyArea, storedArea } from "@/lib/live/area-stats";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
@@ -38,7 +38,7 @@ const FAILED: Record<string, { status: number; message: string }> = {
 };
 
 export async function POST(request: Request) {
-  const paid = await requirePaid();
+  const paid = await requireMarketAnalyzer();
   if (!paid.ok) return paid.response;
 
   const body = (await request.json().catch(() => null)) as Record<

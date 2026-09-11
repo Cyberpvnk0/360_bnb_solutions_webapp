@@ -18,6 +18,7 @@ import { zipOf } from "@/lib/live/zip";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import { MarketDetail } from "@/components/markets/market-detail";
 
+
 export async function generateMetadata({
   params,
 }: {
@@ -28,11 +29,31 @@ export async function generateMetadata({
   return { title: market ? `${market.name}, ${market.stateCode}` : "Market" };
 }
 
+import { DEFAULT_TIER, TIERS } from "@/config/app";
+import { resolveTier } from "@/lib/db/usage";
+import { currentUser } from "@/lib/supabase/server";
+import { MarketsLocked } from "@/components/markets/markets-locked";
+
+/**
+ * Whether this account's plan includes the market analyzer.
+ *
+ * Checked on the page rather than in the proxy so a reader who followed
+ * a link here gets told what the surface is and which plan has it,
+ * instead of a redirect that looks like the page is gone.
+ */
+async function allowed(): Promise<boolean> {
+  const user = await currentUser();
+  if (!user) return false;
+  const tier = await resolveTier(user.id).catch(() => DEFAULT_TIER);
+  return TIERS[tier].marketAnalyzer;
+}
+
 export default async function MarketPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  if (!(await allowed())) return <MarketsLocked />;
   const { slug } = await params;
   const market = MARKET_BY_SLUG.get(slug);
   if (!market) notFound();

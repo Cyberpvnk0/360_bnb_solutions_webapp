@@ -106,17 +106,19 @@ export function buildRows(
 /* ------------------------------------------------------------------ */
 
 export interface MarketQuery {
-  /** Name or state, loosely matched — which is why there is no state
-   *  chip beside it: "fl" in the box already filters to Florida, and a
-   *  second control for the same thing is one a reader has to reconcile
-   *  with the first. */
+  /** Name or state, loosely matched. */
   query: string;
+  /** Empty means every state. Overlaps the search box, which also
+   *  matches a state — the box is for one you can spell and the chip
+   *  for picking several off a list. */
+  states: string[];
   rules: RegulationStatus[];
   terrain: MarketTerrain[];
 }
 
 export const EMPTY_QUERY: MarketQuery = {
   query: "",
+  states: [],
   rules: [],
   terrain: [],
 };
@@ -138,6 +140,7 @@ export function filterMarkets(
   q: MarketQuery
 ): MarketRow[] {
   return rows.filter((row) => {
+    if (q.states.length > 0 && !q.states.includes(row.stateCode)) return false;
     if (q.rules.length > 0 && !q.rules.includes(row.regulation.status)) return false;
     if (q.terrain.length > 0 && !q.terrain.includes(row.terrain)) return false;
     return marketMatches(row, q.query);
@@ -145,7 +148,12 @@ export function filterMarkets(
 }
 
 export function isFiltered(q: MarketQuery): boolean {
-  return q.query.trim() !== "" || q.rules.length > 0 || q.terrain.length > 0;
+  return (
+    q.query.trim() !== "" ||
+    q.states.length > 0 ||
+    q.rules.length > 0 ||
+    q.terrain.length > 0
+  );
 }
 
 /* ------------------------------------------------------------------ */

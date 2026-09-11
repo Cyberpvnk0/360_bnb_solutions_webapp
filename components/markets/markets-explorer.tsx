@@ -89,6 +89,10 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
    */
   const [fresh, setFresh] = React.useState<Record<string, MarketRow["measured"]>>({});
 
+  const states = React.useMemo(
+    () => [...new Set(rows.map((r) => r.stateCode))].sort(),
+    [rows]
+  );
   const live = React.useMemo(
     () =>
       rows.map((r) => {
@@ -255,13 +259,12 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           Every US market this product covers, with the local rule on nightly
           letting. Performance figures are measured, and so far they exist for{" "}
           <span className="tabular text-foreground">{fmtNum(measuredCount)}</span>{" "}
-          of them. Pick one of the rest on the map to measure it — bought once,
-          then on file for every account.
+          of them. Pick any of the rest on the map to measure it.
         </p>
       </header>
 
       {/* Sort presets: the questions somebody opens this page with. */}
-      <div className="-mx-4 mt-6 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-4 mt-5 flex gap-1.5 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden">
         {PRESETS.map((p) => (
           <button
             key={p.id}
@@ -298,6 +301,16 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           />
         </div>
 
+        <MultiChip
+          {...chip("state")}
+          label="State"
+          summary={query.states.length > 0 ? `${query.states.length} selected` : undefined}
+          options={states.map((v) => ({ value: v, label: v }))}
+          selected={query.states}
+          onToggle={(v) => patch({ states: toggle(query.states, v) })}
+          onClear={() => patch({ states: [] })}
+          grid
+        />
         <MultiChip
           {...chip("rules")}
           label="Regulation"
@@ -494,6 +507,7 @@ function MultiChip({
   onClear,
   open,
   onOpenChange,
+  grid = false,
 }: {
   label: string;
   summary?: string;
@@ -503,6 +517,8 @@ function MultiChip({
   onClear: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** For the long list: four across rather than fifty down. */
+  grid?: boolean;
 }) {
   const active = selected.length > 0;
   return (
@@ -537,7 +553,12 @@ function MultiChip({
             </button>
           ) : null}
         </div>
-        <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
+        <div
+          className={cn(
+            "max-h-72 overflow-y-auto",
+            grid ? "grid grid-cols-4 gap-1" : "flex flex-col gap-0.5"
+          )}
+        >
           {options.map((o) => {
             const on = selected.includes(o.value);
             return (
@@ -548,6 +569,7 @@ function MultiChip({
                 onClick={() => onToggle(o.value)}
                 className={cn(
                   "rounded-sm px-2 py-1.5 text-left text-xs transition-colors duration-150",
+                  grid && "text-center tabular",
                   on
                     ? "bg-gold-fill/15 font-medium text-foreground"
                     : "text-muted-foreground hover:bg-secondary hover:text-foreground"

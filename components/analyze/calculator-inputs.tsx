@@ -6,6 +6,7 @@ import type { DealInputs } from "@/lib/calc/arbitrage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InfoHint } from "@/components/primitives/info-hint";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { cn } from "@/lib/utils";
 
@@ -118,12 +119,15 @@ export function CalculatorInputs({
       : raw;
     const id = `calc-${field.key}`;
     return (
-      <div key={field.key}>
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
-            {field.label}
-          </Label>
-          <div className="relative w-32 shrink-0">
+      <div key={field.key} className="flex items-center justify-between gap-3 py-2.5">
+        <Label
+          htmlFor={id}
+          className="flex items-center gap-1 text-xs font-normal text-muted-foreground"
+        >
+          {field.label}
+          {field.hint ? <InfoHint label={field.label}>{field.hint}</InfoHint> : null}
+        </Label>
+        <div className="relative w-32 shrink-0">
             {field.prefix ? (
               <span
                 aria-hidden
@@ -154,13 +158,7 @@ export function CalculatorInputs({
                 {field.suffix}
               </span>
             ) : null}
-          </div>
         </div>
-        {field.hint ? (
-          <p className="mt-1 text-right text-[11px] leading-snug text-muted-foreground/80">
-            {field.hint}
-          </p>
-        ) : null}
       </div>
     );
   };
@@ -181,10 +179,13 @@ export function CalculatorInputs({
         </Button>
       </div>
 
-      <div className="space-y-3.5 p-5">
+      <div className="divide-y divide-border px-5 py-1.5">
         {BASIC_FIELDS.slice(0, 1).map(renderField)}
 
-        {/* Landlord concession: waives month one, cutting startup cash. */}
+        {/* Landlord concession: waives month one, cutting startup cash.
+            The same row shape as every field beside it — a label, a
+            control, a hairline — rather than a bordered card in a
+            column of plain rows. */}
         <button
           type="button"
           role="checkbox"
@@ -192,22 +193,22 @@ export function CalculatorInputs({
           onClick={() =>
             onChange({ ...inputs, firstMonthFree: !inputs.firstMonthFree })
           }
-          className="flex w-full items-center justify-between gap-3 rounded-sm border border-border px-3 py-2.5 text-left transition-colors duration-150 hover:bg-secondary/50"
+          className="flex w-full items-center justify-between gap-3 py-2.5 text-left"
         >
-          <span className="min-w-0">
-            <span className="block text-xs text-foreground">
-              First month rent free
-            </span>
-            <span className="block text-[11px] leading-snug text-muted-foreground">
-              Negotiated concession — cuts your startup cash
-            </span>
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            First month rent free
+            <InfoHint label="the first month free">
+              A concession some landlords give on a twelve-month lease. It
+              does not change the rent — it comes off the cash you need to
+              start, because month one is not paid up front.
+            </InfoHint>
           </span>
           <span
             aria-hidden
             className={cn(
-              "flex size-4.5 shrink-0 items-center justify-center rounded-xs border transition-colors duration-150",
+              "flex size-5 shrink-0 items-center justify-center rounded-xs border transition-colors duration-150",
               inputs.firstMonthFree
-                ? "border-gold bg-gold-fill/15 text-gold"
+                ? "border-gold bg-gold-fill/20 text-gold"
                 : "border-border bg-background"
             )}
           >
@@ -227,7 +228,7 @@ export function CalculatorInputs({
           aria-expanded={advancedOpen}
           aria-controls="calc-advanced"
           onClick={() => setAdvancedOpen((o) => !o)}
-          className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors duration-150 hover:bg-secondary/40"
+          className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors duration-150 hover:bg-hover"
         >
           <span className="text-xs font-medium text-foreground">
             Advanced
@@ -246,13 +247,15 @@ export function CalculatorInputs({
           />
         </button>
         {advancedOpen ? (
-          <div id="calc-advanced" className="space-y-7 border-t border-border p-5">
+          <div id="calc-advanced" className="space-y-6 border-t border-border px-5 py-4">
             {ADVANCED_GROUPS.map((group) => (
               <fieldset key={group.title}>
                 <legend>
-                  <MetricLabel className="pb-2">{group.title}</MetricLabel>
+                  <MetricLabel className="pb-1">{group.title}</MetricLabel>
                 </legend>
-                <div className="space-y-3.5">{group.fields.map(renderField)}</div>
+                <div className="divide-y divide-border">
+                  {group.fields.map(renderField)}
+                </div>
               </fieldset>
             ))}
           </div>

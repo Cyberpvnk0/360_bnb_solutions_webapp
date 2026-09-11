@@ -86,6 +86,27 @@ export async function requirePaid(): Promise<Gate<{ user: SessionUser; tier: Tie
   return { ok: true, user, tier };
 }
 
+/**
+ * A signed-in account whose plan includes the market analyzer.
+ *
+ * The top plan only (config/app Tier.marketAnalyzer). Separate from
+ * requirePaid because it is a plan FEATURE rather than a spending
+ * threshold: a Starter account has credits and still does not get this
+ * surface, and the refusal has to say which of the two it was so the
+ * client can offer the right upgrade.
+ */
+export async function requireMarketAnalyzer(): Promise<
+  Gate<{ user: SessionUser; tier: TierId }>
+> {
+  const user = await currentUser();
+  if (!user) return { ok: false, response: refuse(401, "signed-out") };
+  const tier = await resolveTier(user.id);
+  if (!TIERS[tier].marketAnalyzer) {
+    return { ok: false, response: refuse(403, "scale-required", { tier }) };
+  }
+  return { ok: true, user, tier };
+}
+
 /** A signed-in account that counts as staff — see isStaff. Guards the
  *  operator page and its metrics: reads, never spend. */
 export async function requireStaff(): Promise<Gate<{ user: SessionUser }>> {

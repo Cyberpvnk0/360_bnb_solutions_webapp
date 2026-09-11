@@ -53,6 +53,7 @@ import { ContactDetails } from "@/components/deals/contact-details";
 import { PhotosLink } from "@/components/deals/photos-link";
 import { useListingContact } from "@/components/deals/use-listing-contact";
 import { RevenueRange } from "./revenue-range";
+import type { LeaseComp } from "@/lib/analyze/lease-evidence";
 import { HINTS } from "@/lib/copy/hints";
 import { cn } from "@/lib/utils";
 
@@ -107,6 +108,7 @@ function OutputTile({
 
 export function AnalyzeResult({
   analysis,
+  leaseComps,
   marketCenter,
   propertyPoint = null,
   liveComps = false,
@@ -116,6 +118,10 @@ export function AnalyzeResult({
   listingId = null,
 }: {
   analysis: Analysis;
+  /** The real rentals listed near this property, read from the store
+   *  by the page. Empty where the market has none on file — the table
+   *  says so rather than inventing six. */
+  leaseComps: LeaseComp[];
   marketCenter: { lat: number; lon: number } | null;
   /**
    * The Deal Finder listing this analysis was opened from, when the
@@ -807,7 +813,12 @@ export function AnalyzeResult({
           live={liveComps}
           boughtAt={compsBoughtAt}
         />
-        <LtrCompsTable comps={analysis.ltrComps} />
+        <LtrCompsTable
+          comps={leaseComps}
+          bedrooms={analysis.bedrooms}
+          marketSlug={analysis.marketSlug}
+          marketName={analysis.city}
+        />
       </div>
       <Assistant context={assistantContext} />
     </div>
