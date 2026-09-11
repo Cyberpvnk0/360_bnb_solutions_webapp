@@ -42,7 +42,9 @@ import {
   type MarketSort,
 } from "@/lib/markets/explorer";
 import type { MarketTerrain, RegulationStatus } from "@/lib/mock/types";
+import type { StoredMarketStats } from "@/lib/db/market-store";
 import { MarketsMap } from "./markets-map";
+import { MeasureMarketButton } from "./measure-market-button";
 import { SaveMarketButton } from "./save-market-button";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
@@ -79,14 +81,36 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const [mapOpen, setMapOpen] = React.useState(true);
   /** The market lit on the map, from a pin or a row. */
   const [selected, setSelected] = React.useState<string | null>(null);
+  /**
+   * Markets measured in this session, over the rows the page arrived
+   * with. The figures are shared the moment they are bought, but this
+   * page was rendered before that happened — and a row that stays
+   * dashed after somebody paid for it reads as a failure.
+   */
+  const [fresh, setFresh] = React.useState<Record<string, MarketRow["measured"]>>({});
 
+  const live = React.useMemo(
+    () =>
+      rows.map((r) => {
+        const hit = fresh[r.slug];
+        if (!hit) return r;
+        const revenue = hit.revenue ?? null;
+        return {
+          ...r,
+          measured: hit,
+          spread:
+            revenue === null ? null : Math.round(revenue - r.rentEstimate * 12),
+        };
+      }),
+    [rows, fresh]
+  );
   const measuredCount = React.useMemo(
-    () => rows.filter((r) => r.measured).length,
-    [rows]
+    () => live.filter((r) => r.measured).length,
+    [live]
   );
   const shown = React.useMemo(
-    () => sortMarkets(filterMarkets(rows, query), sort),
-    [rows, query, sort]
+    () => sortMarkets(filterMarkets(live, query), sort),
+    [live, query, sort]
   );
   const chosen = React.useMemo(
     () => (selected ? (shown.find((r) => r.slug === selected) ?? null) : null),
@@ -95,6 +119,20 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
 
   const patch = (next: Partial<MarketQuery>) =>
     setQuery((prev) => ({ ...prev, ...next }));
+  /** A market somebody just bought, in the shape a row reads. */
+  const measured = (slug: string, stats: StoredMarketStats, at: string | null) =>
+    setFresh((prev) => ({
+      ...prev,
+      [slug]: {
+        adr: stats.adr,
+        occupancy: stats.occupancy,
+        revenue: stats.revenue,
+        revpar: stats.revpar,
+        activeListings: stats.activeListings,
+        scope: stats.scope,
+        at,
+      },
+    }));
   const chip = (id: string) => ({
     open: panel === id,
     onOpenChange: (open: boolean) => setPanel(open ? id : null),
@@ -217,8 +255,8 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           Every US market this product covers, with the local rule on nightly
           letting. Performance figures are measured, and so far they exist for{" "}
           <span className="tabular text-foreground">{fmtNum(measuredCount)}</span>{" "}
-          of them. The rest fill in the first time anybody runs an analysis
-          there.
+          of them. Pick one of the rest on the map to measure it — bought once,
+          then on file for every account.
         </p>
       </header>
 
@@ -235,7 +273,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
               "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors duration-150",
               sort === p.id
                 ? "border-select bg-select text-white"
-                : "border-border bg-card text-muted-foreground hover:border-select/40 hover:text-foreground"
+                : "border-border bg-card text-muted-foreground hover:border-select/50 hover:bg-hover hover:text-foreground"
             )}
           >
             {p.label}
@@ -422,6 +460,14 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
                   <Link href={`/deals?market=${chosen.slug}`}>Rentals here</Link>
                 </Button>
                 <SaveMarketButton slug={chosen.slug} name={chosen.name} />
+                {chosen.measured ? null : (
+                  <MeasureMarketButton
+                    slug={chosen.slug}
+                    name={chosen.name}
+                    variant="outline"
+                    onMeasured={(stats, at) => measured(chosen.slug, stats, at)}
+                  />
+                )}
               </div>
             </div>
           ) : null}
@@ -468,8 +514,8 @@ function MultiChip({
           className={cn(
             "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors duration-150",
             active
-              ? "border-gold/50 bg-gold-fill/10 text-foreground"
-              : "border-border bg-card text-muted-foreground hover:text-foreground"
+              ? "border-gold/50 bg-gold-fill/10 text-foreground hover:bg-gold-fill/20"
+              : "border-border bg-card text-muted-foreground hover:bg-hover hover:text-foreground"
           )}
         >
           {label}

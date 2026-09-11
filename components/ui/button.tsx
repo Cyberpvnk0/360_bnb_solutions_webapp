@@ -9,13 +9,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default:
+          "bg-primary text-primary-foreground hover:bg-primary-hover",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "bg-destructive text-white hover:brightness-110 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        // An outline button is transparent at rest, so its hover has to
+        // arrive as a fill AND a firmer edge — a fill alone against a
+        // card reads as a smudge.
         outline:
-          "border bg-transparent hover:bg-accent hover:text-accent-foreground dark:border-input dark:hover:bg-input/50",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+          "border bg-transparent hover:border-foreground/30 hover:bg-hover hover:text-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-hover-strong",
+        ghost: "hover:bg-hover hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

@@ -389,8 +389,12 @@ export function AnalyzeResult({
     window.print();
   };
 
+  // Wide, but not edge to edge. Seventy-two rem left a third of a
+  // desktop screen empty either side of the one page somebody actually
+  // works in; this fills the screen it is given and stops before a line
+  // of figures gets so long the eye loses the row.
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
+    <div className="mx-auto w-full max-w-[104rem] px-4 py-8 md:px-6 lg:px-8">
       {/* Hero card */}
       <section className="overflow-hidden rounded-sm border border-border bg-card">
         {/* Identity + actions */}
@@ -516,7 +520,7 @@ export function AnalyzeResult({
 
         {/* Headline figures */}
         <div className="border-t border-border sm:overflow-x-auto">
-          <div className="grid grid-cols-2 sm:flex sm:min-w-max sm:items-stretch sm:divide-x sm:divide-border [&>*]:border-border max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t">
+          <div className="grid grid-cols-2 sm:flex sm:min-w-max sm:items-stretch sm:divide-x sm:divide-border lg:min-w-0 lg:[&>*]:flex-1 [&>*]:border-border max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t">
             <div className="px-5 py-4 sm:px-6 sm:py-5 sm:first:pl-6">
               <MetricLabel hint={HINTS.grossRevenue}>Projected annual revenue</MetricLabel>
               <AnimatedNumber
@@ -639,7 +643,7 @@ export function AnalyzeResult({
       </section>
 
       {/* Calculator: inputs left, outputs right */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
         <CalculatorInputs
           inputs={inputs}
           defaults={analysis.defaults}
@@ -655,9 +659,14 @@ export function AnalyzeResult({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:[&>*:nth-child(odd)]:border-r sm:[&>*:nth-child(-n+2)]:border-t-0 [&>*]:border-border">
+          {/* Hairlines from a one-pixel gap over the border colour, not
+              from nth-child rules: the tiles go two across on a tablet
+              and four on a desktop, and a rule that says "every odd
+              child gets a right border" is only correct at one of
+              those. Eight tiles divide evenly into both. */}
+          <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 xl:grid-cols-4 [&>*]:bg-card">
             <OutputTile
-              label="Projected monthly STR revenue"
+              label="Monthly STR revenue"
               hint={HINTS.grossRevenue}
               sub={`${fmtMoney(assumptions.adr)} ADR × ${Math.round(p.occupiedNights)} booked nights${p.cleaningCosts > 0 ? " + cleaning fees" : ""}`}
             >

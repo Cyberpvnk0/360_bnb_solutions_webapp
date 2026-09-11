@@ -46,7 +46,18 @@
   --secondary-foreground: var(--text);
   --muted: var(--surface-2);
   --muted-foreground: var(--text-muted);
-  --accent: var(--surface-2);
+  /* HOVER IS ITS OWN TONE, NOT THE NEXT SURFACE UP.
+     Hover used to resolve to --surface-2, which sits three percent off
+     a white card: a control that changed on hover and a control that
+     did not looked identical, and the only way to tell you were over a
+     button was to click it. These are a deliberate step darker in
+     light and lighter in dark, far enough to read at a glance and
+     still short of looking pressed. */
+  --hover: #e2e5ee;
+  --hover-strong: #d5d9e5;
+  --primary-hover: #a81826;
+
+  --accent: var(--hover);
   --accent-foreground: var(--text);
   --destructive: var(--red-muted);
   --destructive-foreground: #ffffff;
@@ -117,7 +128,11 @@
   --secondary-foreground: var(--text);
   --muted: var(--surface-2);
   --muted-foreground: var(--text-muted);
-  --accent: #232327;
+  --hover: #2c2c32;
+  --hover-strong: #3a3a42;
+  --primary-hover: #e0303f;
+
+  --accent: var(--hover);
   --accent-foreground: var(--text);
   --destructive: var(--red-muted);
   --destructive-foreground: var(--text);
@@ -158,6 +173,9 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-hover: var(--hover);
+  --color-hover-strong: var(--hover-strong);
+  --color-primary-hover: var(--primary-hover);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);

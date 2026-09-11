@@ -20,6 +20,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -85,6 +86,7 @@ import { InfoHint } from "@/components/primitives/info-hint";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/providers/session-provider";
+import { MEASURE_PRICE, MeasureMarketButton } from "./measure-market-button";
 import { SaveMarketButton } from "./save-market-button";
 import { cn } from "@/lib/utils";
 
@@ -182,6 +184,7 @@ export function MarketDetail({
   sizes,
   poolSize,
 }: Props) {
+  const router = useRouter();
   const { creditsRemaining, credits, openUpgrade, refreshUsage } = useSession();
   const [sort, setSort] = React.useState<AreaSort>("revenue");
   const [trend, setTrend] = React.useState<Trend>("adr");
@@ -552,7 +555,18 @@ export function MarketDetail({
             </InfoHint>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/* The gap, with the way to close it beside it. A market with
+              figures needs no button; one without had no way at all to
+              ask for them from the page that shows the dashes. */}
+          {stats ? null : (
+            <MeasureMarketButton
+              slug={market.slug}
+              name={market.name}
+              variant="outline"
+              onMeasured={() => router.refresh()}
+            />
+          )}
           <SaveMarketButton slug={market.slug} name={market.name} />
           <Button asChild size="sm" className="gap-1.5">
             <Link href={dealsHref}>
@@ -647,8 +661,9 @@ export function MarketDetail({
           </p>
         ) : (
           <p className="border-t border-border bg-secondary/40 px-5 py-2 text-[11px] text-muted-foreground">
-            No measured figures for this market yet — they arrive the first time
-            anybody runs an analysis here.
+            No measured figures for this market yet. Measure it for{" "}
+            {MEASURE_PRICE} and it is on file for every account, or run an
+            analysis on a property here and they arrive the same way.
           </p>
         )}
       </section>
@@ -809,7 +824,7 @@ export function MarketDetail({
                     "shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150",
                     trend === t.id
                       ? "border-select bg-select text-white"
-                      : "border-border bg-card text-muted-foreground hover:border-select/40 hover:text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:border-select/50 hover:bg-hover hover:text-foreground"
                   )}
                 >
                   {t.label}
@@ -892,7 +907,7 @@ export function MarketDetail({
                   "shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150",
                   sort === s.id
                     ? "border-select bg-select text-white"
-                    : "border-border bg-card text-muted-foreground hover:border-select/40 hover:text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-select/50 hover:bg-hover hover:text-foreground"
                 )}
               >
                 {s.label}

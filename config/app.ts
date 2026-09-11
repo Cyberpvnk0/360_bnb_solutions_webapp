@@ -278,6 +278,18 @@ export const ASSISTANT_MESSAGE_CREDITS: number = 2;
  */
 export const AREA_MEASURE_CREDITS: number = 2;
 
+/**
+ * What measuring one market spends.
+ *
+ * One billed call at $0.18 — the market addressed by its own name,
+ * which needs no coordinate lookup — against a credit worth
+ * twenty-seven cents at the very least, so one clears it on every plan
+ * and every pack. Half what an area costs, because an area needs the
+ * lookup and a market does not. Bought once and read free by everybody
+ * after.
+ */
+export const MARKET_MEASURE_CREDITS: number = 1;
+
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {
   return Math.round((pack.price / pack.credits) * 100) / 100;
