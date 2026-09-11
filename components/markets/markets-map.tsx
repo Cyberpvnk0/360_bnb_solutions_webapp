@@ -275,20 +275,45 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     });
   }, [rows, live]);
 
-  // The selected market, lit wherever it was chosen — a pin, or a row
-  // under the pointer. Styles the dot, never the wrapper around it.
+  /**
+   * The selected market, lit wherever it was chosen — a pin, or a row
+   * under the pointer. Styles the dot, never the wrapper around it.
+   *
+   * TWO MARKERS, NOT FOUR HUNDRED. This runs on every row the pointer
+   * crosses, and walking the whole catalogue to change one dot made
+   * hovering a table feel like work. Only the dot that was lit and the
+   * dot that is now need touching; the index of the last one is kept
+   * so the first can be found without a search.
+   */
+  const litRef = React.useRef<{ marker: maplibregl.Marker; row: MarketRow } | null>(
+    null
+  );
   React.useEffect(() => {
-    rows.forEach((row, i) => {
-      const el = dotOf(markersRef.current[i]);
+    const paint = (
+      marker: maplibregl.Marker,
+      row: MarketRow,
+      on: boolean
+    ) => {
+      const el = dotOf(marker);
       if (!el) return;
       const color = RULE_COLOR[row.regulation.status] ?? RULE_COLOR.unverified;
-      const on = row.slug === selected;
       el.style.transform = on ? "scale(1.7)" : "scale(1)";
       el.style.boxShadow = on ? `0 0 0 5px ${color}38` : "";
       el.style.opacity = on ? "1" : row.measured ? "0.95" : "0.55";
-      const wrap = markersRef.current[i]?.getElement();
-      if (wrap) wrap.style.zIndex = on ? "2" : "";
-    });
+      marker.getElement().style.zIndex = on ? "2" : "";
+    };
+
+    const i = selected ? rows.findIndex((r) => r.slug === selected) : -1;
+    const marker = i >= 0 ? markersRef.current[i] : undefined;
+    const next = marker ? { marker, row: rows[i] } : null;
+    if (next?.marker === litRef.current?.marker) return;
+    // The old one by its element rather than its index: a rebuild
+    // replaces the whole array, and painting a marker that is no longer
+    // on the map is a write to a detached node — harmless, and cheaper
+    // than another effect reaching across to reset a shared index.
+    if (litRef.current) paint(litRef.current.marker, litRef.current.row, false);
+    if (next) paint(next.marker, next.row, true);
+    litRef.current = next;
   }, [selected, rows, live]);
 
   const card =

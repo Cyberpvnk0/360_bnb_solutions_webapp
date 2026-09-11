@@ -78,6 +78,11 @@
    */
   --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, var(--red-deep) 100%);
   --grad-brand-hover: linear-gradient(140deg, #e03b4f 0%, var(--red-lift) 55%, #a81826 100%);
+  /* The same idea in the product's gold, for the one action that is
+     deliberately gold rather than brand red. Light enough throughout
+     that the dark ink on it stays legible at every stop. */
+  --grad-gold: linear-gradient(140deg, #f0c862 0%, var(--gold-fill) 55%, #cf9f2c 100%);
+  --grad-gold-hover: linear-gradient(140deg, #f7d67f 0%, #ecc154 55%, #dcac38 100%);
   --input: var(--border);
   --ring: var(--gold-bright);
 
@@ -156,6 +161,8 @@
   --destructive-foreground: var(--text);
   --grad-brand: linear-gradient(140deg, var(--red-lift) 0%, var(--red) 55%, #9d1826 100%);
   --grad-brand-hover: linear-gradient(140deg, #f2545f 0%, var(--red-lift) 55%, #b01c2b 100%);
+  --grad-gold: linear-gradient(140deg, #f0c862 0%, var(--gold-fill) 55%, #cf9f2c 100%);
+  --grad-gold-hover: linear-gradient(140deg, #f7d67f 0%, #ecc154 55%, #dcac38 100%);
   --input: var(--border);
   --ring: var(--gold-bright);
 
@@ -774,4 +781,22 @@
   .animate-assistant-caret {
     animation: none;
   }
+}
+
+/*
+ * Gold, for the one action that is deliberately gold.
+ *
+ * DELIBERATELY UNLAYERED. Its whole job is to beat `grad-brand`, which
+ * the default button variant carries — and two utilities with one class
+ * each have identical specificity, so which one wins comes down to
+ * whichever Tailwind happened to emit last. An unlayered rule beats
+ * every layered one in the cascade no matter the order, so this is
+ * decided rather than lucky. A red gradient under this button's dark
+ * ink is what it looked like when it was lucky.
+ */
+.grad-gold {
+  background-image: var(--grad-gold);
+}
+.grad-gold:hover {
+  background-image: var(--grad-gold-hover);
 }

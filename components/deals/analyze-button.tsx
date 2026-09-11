@@ -42,8 +42,10 @@ export function AnalyzeButton({
             "shadow-[0_1px_2px_rgba(16,16,18,0.08),0_2px_6px_rgba(16,16,18,0.08)] transition-shadow duration-150 hover:shadow-[0_2px_4px_rgba(16,16,18,0.1),0_4px_10px_rgba(16,16,18,0.1)]"
           : // Gold is the product's "this one" signal, and this is the
             // one thing to do with an estimate. A warm shadow, not a
-            // glow: lifted, never lit.
-            "bg-gold-fill text-[#1c1503] shadow-[0_1px_2px_rgba(16,16,18,0.1),0_3px_10px_rgba(227,179,65,0.35)] transition-[box-shadow,background-color] duration-150 hover:bg-[#ecbf4f] hover:shadow-[0_2px_4px_rgba(16,16,18,0.12),0_5px_14px_rgba(227,179,65,0.45)]",
+            // glow: lifted, never lit. `grad-gold` is explicit because
+            // the default variant carries the BRAND gradient, and a red
+            // image under this button's dark ink is unreadable.
+            "grad-gold bg-gold-fill text-[#1c1503] shadow-[0_1px_2px_rgba(16,16,18,0.1),0_3px_10px_rgba(227,179,65,0.35)] transition-[box-shadow,background-image] duration-150 hover:shadow-[0_2px_4px_rgba(16,16,18,0.12),0_5px_14px_rgba(227,179,65,0.45)]",
         className
       )}
     >

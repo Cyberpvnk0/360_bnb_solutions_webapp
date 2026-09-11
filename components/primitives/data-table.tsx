@@ -40,6 +40,95 @@ interface DataTableProps<T> {
 }
 
 /**
+ * ONE ROW, MEMOISED — which is the whole reason this table stays
+ * usable at four hundred rows.
+ *
+ * Hovering a row tells the page which market is under the pointer, and
+ * the page re-renders to light it on the map. Without this, that
+ * re-render walked every row and every cell in the table — four hundred
+ * rows of status chips and tooltips, each with state of its own —
+ * between the pointer moving and anything happening. The lag was the
+ * table rebuilding itself to change the background of one row.
+ *
+ * The props are all comparison-stable: `row` comes from a memoised
+ * array, `columns` from a memo, `className` is the already-computed
+ * string (so only the row whose class actually changed re-renders), and
+ * the handlers are the stable wrappers below. Change any of those to an
+ * inline value and the memo silently stops working.
+ */
+const Row = React.memo(function Row<T>({
+  row,
+  columns,
+  className,
+  clickable,
+  onClick,
+  onHover,
+  alignClass,
+}: {
+  row: T;
+  columns: DataTableColumn<T>[];
+  className?: string;
+  clickable: boolean;
+  onClick: (row: T) => void;
+  onHover: (row: T | null) => void;
+  alignClass: (align?: "left" | "right" | "center") => string;
+}) {
+  return (
+    <TableRow
+      onClick={clickable ? () => onClick(row) : undefined}
+      onMouseEnter={() => onHover(row)}
+      onMouseLeave={() => onHover(null)}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick(row);
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        "transition-colors duration-100",
+        clickable && "cursor-pointer",
+        className
+      )}
+    >
+      {columns.map((col) => (
+        <TableCell
+          key={col.key}
+          className={cn(
+            "whitespace-nowrap py-2.5 tabular",
+            alignClass(col.align),
+            col.className
+          )}
+        >
+          {col.cell(row)}
+        </TableCell>
+      ))}
+    </TableRow>
+  );
+}) as <T>(props: {
+  row: T;
+  columns: DataTableColumn<T>[];
+  className?: string;
+  clickable: boolean;
+  onClick: (row: T) => void;
+  onHover: (row: T | null) => void;
+  alignClass: (align?: "left" | "right" | "center") => string;
+}) => React.ReactElement;
+
+/** Stable for the life of the table: nothing about it varies. */
+function alignClass(align?: "left" | "right" | "center"): string {
+  return align === "right"
+    ? "text-right"
+    : align === "center"
+      ? "text-center"
+      : "text-left";
+}
+
+/**
  * Dense financial table: uppercase hairline header, tabular numerals,
  * hover state on every row, optional column sorting, built-in skeleton
  * and empty states. Numbers should be right-aligned via column.align.
@@ -59,6 +148,26 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const [sort, setSort] = React.useState(initialSort ?? null);
 
+  /**
+   * The callers' handlers, behind identities that never change.
+   *
+   * A page writes `onRowHover={(r) => setSelected(r?.slug)}` inline, as
+   * it should, and that arrow is a new function every render — which
+   * would break every row's memo on every render. The ref is refreshed
+   * after each render and the wrappers below never change, so the rows
+   * see one stable function for the life of the table.
+   */
+  const handlers = React.useRef({ onRowClick, onRowHover, rowClassName });
+  React.useEffect(() => {
+    handlers.current = { onRowClick, onRowHover, rowClassName };
+  });
+  const click = React.useCallback((row: T) => {
+    handlers.current.onRowClick?.(row);
+  }, []);
+  const hover = React.useCallback((row: T | null) => {
+    handlers.current.onRowHover?.(row);
+  }, []);
+
   const sorted = React.useMemo(() => {
     if (!sort) return rows;
     const col = columns.find((c) => c.key === sort.key);
@@ -74,9 +183,6 @@ export function DataTable<T>({
       return sort.dir === "asc" ? cmp : -cmp;
     });
   }, [rows, sort, columns]);
-
-  const alignClass = (align?: "left" | "right" | "center") =>
-    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
 
   if (!loading && rows.length === 0 && emptyState) {
     return <div className={className}>{emptyState}</div>;
@@ -150,41 +256,16 @@ export function DataTable<T>({
                 </TableRow>
               ))
             : sorted.map((row) => (
-                <TableRow
+                <Row
                   key={rowKey(row)}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}
-                  onMouseLeave={onRowHover ? () => onRowHover(null) : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  onKeyDown={
-                    onRowClick
-                      ? (e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            onRowClick(row);
-                          }
-                        }
-                      : undefined
-                  }
-                  className={cn(
-                    "transition-colors duration-150",
-                    onRowClick && "cursor-pointer",
-                    rowClassName?.(row)
-                  )}
-                >
-                  {columns.map((col) => (
-                    <TableCell
-                      key={col.key}
-                      className={cn(
-                        "whitespace-nowrap py-2.5 tabular",
-                        alignClass(col.align),
-                        col.className
-                      )}
-                    >
-                      {col.cell(row)}
-                    </TableCell>
-                  ))}
-                </TableRow>
+                  row={row}
+                  columns={columns}
+                  className={rowClassName?.(row)}
+                  clickable={Boolean(onRowClick)}
+                  onClick={click}
+                  onHover={hover}
+                  alignClass={alignClass}
+                />
               ))}
         </TableBody>
       </Table>
