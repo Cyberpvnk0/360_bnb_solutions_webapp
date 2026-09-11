@@ -83,23 +83,42 @@ export type BuyAreaResult =
   | { ok: false; reason: "no-key" | "quota" | "not-found" | "failed" };
 
 /**
- * One ZIP's figures: stored if fresh, bought if not.
+ * One ZIP's figures if they are already on file and still fresh.
+ *
+ * SEPARATE FROM THE BUYING ON PURPOSE. The route has to know whether an
+ * answer will cost anything BEFORE it takes a credit for it, and a
+ * read-through that quietly does both leaves no seam to put that
+ * decision in. A row already on file is free, and free has to mean
+ * free — including when the account has no credits left.
+ */
+export async function storedArea(
+  marketSlug: string,
+  zip: string
+): Promise<MeasuredArea | null> {
+  const key = areaKey(marketSlug, zip);
+  const stored = (await readKeyedBlobs([key]).catch(() => null))?.get(key);
+  if (!stored || !isFresh(stored.at, STATS_TTL_MS)) return null;
+  return fromStored(stored.value, stored.at);
+}
+
+/**
+ * Buy one ZIP's figures from the feed and keep them.
  *
  * `zip` is what our own rentals say the area is; the feed resolves the
  * point to its own district and that is what gets stored, under the ZIP
  * we asked about. They agree in every case seen so far, and where they
  * would not, the row a reader asked for is the row they get back.
+ *
+ * Returns a failure rather than throwing, because the caller's next act
+ * is to decide whether to charge for this — and nothing that failed
+ * should ever be charged for.
  */
-export async function areaStats(
+export async function buyArea(
   marketSlug: string,
   zip: string,
   point: { lat: number; lon: number }
 ): Promise<BuyAreaResult> {
   const key = areaKey(marketSlug, zip);
-  const stored = (await readKeyedBlobs([key]).catch(() => null))?.get(key);
-  if (stored && isFresh(stored.at, STATS_TTL_MS)) {
-    return { ok: true, zip, stats: fromStored(stored.value, stored.at), bought: false };
-  }
   if (!hasAirRoiKey()) return { ok: false, reason: "no-key" };
   // The same daily ledger a market search spends from: a ZIP is an
   // area, and the cap is on distinct areas rather than on which screen

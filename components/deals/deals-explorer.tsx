@@ -199,6 +199,10 @@ interface DealsExplorerProps {
   /** A location to open on, from ?market= — how a deal, an analysis or
    *  a listing hands off to "the rentals here". */
   initialQuery?: string;
+  /** A ZIP to open on, from ?zip= — a market page's area row. Seeds the
+   *  ZIP search itself rather than the text box, so the page arrives
+   *  already searching instead of merely pre-filled. */
+  initialZip?: string | null;
   /** A saved list to open on, from ?list= — the Saved page's way in. */
   initialList?: string | null;
 }
@@ -207,6 +211,7 @@ export function DealsExplorer({
   markets,
   totals,
   initialQuery = "",
+  initialZip = null,
   initialList = null,
 }: DealsExplorerProps) {
   const [filters, setFilters] = React.useState<DealFilters>(
@@ -248,7 +253,9 @@ export function DealsExplorer({
 
   // ZIP mode: a 5-digit search hits the live feed directly (ZIP search
   // is live-only — the preview world has no honest ZIP inventory).
-  const [zip, setZip] = React.useState<string | null>(null);
+  // Seeded from ?zip= so arriving from a market's area table lands on
+  // that ZIP's rentals rather than on a box somebody has to press.
+  const [zip, setZip] = React.useState<string | null>(initialZip);
   const [zipResult, setZipResult] = React.useState<{
     zip: string;
     live: boolean;

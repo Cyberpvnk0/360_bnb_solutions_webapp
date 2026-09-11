@@ -257,6 +257,27 @@ export const PHONE_LOOKUP_CREDITS = 1;
  */
 export const ASSISTANT_MESSAGE_CREDITS: number = 2;
 
+/**
+ * What measuring one area on a market page spends.
+ *
+ * A ZIP costs two billed calls: one to turn its point into the data
+ * provider's own district, one for that district's figures. At the
+ * measured price of $0.18 a call that is $0.36 of somebody else's money
+ * every time a student presses the button.
+ *
+ * A credit is worth twenty-seven cents on the cheapest plan — Scale
+ * billed annually — and a dollar on the smallest pack. One credit would
+ * therefore lose eighteen cents on every measure made by the very
+ * accounts most likely to make a lot of them; two clear the cost on
+ * every plan and every pack. The same arithmetic the assistant's price
+ * is set by.
+ *
+ * A ZIP already on file is served from the store and charged nothing,
+ * and the row it writes is shared with every account after, so the
+ * second person to want that neighbourhood pays nothing at all.
+ */
+export const AREA_MEASURE_CREDITS: number = 2;
+
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {
   return Math.round((pack.price / pack.credits) * 100) / 100;

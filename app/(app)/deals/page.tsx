@@ -27,17 +27,24 @@ export default async function DealsPage({
   const found = market ? MARKET_BY_SLUG.get(market) : undefined;
   /**
    * ?zip=<5 digits> arrives from a market page's area table, where a
-   * row IS a ZIP. The box already speaks ZIP, so this is the same
-   * resolution one level finer rather than a second search mode.
+   * row IS a ZIP.
+   *
+   * It goes in as a ZIP rather than as query text, because those are
+   * two different searches. A market name in the box resolves to a
+   * market and the market's rentals load on their own; a ZIP in the
+   * box is just five characters nothing acts on — the ZIP search is
+   * driven by its own state. Seeding the text left the box looking
+   * searched and the page saying "Where are you hunting?".
    */
-  const area = zip && /^\d{5}$/.test(zip) ? zip : "";
-  const initialQuery = area || (found ? `${found.name}, ${found.stateCode}` : "");
+  const area = zip && /^\d{5}$/.test(zip) ? zip : null;
+  const initialQuery = found ? `${found.name}, ${found.stateCode}` : "";
 
   return (
     <DealsExplorer
       markets={markets}
       totals={totals}
       initialQuery={initialQuery}
+      initialZip={area}
       // ?list=<id> arrives from the Saved page: open on that list's rows.
       initialList={list ?? null}
     />

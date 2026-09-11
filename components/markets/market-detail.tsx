@@ -54,6 +54,7 @@ import {
   fmtPct,
   fmtWhen,
 } from "@/lib/format";
+import { AREA_MEASURE_CREDITS } from "@/config/app";
 import { HINTS } from "@/lib/copy/hints";
 import {
   AREA_SORTS,
@@ -80,8 +81,12 @@ import { EmptyState } from "@/components/primitives/empty-state";
 import { InfoHint } from "@/components/primitives/info-hint";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
+import { useSession } from "@/components/providers/session-provider";
 import { SaveMarketButton } from "./save-market-button";
 import { cn } from "@/lib/utils";
+
+/** What a measure costs, said the way a reader says it. */
+const PRICE = `${AREA_MEASURE_CREDITS} ${AREA_MEASURE_CREDITS === 1 ? "credit" : "credits"}`;
 
 /** A figure nobody has measured. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
@@ -165,6 +170,7 @@ export function MarketDetail({
   areas,
   poolSize,
 }: Props) {
+  const { creditsRemaining, credits, openUpgrade, refreshUsage } = useSession();
   const [sort, setSort] = React.useState<AreaSort>("revenue");
   const [trend, setTrend] = React.useState<Trend>("adr");
   /** ZIPs bought in this session, merged over what the page arrived
@@ -221,7 +227,22 @@ export function MarketDetail({
     [stats]
   );
 
+  /**
+   * Buy one ZIP's real figures.
+   *
+   * The balance is checked here before the request goes out, so an
+   * account with no room gets the upgrade modal rather than a refusal
+   * it has to read. The server checks it again and is the actual gate:
+   * this one is a courtesy, and a stale client must not be able to
+   * spend anything.
+   */
+  const affordable = creditsRemaining + credits >= AREA_MEASURE_CREDITS;
+
   const measureArea = async (row: AreaRow) => {
+    if (!affordable) {
+      openUpgrade({ reason: "credits" });
+      return;
+    }
     setBuying(row.zip);
     try {
       const res = await fetch("/api/markets/area", {
@@ -235,14 +256,33 @@ export function MarketDetail({
         }),
       });
       const data = (await res.json().catch(() => null)) as
-        | { ok?: boolean; stats?: MeasuredArea; message?: string }
+        | {
+            ok?: boolean;
+            stats?: MeasuredArea;
+            message?: string;
+            reason?: string;
+            charged?: number;
+          }
         | null;
+      if (res.status === 402 || data?.reason === "no-credits") {
+        openUpgrade({ reason: "credits" });
+        return;
+      }
       if (!res.ok || !data?.ok || !data.stats) {
         toast.error(data?.message ?? "Those figures could not be fetched.");
         return;
       }
       setBought((prev) => ({ ...prev, [row.zip]: data.stats as MeasuredArea }));
-      toast.success(`${row.zip} measured`);
+      const charged = data.charged ?? 0;
+      toast.success(`${row.zip} measured`, {
+        description:
+          charged > 0
+            ? `${charged} ${charged === 1 ? "credit" : "credits"}. Everybody reads this area free from now on.`
+            : "Already on file — no credits taken.",
+      });
+      // The meter in the header spent something; settle it from the
+      // server rather than guessing at the new number here.
+      if (charged > 0) void refreshUsage();
     } catch {
       toast.error("Those figures could not be fetched.");
     } finally {
@@ -346,6 +386,8 @@ export function MarketDetail({
                 variant="ghost"
                 size="sm"
                 disabled={buying !== null}
+                title={`Measure ${r.zip} — ${PRICE}`}
+                aria-label={`Measure ${r.zip}, ${PRICE}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   void measureArea(r);
@@ -374,7 +416,7 @@ export function MarketDetail({
     // measureArea closes over `buying` and `market.slug`; both are in
     // the list that rebuilds it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [buying, market.name, market.slug, revenue]
+    [affordable, buying, market.name, market.slug, revenue]
   );
 
   return (
@@ -720,6 +762,16 @@ export function MarketDetail({
           </span>
           <span aria-hidden>·</span>
           <span>asking rent is the median of the rentals listed there</span>
+          <span aria-hidden>·</span>
+          <span className="inline-flex items-center gap-1.5">
+            measuring an area costs {PRICE}
+            <InfoHint label="what measuring costs">
+              It buys that ZIP&apos;s own figures from the data provider,
+              including how many short-let listings are really in it. The row
+              is then on file for every account, so nobody pays for the same
+              area twice — and an area already on file costs nothing.
+            </InfoHint>
+          </span>
         </p>
       </section>
     </div>
