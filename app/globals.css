@@ -97,6 +97,23 @@
   --chart-comparison: #8b8b93;
   --chart-neg: var(--red-muted);
 
+  /**
+   * THE SPREAD RAMP — the markets map, coloured by what a market clears
+   * over its lease. Diverging, because zero is the line between a deal
+   * and a loss rather than merely a small number: two hues around a
+   * neutral middle, darkest at both extremes, symmetric arms.
+   *
+   * Picked against the LIGHT basemap. The dark set below is chosen for
+   * a dark one, not flipped from these.
+   */
+  --spread-well-behind: #8f1220;
+  --spread-behind: #cf6778;
+  --spread-level: #9a9aa4;
+  --spread-ahead: #e3b341;
+  --spread-well-ahead: #8a6410;
+  /** A market nobody has measured: a hollow ring, not a colour. */
+  --spread-unmeasured: #b9b9c2;
+
   /* Monochrome map: land near the canvas, water slightly darker. */
   --map-water: #e4e7ed;
   --map-land: #fafbfc;
@@ -174,6 +191,15 @@
   --chart-primary: var(--gold);
   --chart-comparison: #9a9aa1;
   --chart-neg: #a05560;
+
+  /* The spread ramp on a dark basemap: brightest at the extremes,
+     since on dark it is light that reads as "more". */
+  --spread-well-behind: #e8677a;
+  --spread-behind: #a8515e;
+  --spread-level: #8a8a92;
+  --spread-ahead: #c9a03a;
+  --spread-well-ahead: #f5d77a;
+  --spread-unmeasured: #6b6b74;
 
   --map-water: #09090a;
   --map-land: #111113;

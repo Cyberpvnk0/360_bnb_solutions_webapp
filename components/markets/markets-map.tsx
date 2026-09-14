@@ -30,6 +30,14 @@ import {
 import { fmtMoneyShort, fmtPct } from "@/lib/format";
 import { autoCollapseAttribution } from "@/lib/map/attribution";
 import { RULE_LABEL, type MarketRow } from "@/lib/markets/explorer";
+import {
+  BAND_COLOR,
+  BAND_LABEL,
+  SPREAD_BANDS,
+  UNMEASURED_COLOR,
+  spreadBand,
+  type SpreadBand,
+} from "@/lib/markets/spread-scale";
 import { cn } from "@/lib/utils";
 
 /**
@@ -82,17 +90,22 @@ async function loadStyle(url: string): Promise<maplibregl.StyleSpecification | n
 }
 
 /**
- * The rule, as a colour: gold where nightly letting is open, red where
- * it is closed, plain grey for the two in between. These are the same
- * three the table's pills use, written as hex because a marker is an
- * inline style rather than a class.
+ * What a dot is: the market's band, or nothing.
+ *
+ * The map used to be coloured by regulation. A rule is a fact about a
+ * market but not the one somebody scanning the country is asking — the
+ * question is where the money is, and the rule is what you check once a
+ * market is on the shortlist. It has not gone anywhere: it is on the
+ * hover card and on every row of the table.
  */
-const RULE_COLOR: Record<string, string> = {
-  permitted: "#e3b341",
-  "permit-required": "#8c8c96",
-  unverified: "#b9b9c2",
-  banned: "#c41e2e",
-};
+function bandOf(row: MarketRow): SpreadBand | null {
+  return spreadBand(row.spread);
+}
+
+function colorOf(row: MarketRow): string {
+  const band = bandOf(row);
+  return band ? BAND_COLOR[band] : UNMEASURED_COLOR;
+}
 
 /**
  * One market's dot, inside a wrapper that is left strictly alone.
@@ -109,8 +122,9 @@ function dotFor(row: MarketRow): HTMLElement {
   const el = document.createElement("button");
   el.type = "button";
   el.setAttribute("aria-label", `${row.name}, ${row.stateCode}`);
-  const color = RULE_COLOR[row.regulation.status] ?? RULE_COLOR.unverified;
-  const size = row.measured ? 11 : 8;
+  const color = colorOf(row);
+  const placed = bandOf(row) !== null;
+  const size = placed ? 11 : 8;
   el.style.cssText = [
     `width:${size}px`,
     `height:${size}px`,
@@ -118,9 +132,9 @@ function dotFor(row: MarketRow): HTMLElement {
     "border-radius:9999px",
     "cursor:pointer",
     "padding:0",
-    `background:${row.measured ? color : "transparent"}`,
+    `background:${placed ? color : "transparent"}`,
     `border:1.5px solid ${color}`,
-    `opacity:${row.measured ? "0.95" : "0.55"}`,
+    `opacity:${placed ? "0.95" : "0.55"}`,
     "transition:transform 150ms ease, box-shadow 150ms ease",
   ].join(";");
   wrap.appendChild(el);
@@ -302,10 +316,14 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     ) => {
       const el = dotOf(marker);
       if (!el) return;
-      const color = RULE_COLOR[row.regulation.status] ?? RULE_COLOR.unverified;
+      const color = colorOf(row);
       el.style.transform = on ? "scale(1.7)" : "scale(1)";
-      el.style.boxShadow = on ? `0 0 0 5px ${color}38` : "";
-      el.style.opacity = on ? "1" : row.measured ? "0.95" : "0.55";
+      // color-mix rather than an alpha suffix: these are design tokens
+      // now, and "var(--x)38" is not a colour.
+      el.style.boxShadow = on
+        ? `0 0 0 5px color-mix(in srgb, ${color} 22%, transparent)`
+        : "";
+      el.style.opacity = on ? "1" : bandOf(row) !== null ? "0.95" : "0.55";
       marker.getElement().style.zIndex = on ? "2" : "";
     };
 
@@ -338,14 +356,14 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
       <div ref={containerRef} className="size-full" />
       {/* What the colours mean, where somebody looking at them is. */}
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border border-border bg-card/95 px-2.5 py-1.5 text-[10px] text-muted-foreground shadow-sm">
-        {(["permitted", "permit-required", "banned"] as const).map((s) => (
-          <span key={s} className="inline-flex items-center gap-1.5">
+        {SPREAD_BANDS.map((b) => (
+          <span key={b} className="inline-flex items-center gap-1.5">
             <span
               aria-hidden
               className="size-2 rounded-full"
-              style={{ backgroundColor: RULE_COLOR[s] }}
+              style={{ backgroundColor: BAND_COLOR[b] }}
             />
-            {RULE_LABEL[s]}
+            {BAND_LABEL[b]}
           </span>
         ))}
         <span className="inline-flex items-center gap-1.5">
@@ -369,6 +387,16 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
                 }`
               : "No measured figures yet"}
           </p>
+          {/* What the dot's colour actually said, spelled out. */}
+          {card.spread !== null ? (
+            <p className="mt-0.5 text-[11px] tabular">
+              <span style={{ color: colorOf(card) }}>
+                {card.spread >= 0 ? "+" : "−"}
+                {fmtMoneyShort(Math.abs(card.spread))}
+              </span>
+              <span className="text-muted-foreground"> over the lease</span>
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
