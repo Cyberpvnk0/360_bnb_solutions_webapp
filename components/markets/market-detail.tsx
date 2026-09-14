@@ -372,12 +372,10 @@ export function MarketDetail({
       const charged = data.charged ?? 0;
       // What it cost, and nothing else. A toast is not the place to
       // explain how the store works.
-      toast.success(`${row.zip} measured`, {
-        description:
-          charged > 0
-            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
-            : "No credits taken",
-      });
+      // The title and nothing else. What it cost was on the row before
+      // the click; saying it again afterwards is a meter reading, not
+      // news, and the balance in the header is already the truth.
+      toast.success(`${row.zip} measured`);
       // The meter in the header spent something; settle it from the
       // server rather than guessing at the new number here.
       if (charged > 0) void refreshUsage();
@@ -471,12 +469,7 @@ export function MarketDetail({
       }
       setBoughtPace(data.days);
       const charged = data.charged ?? 0;
-      toast.success(`${market.name} booked ahead`, {
-        description:
-          charged > 0
-            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
-            : "No credits taken",
-      });
+      toast.success(`${market.name} booked ahead`);
       if (charged > 0) void refreshUsage();
     } catch {
       toast.error("Those figures could not be fetched.");
@@ -525,12 +518,7 @@ export function MarketDetail({
       }
       setBoughtMonths(data.months);
       const charged = data.charged ?? 0;
-      toast.success(`${market.name} through the year`, {
-        description:
-          charged > 0
-            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
-            : "No credits taken",
-      });
+      toast.success(`${market.name} through the year`);
       // The meter in the header spent something; settle it from the
       // server rather than guessing at the new number here.
       if (charged > 0) void refreshUsage();
