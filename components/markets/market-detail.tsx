@@ -105,6 +105,8 @@ import { EmptyState } from "@/components/primitives/empty-state";
 import { InfoHint } from "@/components/primitives/info-hint";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
+import { useFinePointer } from "@/components/primitives/use-pointer-kind";
+import { actionLabel } from "@/lib/ui/pointer";
 import { useSession } from "@/components/providers/session-provider";
 import { MEASURE_PRICE, useMeasureMarket } from "./use-measure-market";
 import { SaveMarketButton } from "./save-market-button";
@@ -603,6 +605,7 @@ export function MarketDetail({
     []
   );
 
+  const fine = useFinePointer();
   const field = competition ? fieldOf(competition) : null;
 
   const best = React.useMemo(() => bestSize(sizes), [sizes]);
@@ -715,11 +718,22 @@ export function MarketDetail({
                 cursor. Not a button: the row itself is the target, and
                 a control inside a clickable row is two targets where
                 somebody expects one. */}
+            {/* Always there on a touch screen: a finger cannot hover,
+                and this row spends credits. It used to be hidden below
+                the small breakpoint, so a phone showed an ordinary-
+                looking row that charged on tap. */}
             <span
               aria-hidden
-              className="-translate-x-1 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-white opacity-0 shadow-[0_4px_12px_rgba(196,30,46,0.3)] transition-all duration-150 ease-out grad-brand group-hover:translate-x-0 group-hover:opacity-100 max-sm:hidden"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-white shadow-[0_4px_12px_rgba(196,30,46,0.3)] transition-all duration-150 ease-out grad-brand",
+                fine
+                  ? "-translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
+                  : "opacity-100"
+              )}
             >
-              {r.measured ? "Find rentals" : `Measure · ${PRICE}`}
+              {r.measured
+                ? actionLabel(fine, "open rentals")
+                : `${actionLabel(fine, "Measure")} · ${PRICE}`}
               <ArrowRight className="size-3" />
             </span>
           </span>
@@ -823,7 +837,7 @@ export function MarketDetail({
         className: "min-w-40",
       },
     ],
-    [buying, market.name, revenue]
+    [buying, fine, market.name, revenue]
   );
 
   return (
@@ -1458,6 +1472,10 @@ export function MarketDetail({
           rows={rows}
           rowKey={(r) => r.zip}
           onRowClick={openArea}
+          // `group` is what the row's pill hangs its hover off. Without
+          // it the pill was invisible on a cursor and hidden on a
+          // phone, which is to say it never appeared anywhere.
+          rowClassName={() => "group"}
           emptyState={
             <EmptyState
               icon={Search}

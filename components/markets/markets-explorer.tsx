@@ -49,6 +49,8 @@ import { EmptyState } from "@/components/primitives/empty-state";
 import { InfoHint } from "@/components/primitives/info-hint";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Button } from "@/components/ui/button";
+import { useFinePointer } from "@/components/primitives/use-pointer-kind";
+import { actionLabel } from "@/lib/ui/pointer";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -105,6 +107,8 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
     onOpenChange: (open: boolean) => setPanel(open ? id : null),
   });
 
+  const fine = useFinePointer();
+
   const columns = React.useMemo<DataTableColumn<MarketRow>[]>(
     () => [
       {
@@ -123,12 +127,21 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
             {/* The row goes somewhere and nothing said so but the
                 cursor. Not a button: the row itself is the target, and
                 a control inside a clickable row is two targets where
-                somebody expects one. */}
+                somebody expects one.
+                A finger has no cursor, so on a touch screen the pill is
+                simply always there — it used to be hidden below the
+                small breakpoint, which took the only affordance away
+                from exactly the readers who could not hover for it. */}
             <span
               aria-hidden
-              className="-translate-x-1 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-white opacity-0 shadow-[0_4px_12px_rgba(196,30,46,0.3)] transition-all duration-150 ease-out grad-brand group-hover:translate-x-0 group-hover:opacity-100 max-sm:hidden"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-white shadow-[0_4px_12px_rgba(196,30,46,0.3)] transition-all duration-150 ease-out grad-brand",
+                fine
+                  ? "-translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
+                  : "opacity-100"
+              )}
             >
-              Analyze market
+              {actionLabel(fine, "Analyze")}
               <ArrowRight className="size-3" />
             </span>
           </span>
@@ -206,7 +219,10 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
         sortValue: (r) => r.spread ?? -Infinity,
       },
     ],
-    []
+    // The pill's wording and whether it waits for a hover both turn on
+    // the pointer, which can change mid-session when a keyboard case
+    // goes on a tablet.
+    [fine]
   );
 
   const exportCsv = () => {
