@@ -165,7 +165,16 @@ export function isPoolComp(value: unknown): value is PoolComp {
     typeof c.adr === "number" &&
     typeof c.occ === "number" &&
     typeof c.at === "string" &&
-    (c.dist === undefined || typeof c.dist === "number")
+    (c.dist === undefined || typeof c.dist === "number") &&
+    // The same check the distance gets, for the same reason: a stored
+    // row is whatever an older deploy or a reshaped feed wrote, and a
+    // review count that came back as a string would travel all the way
+    // to a confidence score before anything noticed.
+    (c.rv === undefined || typeof c.rv === "number") &&
+    (c.sh === undefined || typeof c.sh === "boolean") &&
+    (c.pm === undefined || typeof c.pm === "boolean") &&
+    (c.am === undefined ||
+      (Array.isArray(c.am) && c.am.every((a) => typeof a === "string")))
   );
 }
 
