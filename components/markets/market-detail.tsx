@@ -23,13 +23,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
   Binoculars,
   Loader2,
   MapPin,
   Ruler,
   Search,
-  Sparkles,
 } from "lucide-react";
 import {
   Area,
@@ -266,8 +266,6 @@ export function MarketDetail({
   );
 
   /**
-   * Buy one ZIP's real figures.
-   *
    * The balance is checked here before the request goes out, so an
    * account with no room gets the upgrade modal rather than a refusal
    * it has to read. The server checks it again and is the actual gate:
@@ -276,15 +274,30 @@ export function MarketDetail({
    */
   const affordable = creditsRemaining + credits >= AREA_MEASURE_CREDITS;
 
+  /** ZIPs this mount has already sent a request for. The row unmounts
+   *  the moment it navigates, but a double-click can still land twice
+   *  before it does, and that is one wasted call at the feed. (The
+   *  charge itself is keyed per ZIP on the server and cannot double.) */
+  const sent = React.useRef(new Set<string>());
+
+  /**
+   * Buy one ZIP's real figures.
+   *
+   * Not awaited by the row click: a client navigation keeps this same
+   * JS context alive, so the request finishes, the toast lands on
+   * whatever screen the reader is on by then, and the figure is on file
+   * for the next time the market is opened. `keepalive` covers the one
+   * case a client navigation does not — a reload or a closed tab mid
+   * flight — so a measure that was paid for is never thrown away.
+   */
   const measureArea = async (row: AreaRow) => {
-    if (!affordable) {
-      openUpgrade({ reason: "credits" });
-      return;
-    }
+    if (sent.current.has(row.zip)) return;
+    sent.current.add(row.zip);
     setBuying(row.zip);
     try {
       const res = await fetch("/api/markets/area", {
         method: "POST",
+        keepalive: true,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           market: market.slug,
@@ -328,6 +341,32 @@ export function MarketDetail({
     } finally {
       setBuying(null);
     }
+  };
+
+  /**
+   * WHAT A ROW CLICK IS.
+   *
+   * Opening an area is asking two questions at once — what is let here,
+   * and what does it earn — so the click answers both: the ZIP opens in
+   * the Deal Finder, which searches it on arrival off `?zip=`, and the
+   * measure goes out in the same gesture. Same price as the button it
+   * replaces, and a ZIP already on file opens free, forever and for
+   * everybody.
+   *
+   * The navigation does not wait on the feed. A reader who has just
+   * clicked a row wants the rentals, not a spinner, and the figure
+   * catches up under them.
+   */
+  const openArea = (row: AreaRow) => {
+    const owed = !row.measured && !sent.current.has(row.zip);
+    if (owed && !affordable) {
+      // Nothing is spent and nothing is opened: the click promised a
+      // measure. The row's own Rentals link is still the free way in.
+      openUpgrade({ reason: "credits" });
+      return;
+    }
+    if (owed) void measureArea(row);
+    router.push(`/deals?zip=${row.zip}`);
   };
 
   const best = React.useMemo(() => bestSize(sizes), [sizes]);
@@ -426,13 +465,26 @@ export function MarketDetail({
         key: "zip",
         header: "Area",
         cell: (r) => (
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-sans font-medium tabular text-foreground">
-              {r.zip}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-sans font-medium tabular text-foreground">
+                {r.zip}
+              </span>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {r.town ?? market.name}
+                {r.measured ? " · measured" : null}
+              </span>
             </span>
-            <span className="truncate text-[11px] text-muted-foreground">
-              {r.town ?? market.name}
-              {r.measured ? " · measured" : null}
+            {/* The row goes somewhere and nothing said so but the
+                cursor. Not a button: the row itself is the target, and
+                a control inside a clickable row is two targets where
+                somebody expects one. */}
+            <span
+              aria-hidden
+              className="-translate-x-1 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-white opacity-0 shadow-[0_4px_12px_rgba(196,30,46,0.3)] transition-all duration-150 ease-out grad-brand group-hover:translate-x-0 group-hover:opacity-100 max-sm:hidden"
+            >
+              {r.measured ? "Find rentals" : `Measure · ${PRICE}`}
+              <ArrowRight className="size-3" />
             </span>
           </span>
         ),
@@ -510,28 +562,20 @@ export function MarketDetail({
         align: "right",
         cell: (r) => (
           <span className="flex items-center justify-end gap-1">
-            {r.measured ? null : (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={buying !== null}
-                title={`Measure ${r.zip} — ${PRICE}`}
-                aria-label={`Measure ${r.zip}, ${PRICE}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void measureArea(r);
-                }}
-                className="h-7 gap-1 px-2 text-[11px]"
-              >
-                {buying === r.zip ? (
-                  <Loader2 aria-hidden className="size-3 animate-spin" />
-                ) : (
-                  <Sparkles aria-hidden className="size-3" />
-                )}
-                Measure
-              </Button>
+            {buying === r.zip ? (
+              <span className="inline-flex items-center gap-1.5 pr-2 text-[11px] text-muted-foreground">
+                <Loader2 aria-hidden className="size-3 animate-spin" />
+                Measuring
+              </span>
+            ) : r.measured ? null : (
+              // What the row costs, on every screen — the hover pill
+              // above never appears on a phone, and a price nobody saw
+              // before the tap is not a price.
+              <span className="pr-1 text-[11px] text-muted-foreground">{PRICE}</span>
             )}
+            {/* The free way in, for a reader who wants the rentals and
+                not the measure. Stops the click so the row's own
+                handler does not spend on their behalf. */}
             <Button asChild variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px]">
               <Link href={`/deals?zip=${r.zip}`} onClick={(e) => e.stopPropagation()}>
                 Rentals
@@ -543,10 +587,7 @@ export function MarketDetail({
         className: "min-w-40",
       },
     ],
-    // measureArea closes over `buying` and `market.slug`; both are in
-    // the list that rebuilds it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [affordable, buying, market.name, market.slug, revenue]
+    [buying, market.name, revenue]
   );
 
   return (
@@ -921,9 +962,9 @@ export function MarketDetail({
                 Every ZIP this product holds real rentals in, with the middle
                 figures of the short-let listings seen in it. A ZIP is a real
                 boundary and the one the data provider answers at, which is why
-                these are ZIPs rather than neighbourhood names. Measure a row to
-                buy that ZIP&apos;s own figures, including a true count of its
-                listings.
+                these are ZIPs rather than neighbourhood names. Opening a row
+                searches its rentals and buys that ZIP&apos;s own figures,
+                including a true count of its listings.
               </InfoHint>
             </h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -956,6 +997,7 @@ export function MarketDetail({
           columns={columns}
           rows={rows}
           rowKey={(r) => r.zip}
+          onRowClick={openArea}
           emptyState={
             <EmptyState
               icon={Search}
