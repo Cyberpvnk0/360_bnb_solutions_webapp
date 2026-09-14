@@ -16,6 +16,7 @@ import { storedMarketMonths } from "@/lib/live/market-history";
 import { storedMarketPacing } from "@/lib/live/market-pacing";
 import { buildAreas } from "@/lib/markets/areas";
 import { buildSizes } from "@/lib/markets/sizes";
+import { readAmenities } from "@/lib/markets/amenities";
 import { zipOf } from "@/lib/live/zip";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import { MarketDetail } from "@/components/markets/market-detail";
@@ -79,6 +80,9 @@ export default async function MarketPage({
 
   const areas = buildAreas({ market, listings, comps: pool.comps, measured });
   const sizes = buildSizes({ comps: pool.comps, listings });
+  // Free, and better the more this market is used: every analysis drops
+  // its comps here, amenities included.
+  const amenities = readAmenities(pool.comps);
 
   return (
     <MarketDetail
@@ -97,6 +101,7 @@ export default async function MarketPage({
       monthsAt={inline.length > 0 ? (store?.statsAt ?? null) : (history?.at ?? null)}
       pace={pacing?.days ?? []}
       paceAt={pacing?.at ?? null}
+      amenities={amenities}
       listingsAt={store?.listingsAt ?? null}
       areas={areas}
       sizes={sizes}

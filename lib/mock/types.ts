@@ -167,6 +167,16 @@ export interface StrComp {
    * estimate of it would be a strange way to treat the better number.
    */
   annualRevenue?: number;
+  /**
+   * What this listing advertises, lowercased, when the feed carries it.
+   *
+   * Short labels from the platform's own fixed vocabulary — "hot tub",
+   * "pool", "ev charger" — never prose. It is the one attribute an
+   * arbitrage operator actually controls: the building is somebody
+   * else's, the furniture is theirs. Absent on comps bought before this
+   * was read and on any feed that does not send it.
+   */
+  amenities?: string[];
 }
 
 export interface LtrComp {

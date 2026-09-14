@@ -69,6 +69,16 @@ export interface PoolComp {
   /** Set when lat/lon are the point the set was bought around rather
    *  than the listing's own: how far the listing is from that point. */
   dist?: number;
+  /**
+   * What the listing advertises, when the feed carried it.
+   *
+   * Kept because it is the one thing about a comp an arbitrage operator
+   * can copy — the building is somebody else's, the furnishing is
+   * theirs — and because it accumulates for nothing: every analysis
+   * anybody runs adds its comps' amenities to the market's pool, so the
+   * market-level answer is free by the time anyone asks for it.
+   */
+  am?: string[];
 }
 
 /** One analysis's footing: where it was, what size, what it stood on. */
@@ -207,6 +217,7 @@ export function toPoolComps(
       adr: Math.round(c.adr),
       occ: Math.round(c.occupancy * 1000) / 1000,
       at,
+      ...(c.amenities?.length ? { am: c.amenities } : {}),
     };
     if (typeof c.lat === "number" && typeof c.lon === "number") {
       out.push({ ...base, lat: c.lat, lon: c.lon });

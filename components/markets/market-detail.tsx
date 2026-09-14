@@ -78,6 +78,11 @@ import {
 } from "@/lib/markets/areas";
 import { RULE_LABEL, RULE_TONE, TERRAIN_LABEL } from "@/lib/markets/explorer";
 import { MIN_RENTALS, bestSize, type SizeRow } from "@/lib/markets/sizes";
+import {
+  bandLabel,
+  type AmenityReading,
+  type AmenityRow,
+} from "@/lib/markets/amenities";
 import { benchmark2brInputs } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import type { StoredMarketStats } from "@/lib/db/market-store";
@@ -127,6 +132,9 @@ interface Props {
    *  it. Empty otherwise — the page never buys it either. */
   pace: LiveMarketPace[];
   paceAt: string | null;
+  /** What the earners here have that the others do not, read off the
+   *  same pool the sizes are. Null when it cannot be answered fairly. */
+  amenities: AmenityReading | null;
   listingsAt: string | null;
   areas: AreaRow[];
   /** What each bedroom count earns and costs here, from the same real
@@ -205,6 +213,7 @@ export function MarketDetail({
   monthsAt,
   pace,
   paceAt,
+  amenities,
   listingsAt,
   areas,
   sizes,
@@ -531,6 +540,71 @@ export function MarketDetail({
       setBuyingMonths(false);
     }
   };
+
+  const amenityColumns = React.useMemo<DataTableColumn<AmenityRow>[]>(
+    () => [
+      {
+        key: "amenity",
+        header: "Amenity",
+        cell: (r) => (
+          <span className="truncate font-medium capitalize text-foreground">
+            {r.amenity}
+          </span>
+        ),
+        className: "w-full min-w-32 max-w-0",
+      },
+      {
+        key: "lift",
+        header: "Gap",
+        align: "right",
+        cell: (r) => {
+          const flat = Math.abs(r.lift) < 0.02;
+          return (
+            <span
+              className={
+                flat ? "text-muted-foreground" : r.lift > 0 ? "text-gold" : "text-neg"
+              }
+            >
+              {flat
+                ? "Even"
+                : `${r.lift > 0 ? "+" : "−"}${fmtPct(Math.abs(r.lift))}`}
+            </span>
+          );
+        },
+      },
+      {
+        key: "with",
+        header: "With",
+        align: "right",
+        cell: (r) => (
+          <span className="text-foreground">{fmtMoneyShort(r.withRevenue)}</span>
+        ),
+      },
+      {
+        key: "without",
+        header: "Without",
+        align: "right",
+        cell: (r) => (
+          <span className="text-muted-foreground">
+            {fmtMoneyShort(r.withoutRevenue)}
+          </span>
+        ),
+      },
+      {
+        // The sample, on every row. A gap read off six listings and one
+        // read off sixty look identical without it.
+        key: "n",
+        header: "Listings",
+        align: "right",
+        cell: (r) => (
+          <span className="text-muted-foreground">
+            {fmtNum(r.withCount)} / {fmtNum(r.withoutCount)}
+          </span>
+        ),
+      },
+    ],
+    []
+  );
 
   const best = React.useMemo(() => bestSize(sizes), [sizes]);
   /** Sizes that have a rate, which is to say sizes somebody has run an
@@ -1246,6 +1320,37 @@ export function MarketDetail({
           </div>
         ) : null}
       </section>
+
+      {/* What the earners have. Free: it is read off the same pool the
+          sizes are, which every analysis anybody runs adds to. */}
+      {amenities ? (
+        <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
+          <div className="border-b border-border px-5 py-3.5">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              What the earners have
+              <InfoHint label="what the earners have">
+                The building is somebody else&apos;s; the furnishing is
+                yours, which makes this the one lever on the page you
+                actually pull. Each row compares {bandLabel(amenities.bedrooms).toLowerCase()}{" "}
+                listings here that advertise the thing against{" "}
+                {bandLabel(amenities.bedrooms).toLowerCase()} listings here that
+                do not — same size on both sides, so a hot tub cannot take
+                credit for being on a bigger house. It is a gap between two
+                groups, not a promise that fitting one moves your number.
+              </InfoHint>
+            </h2>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {bandLabel(amenities.bedrooms)} listings seen in {market.name} ·{" "}
+              {fmtNum(amenities.sample)} compared
+            </p>
+          </div>
+          <DataTable
+            columns={amenityColumns}
+            rows={amenities.rows}
+            rowKey={(r) => r.amenity}
+          />
+        </section>
+      ) : null}
 
       {/* The areas. */}
       <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">

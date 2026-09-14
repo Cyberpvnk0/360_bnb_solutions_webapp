@@ -820,6 +820,58 @@ function idShapeOf(row: Row): string[] {
 export function compFieldsSeen(): Record<string, unknown> | null {
   return lastCompShape;
 }
+/**
+ * Where a listing's amenities might be, and what they might look like.
+ *
+ * READ FOR NOTHING, ON THE SET WE ALREADY BUY. The vendor's single- and
+ * batch-listing endpoints promise amenities, and the batch is a dollar
+ * a call. The comparables call we already make on every analysis is ten
+ * cents and MAY carry them too — the published description does not
+ * say. So this reads them wherever they turn up, keeps nothing when
+ * they do not, and costs a comparison either way. Whether they are
+ * actually there shows up in the comp-shape diagnostic, which already
+ * records every field the payload arrived with.
+ */
+const AMENITY_KEYS = ["amenities", "amenity_list", "features", "amenities_list"];
+
+/**
+ * An amenity list from a row, however the feed shaped it.
+ *
+ * Entries arrive as bare strings in some feeds and as objects with a
+ * name in others; both are taken, anything else is dropped. Names are
+ * lowercased and trimmed so "Hot Tub" and "hot tub" are one amenity,
+ * and de-duplicated so a list that repeats one cannot count it twice.
+ *
+ * NOT PROSE. An amenity is a short label from a fixed vocabulary, which
+ * is why anything long is refused: a feed that ever puts a description
+ * in this field must not get it stored and shown under the rule that
+ * listing prose stops at this file.
+ */
+export function readAmenities(row: Row): string[] {
+  const src = group(row, "listing_info") ?? row;
+  for (const scope of [src, row]) {
+    for (const key of AMENITY_KEYS) {
+      const raw = scope[key];
+      if (!Array.isArray(raw)) continue;
+      const names = new Set<string>();
+      for (const item of raw) {
+        const name =
+          typeof item === "string"
+            ? item
+            : item && typeof item === "object"
+              ? ((item as Row).name ?? (item as Row).title)
+              : null;
+        if (typeof name !== "string") continue;
+        const clean = name.trim().toLowerCase();
+        if (clean.length < 2 || clean.length > 40) continue;
+        names.add(clean);
+      }
+      if (names.size > 0) return [...names].sort();
+    }
+  }
+  return [];
+}
+
 const LAT_KEYS = ["latitude", "lat"];
 const LON_KEYS = ["longitude", "lng", "lon", "long"];
 
@@ -915,6 +967,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     : {};
 
   const revenue = nestedNumber(row, "performance_metrics", REV_KEYS, REV_KEYS);
+  const amenities = readAmenities(row);
 
   return {
     id: `sc-live-${id}`,
@@ -931,6 +984,7 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     distanceMiles: distance === null ? 0 : Math.round(distance * 10) / 10,
     ...placed,
     ...(revenue !== null && revenue > 0 ? { annualRevenue: Math.round(revenue) } : {}),
+    ...(amenities.length > 0 ? { amenities } : {}),
   };
 }
 
