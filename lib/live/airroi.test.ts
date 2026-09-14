@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityOf, compFieldsSeen, wholePlace, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, rememberCompShape, toFraction } from "./airroi";
+import { activityOf, compFieldsSeen, readAmenities, wholePlace, airbnbRoomUrl, vrboListingUrl, COMPS_PATH, compsParams, extractArray, mapComp, MARKET_PATH, mapMarketAnalytics, parseJsonKeepingBigIds, rememberCompShape, toFraction } from "./airroi";
 
 describe("endpoint paths", () => {
   // An earlier draft invented a /v1/ prefix that does not exist, so the
@@ -588,5 +588,84 @@ describe("what the whole comp payload looks like", () => {
     expect(text).not.toContain("Riverside");
     expect(text).not.toContain("41234567");
     expect(text).not.toContain("30.3255");
+  });
+});
+
+/**
+ * The amenity reader, against the payload the vendor actually sends.
+ *
+ * Shapes taken from a real comparables response: amenities live at
+ * property_details.amenities, as bare strings, on every comp. The first
+ * cut of the reader looked in listing_info and at the top level and
+ * would have found nothing forever — silently, since a market with no
+ * amenity data and a reader looking in the wrong place render the same.
+ */
+describe("amenities, where the feed actually puts them", () => {
+  const real = {
+    listing_info: { listing_id: "1234567890123456789", listing_name: "Casita" },
+    property_details: {
+      bedrooms: 2,
+      baths: 1,
+      amenities: ["Wifi", "Hot tub", "Free parking", "Pool", "Kitchen"],
+    },
+  };
+
+  it("reads property_details.amenities — the observed location", () => {
+    expect(readAmenities(real)).toEqual([
+      "free parking",
+      "hot tub",
+      "kitchen",
+      "pool",
+      "wifi",
+    ]);
+  });
+
+  it("still reads listing_info and the top level, for a reshaped payload", () => {
+    expect(readAmenities({ listing_info: { amenities: ["Hot Tub"] } })).toEqual(["hot tub"]);
+    expect(readAmenities({ amenities: ["Hot Tub"] })).toEqual(["hot tub"]);
+    expect(readAmenities({ property_details: { features: ["Pool"] } })).toEqual(["pool"]);
+  });
+
+  it("takes objects with a name as well as bare strings", () => {
+    expect(readAmenities({ property_details: { amenities: [{ name: "Hot Tub" }] } })).toEqual([
+      "hot tub",
+    ]);
+  });
+
+  it("folds case and drops repeats, so one thing counts once", () => {
+    expect(
+      readAmenities({ property_details: { amenities: ["Hot Tub", "hot tub", " HOT TUB "] } })
+    ).toEqual(["hot tub"]);
+  });
+
+  it("refuses prose — the same payload carries a 4,898 character description", () => {
+    const description = "A stunning retreat. ".repeat(250);
+    expect(readAmenities({ property_details: { amenities: [description] } })).toEqual([]);
+    // And never reaches for the description field itself.
+    expect(readAmenities({ listing_info: { description } })).toEqual([]);
+  });
+
+  it("says nothing rather than something, on a comp that carries none", () => {
+    for (const junk of [
+      {},
+      { property_details: { bedrooms: 2 } },
+      { property_details: { amenities: "Hot tub" } },
+      { property_details: { amenities: [] } },
+      { property_details: { amenities: [null, 7, {}] } },
+    ]) {
+      expect(readAmenities(junk)).toEqual([]);
+    }
+  });
+
+  it("puts them on the mapped comp", () => {
+    const comp = mapComp(
+      {
+        ...real,
+        performance_metrics: { ttm_avg_rate: 240, ttm_occupancy: 0.58, ttm_total_days: 365 },
+        location_info: { latitude: 33.5, longitude: -112 },
+      },
+      0
+    );
+    expect(comp?.amenities).toContain("hot tub");
   });
 });

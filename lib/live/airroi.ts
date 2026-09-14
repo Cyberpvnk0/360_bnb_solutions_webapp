@@ -821,17 +821,24 @@ export function compFieldsSeen(): Record<string, unknown> | null {
   return lastCompShape;
 }
 /**
- * Where a listing's amenities might be, and what they might look like.
+ * Where a listing's amenities are, and what they look like.
  *
- * READ FOR NOTHING, ON THE SET WE ALREADY BUY. The vendor's single- and
- * batch-listing endpoints promise amenities, and the batch is a dollar
- * a call. The comparables call we already make on every analysis is ten
- * cents and MAY carry them too — the published description does not
- * say. So this reads them wherever they turn up, keeps nothing when
- * they do not, and costs a comparison either way. Whether they are
- * actually there shows up in the comp-shape diagnostic, which already
- * records every field the payload arrived with.
+ * READ FOR NOTHING, ON THE SET WE ALREADY BUY. The vendor's batch
+ * endpoint promises amenities at a dollar a call. The comparables call
+ * every analysis already makes is ten cents and carries them too —
+ * OBSERVED, on a real payload, at property_details.amenities, present
+ * on all twenty-five comps, five labels each, none longer than
+ * twenty-one characters.
+ *
+ * property_details FIRST, and that is the whole lesson here. The first
+ * cut of this looked in listing_info and at the top level, which is
+ * where the name and the URL live, and would have found nothing
+ * forever — the panel would simply never have appeared and read as a
+ * market with no data rather than as a reader looking in the wrong
+ * drawer. The other scopes and spellings stay as fallbacks against a
+ * reshaped payload.
  */
+const AMENITY_SCOPES = ["property_details", "listing_info"];
 const AMENITY_KEYS = ["amenities", "amenity_list", "features", "amenities_list"];
 
 /**
@@ -843,13 +850,17 @@ const AMENITY_KEYS = ["amenities", "amenity_list", "features", "amenities_list"]
  * and de-duplicated so a list that repeats one cannot count it twice.
  *
  * NOT PROSE. An amenity is a short label from a fixed vocabulary, which
- * is why anything long is refused: a feed that ever puts a description
+ * is why anything long is refused: the same payload carries a 4,898
+ * character description two fields away, and a feed that ever put one
  * in this field must not get it stored and shown under the rule that
  * listing prose stops at this file.
  */
 export function readAmenities(row: Row): string[] {
-  const src = group(row, "listing_info") ?? row;
-  for (const scope of [src, row]) {
+  const scopes = [
+    ...AMENITY_SCOPES.map((s) => group(row, s)).filter((g): g is Row => g !== null),
+    row,
+  ];
+  for (const scope of scopes) {
     for (const key of AMENITY_KEYS) {
       const raw = scope[key];
       if (!Array.isArray(raw)) continue;

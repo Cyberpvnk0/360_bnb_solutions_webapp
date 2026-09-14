@@ -120,7 +120,7 @@ export async function GET() {
       left: airroi.left,
       note:
         "Per-instance and per-day, so the fleet total is this times however many instances are warm — a brake, not a lock. " +
-        "No cap unless AIRROI_DAILY_CALLS is set (dailyCap null means none): each account's plan meter is the limit, and this is an optional breaker behind it. Measured price is $0.18 a call. " +
+        "No cap unless AIRROI_DAILY_CALLS is set (dailyCap null means none): each account's plan meter is the limit, and this is an optional breaker behind it. A call is $0.01 to $0.50 by endpoint — a market summary is $0.10, a comp set $0.10, forward pacing $0.20. " +
         "A cached analysis costs nothing and never reaches this counter, which is why callsToday staying flat while analyses are viewed is the cache working, not the meter breaking.",
     },
     /**
