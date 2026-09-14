@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { readMarketStore } from "@/lib/db/market-store";
 import { readPool } from "@/lib/live/comp-pool";
 import { readAreaStats } from "@/lib/live/area-stats";
+import { storedMarketMonths } from "@/lib/live/market-history";
 import { buildAreas } from "@/lib/markets/areas";
 import { buildSizes } from "@/lib/markets/sizes";
 import { zipOf } from "@/lib/live/zip";
@@ -58,9 +59,10 @@ export default async function MarketPage({
   const market = MARKET_BY_SLUG.get(slug);
   if (!market) notFound();
 
-  const [store, pool] = await Promise.all([
+  const [store, pool, history] = await Promise.all([
     readMarketStore(slug).catch(() => null),
     readPool(slug).catch(() => ({ comps: [], anchors: [] })),
+    storedMarketMonths(slug).catch(() => null),
   ]);
 
   const listings = store?.listings ?? [];
@@ -70,6 +72,9 @@ export default async function MarketPage({
   const zips = [...new Set(listings.map((l) => zipOf(l)).filter(Boolean))] as string[];
   const measured = await readAreaStats(slug, zips).catch(() => new Map());
 
+  // The year, when a backfill bought it alongside the headline figures.
+  const inline = store?.stats?.monthly ?? [];
+
   const areas = buildAreas({ market, listings, comps: pool.comps, measured });
   const sizes = buildSizes({ comps: pool.comps, listings });
 
@@ -78,11 +83,16 @@ export default async function MarketPage({
       market={market}
       stats={store?.stats ?? null}
       statsAt={store?.statsAt ?? null}
-      // Only ever what the stats row already carries. The year is a
-      // separate billed call and this page does not make it; a market
-      // backfilled at the cheap setting simply has no chart, and the
-      // size panel — which costs nothing — is the one that matters.
-      months={store?.stats?.monthly ?? []}
+      // Read, never bought: the year is a billed call and this page
+      // makes none. It lands inline on the stats row when a backfill
+      // bought both together, and under its own key when somebody
+      // bought the year on its own from the chart below.
+      months={inline.length > 0 ? inline : (history?.months ?? [])}
+      // The byline follows whichever series was chosen, not whichever
+      // date happens to exist: a chart drawn from the stats row dated
+      // by a later standalone buy would be telling the reader the
+      // wrong thing about the numbers in front of them.
+      monthsAt={inline.length > 0 ? (store?.statsAt ?? null) : (history?.at ?? null)}
       listingsAt={store?.listingsAt ?? null}
       areas={areas}
       sizes={sizes}

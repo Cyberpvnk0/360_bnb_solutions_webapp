@@ -305,6 +305,19 @@ export const AREA_MEASURE_CREDITS: number = 2;
  */
 export const MARKET_MEASURE_CREDITS: number = 1;
 
+/**
+ * What buying a market's twelve months spends.
+ *
+ * One billed call at $0.18 — the metrics endpoint, addressed by the
+ * market's own name, with no summary and no coordinate lookup in front
+ * of it — so the same arithmetic as measuring a market puts it at one
+ * credit. Deliberately NOT folded into the measure: opening a market
+ * would then cost two credits whether or not the reader ever wanted
+ * the seasonal picture, and most opens are a glance. Bought once and
+ * read free by everybody after.
+ */
+export const MARKET_HISTORY_CREDITS: number = 1;
+
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {
   return Math.round((pack.price / pack.credits) * 100) / 100;

@@ -26,6 +26,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Binoculars,
+  CalendarRange,
   Loader2,
   MapPin,
   Ruler,
@@ -56,7 +57,7 @@ import {
   fmtPct,
   fmtWhen,
 } from "@/lib/format";
-import { AREA_MEASURE_CREDITS } from "@/config/app";
+import { AREA_MEASURE_CREDITS, MARKET_HISTORY_CREDITS } from "@/config/app";
 import { HINTS } from "@/lib/copy/hints";
 import {
   AREA_SORTS,
@@ -93,6 +94,9 @@ import { cn } from "@/lib/utils";
 /** What a measure costs, said the way a reader says it. */
 const PRICE = `${AREA_MEASURE_CREDITS} ${AREA_MEASURE_CREDITS === 1 ? "credit" : "credits"}`;
 
+/** What a year costs, said the same way. */
+const YEAR_PRICE = `${MARKET_HISTORY_CREDITS} ${MARKET_HISTORY_CREDITS === 1 ? "credit" : "credits"}`;
+
 /** A figure nobody has measured. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
@@ -102,8 +106,11 @@ interface Props {
   statsAt: string | null;
   /** The twelve measured months, from wherever they were kept: inline
    *  on the stats row when both were bought together, or under their
-   *  own key when the year was bought on its own. */
+   *  own key when the year was bought on its own. Empty until somebody
+   *  buys it — the page itself never does. */
   months: LiveMarketMonth[];
+  /** When that year was measured, for the chart's own byline. */
+  monthsAt: string | null;
   listingsAt: string | null;
   areas: AreaRow[];
   /** What each bedroom count earns and costs here, from the same real
@@ -179,6 +186,7 @@ export function MarketDetail({
   stats,
   statsAt,
   months,
+  monthsAt,
   listingsAt,
   areas,
   sizes,
@@ -193,6 +201,12 @@ export function MarketDetail({
    *  with so a row updates without a reload. */
   const [bought, setBought] = React.useState<Record<string, MeasuredArea>>({});
   const [buying, setBuying] = React.useState<string | null>(null);
+
+  /** The year bought in this session, so the chart draws without a
+   *  reload. Null until somebody buys one; the prop stands otherwise. */
+  const [boughtMonths, setBoughtMonths] = React.useState<LiveMarketMonth[] | null>(null);
+  const [buyingMonths, setBuyingMonths] = React.useState(false);
+  const year = boughtMonths ?? months;
 
   /**
    * OPENING THIS MARKET IS ASKING FOR ITS FIGURES.
@@ -256,13 +270,13 @@ export function MarketDetail({
 
   const monthly = React.useMemo(
     () =>
-      months.map((m) => ({
+      year.map((m) => ({
         month: m.month,
         adr: Math.round(m.adr),
         occupancy: Math.round(m.occupancy * 100),
         revpar: Math.round(m.revpar ?? revpar(m.adr, m.occupancy)),
       })),
-    [months]
+    [year]
   );
 
   /**
@@ -367,6 +381,62 @@ export function MarketDetail({
     }
     if (owed) void measureArea(row);
     router.push(`/deals?zip=${row.zip}`);
+  };
+
+  /**
+   * Buy this market's twelve months.
+   *
+   * The seasonal question — does this market earn its year evenly or in
+   * one season — is the one an annual average cannot answer, and it is
+   * the one a twelve-month lease turns on. One billed call, so one
+   * credit, and the year is shared with every account after.
+   */
+  const buyYear = async () => {
+    if (buyingMonths) return;
+    if (creditsRemaining + credits < MARKET_HISTORY_CREDITS) {
+      openUpgrade({ reason: "credits" });
+      return;
+    }
+    setBuyingMonths(true);
+    try {
+      const res = await fetch("/api/markets/history", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market: market.slug }),
+      });
+      const data = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            months?: LiveMarketMonth[];
+            message?: string;
+            reason?: string;
+            charged?: number;
+          }
+        | null;
+      if (res.status === 402 || data?.reason === "no-credits") {
+        openUpgrade({ reason: "credits" });
+        return;
+      }
+      if (!res.ok || !data?.ok || !data.months?.length) {
+        toast.error(data?.message ?? "Those figures could not be fetched.");
+        return;
+      }
+      setBoughtMonths(data.months);
+      const charged = data.charged ?? 0;
+      toast.success(`${market.name} through the year`, {
+        description:
+          charged > 0
+            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
+            : "No credits taken",
+      });
+      // The meter in the header spent something; settle it from the
+      // server rather than guessing at the new number here.
+      if (charged > 0) void refreshUsage();
+    } catch {
+      toast.error("Those figures could not be fetched.");
+    } finally {
+      setBuyingMonths(false);
+    }
   };
 
   const best = React.useMemo(() => bestSize(sizes), [sizes]);
@@ -879,17 +949,27 @@ export function MarketDetail({
           picture needs two y-scales, and two y-scales let a reader see
           a crossing that is an artefact of where the axes were put.
           The chips switch the measure instead. */}
-      {monthly.length > 0 ? (
-        <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-3.5">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-foreground">
-                Through the year
-              </h2>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Twelve measured months in {market.name}.
-              </p>
-            </div>
+      <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-3.5">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              Through the year
+              <InfoHint label="the year">
+                A lease runs twelve months. Revenue does not arrive in
+                twelve equal pieces, and an annual average cannot tell a
+                market that earns evenly from one that earns most of its
+                year in a season — which is the difference between a
+                lease that carries itself and one that does not. This is
+                the twelve measured months behind the average.
+              </InfoHint>
+            </h2>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {monthly.length > 0
+                ? `Twelve measured months in ${market.name}${monthsAt ? ` · ${fmtWhen(monthsAt)}` : ""}.`
+                : "Rate, occupancy and revenue month by month — what the average is made of."}
+            </p>
+          </div>
+          {monthly.length > 0 ? (
             <div className="-mx-1 -my-1 flex gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {TRENDS.map((t) => (
                 <button
@@ -909,7 +989,26 @@ export function MarketDetail({
                 </button>
               ))}
             </div>
-          </div>
+          ) : (
+            /* The year is a billed call, so it is a purchase and says
+               so. Opening a market must never spend on its own. */
+            <Button
+              type="button"
+              size="sm"
+              disabled={buyingMonths}
+              onClick={() => void buyYear()}
+              className="h-8 shrink-0 gap-1.5 px-3 text-xs grad-brand"
+            >
+              {buyingMonths ? (
+                <Loader2 aria-hidden className="size-3.5 animate-spin" />
+              ) : (
+                <CalendarRange aria-hidden className="size-3.5" />
+              )}
+              Measure the year · {YEAR_PRICE}
+            </Button>
+          )}
+        </div>
+        {monthly.length > 0 ? (
           <div className="px-2 pb-4 pt-5">
             <ResponsiveContainer width="100%" height={252}>
               <AreaChart data={monthly} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
@@ -949,8 +1048,8 @@ export function MarketDetail({
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
       {/* The areas. */}
       <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
