@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
+import { shortcutFor } from "@/lib/ui/shortcuts";
 import { cn } from "@/lib/utils";
 import { analyzeSearchHref } from "@/lib/live/analyze-href";
 import { useSession } from "@/components/providers/session-provider";
@@ -57,15 +58,13 @@ export function AddressSearch({ className }: { className?: string }) {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (
-        e.key === "/" &&
-        !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement) &&
-        !(e.target as HTMLElement | null)?.isContentEditable
-      ) {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
+      // What counts as typing lives in lib/ui/shortcuts, where it is
+      // tested: a global slash that fires mid-sentence steals the
+      // character out of somebody's note.
+      if (shortcutFor(e) !== "search") return;
+      e.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -124,6 +123,16 @@ export function AddressSearch({ className }: { className?: string }) {
       const s = showList ? suggestions[highlighted] : undefined;
       if (s) void choose(s);
       else if (!locating) void submitTyped();
+      return;
+    }
+    if (e.key === "Escape" && !showList) {
+      // Nothing open to close, so Escape means the field itself: clear
+      // what was typed and hand focus back to the page. Escape that
+      // only ever closes a dropdown leaves a half-typed query sitting
+      // there with no way out but the mouse.
+      e.preventDefault();
+      if (query) setQuery("");
+      else inputRef.current?.blur();
       return;
     }
     if (!showList) return;

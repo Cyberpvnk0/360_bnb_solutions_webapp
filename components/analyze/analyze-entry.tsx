@@ -357,7 +357,12 @@ export function AnalyzeEntry({
             <EmptyState
               icon={Crosshair}
               title="No pulls yet"
-              description="Your first address lands here, ready to reopen."
+              description="Every analysis you run lands here, ready to reopen. Start with a rental somebody is actually advertising."
+              action={
+                <Button asChild size="sm" className="grad-brand">
+                  <Link href="/deals">Find a rental</Link>
+                </Button>
+              }
             />
           </div>
         ) : (

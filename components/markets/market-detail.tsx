@@ -1025,7 +1025,15 @@ export function MarketDetail({
               <EmptyState
                 icon={Ruler}
                 title="Nothing to compare yet"
-                description={`Sizes are read from real listings — the short-let comps analyses leave behind and the rentals a search brings in. Search ${market.name} in the Deal Finder and run an analysis to fill this in.`}
+                description="Sizes are read from real listings — the short-let comps analyses leave behind and the rentals a search brings in."
+                action={
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={dealsHref}>
+                      Search {market.name} in the Deal Finder
+                      <ArrowUpRight aria-hidden className="size-3.5" />
+                    </Link>
+                  </Button>
+                }
               />
             }
           />
@@ -1454,7 +1462,15 @@ export function MarketDetail({
             <EmptyState
               icon={Search}
               title="No areas in this market yet"
-              description="Areas are built from real rentals and real short-let listings. Search this market in the Deal Finder and run an analysis to fill this in."
+              description="Areas are built from real rentals and real short-let listings."
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link href={dealsHref}>
+                    Search {market.name} in the Deal Finder
+                    <ArrowUpRight aria-hidden className="size-3.5" />
+                  </Link>
+                </Button>
+              }
             />
           }
         />

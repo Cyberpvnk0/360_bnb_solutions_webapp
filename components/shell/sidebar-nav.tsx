@@ -1,14 +1,36 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_INTERNAL, NAV_MAIN, NAV_SYSTEM, type NavItem } from "@/config/nav";
 import { useSession } from "@/components/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/primitives/status-chip";
+import { chordLabel } from "@/lib/ui/shortcuts";
 import { cn } from "@/lib/utils";
 
 const MAIN_ITEMS: NavItem[] = NAV_MAIN;
+
+/** Nothing to subscribe to: the platform does not change mid-session. */
+const NEVER_CHANGES = () => () => {};
+
+/**
+ * The chord as this machine writes it, without a hydration mismatch.
+ *
+ * The server has no navigator and must render nothing here, while the
+ * client renders "⌘K" or "Ctrl K" — exactly the server/client split
+ * useSyncExternalStore takes a third argument for. Reading it in an
+ * effect and setting state would work too, and is the cascading render
+ * the hooks rule is right to refuse.
+ */
+function useChordLabel(): string {
+  return React.useSyncExternalStore(
+    NEVER_CHANGES,
+    () => chordLabel(navigator.platform),
+    () => ""
+  );
+}
 
 function NavLink({
   item,
@@ -21,6 +43,7 @@ function NavLink({
 }) {
   const active = item.match(pathname);
   const Icon = item.icon;
+  const chord = useChordLabel();
   return (
     <Link
       href={item.href}
@@ -35,6 +58,22 @@ function NavLink({
     >
       <Icon aria-hidden className="size-4" strokeWidth={1.75} />
       {item.label}
+      {/* The chord, where somebody can find it. Hidden from the
+          accessibility tree: it is a hint about the keyboard, not a
+          second name for the link. */}
+      {item.chord ? (
+        <kbd
+          aria-hidden
+          className={cn(
+            "ml-auto rounded-xs border px-1 text-[10px]",
+            active
+              ? "border-white/30 text-white/70"
+              : "border-border text-muted-foreground/70"
+          )}
+        >
+          {chord}
+        </kbd>
+      ) : null}
     </Link>
   );
 }

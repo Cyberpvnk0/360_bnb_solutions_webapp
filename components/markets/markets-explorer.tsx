@@ -377,6 +377,11 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
               icon={Search}
               title="No market matches those filters"
               description="Widen the rule or the state, or clear the filters to see all of them."
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => setQuery(EMPTY_QUERY)}>
+                  Clear filters
+                </Button>
+              }
             />
           }
         />

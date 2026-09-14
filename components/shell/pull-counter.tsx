@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
+import { AnimatedNumber } from "@/components/primitives/animated-number";
 import { useSession } from "@/components/providers/session-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -70,7 +71,11 @@ export function PullCounter({ className }: { className?: string }) {
         {exhausted ? (
           <TriangleAlert aria-hidden className="size-3" strokeWidth={2.5} />
         ) : null}
-        {left}
+        {/* Counts down when something is spent, at the ring's own pace,
+            so the two settle together and the click is visibly what
+            moved them. The figure is the only receipt now that the
+            measure toasts no longer name a price. */}
+        <AnimatedNumber value={left} durationMs={300} />
       </span>{" "}
       credits
     </span>

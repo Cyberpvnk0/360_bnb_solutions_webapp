@@ -15,6 +15,14 @@ export interface NavItem {
   icon: LucideIcon;
   /** Highlight for nested routes too (e.g. /markets/austin). */
   match: (pathname: string) => boolean;
+  /**
+   * True where a keyboard accelerator reaches this screen.
+   *
+   * The nav row prints the chord beside the label, because a shortcut
+   * nobody can see is a shortcut nobody uses. The binding itself is on
+   * the shell (lib/ui/shortcuts); this is only the hint.
+   */
+  chord?: boolean;
 }
 
 export const NAV_MAIN: NavItem[] = [
@@ -35,6 +43,7 @@ export const NAV_MAIN: NavItem[] = [
     label: "Markets",
     icon: Globe2,
     match: (p) => p.startsWith("/markets"),
+    chord: true,
   },
   {
     href: "/analyze",

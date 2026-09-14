@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import { SidebarNav, SidebarRail } from "./sidebar-nav";
 import { useSession } from "@/components/providers/session-provider";
 import { authConfigured } from "@/lib/supabase/config";
 import { ThemeToggle, UserMenu } from "./user-menu";
+import { shortcutFor } from "@/lib/ui/shortcuts";
 import { Wordmark } from "./wordmark";
 import { UpgradeModal } from "@/components/upgrade/upgrade-modal";
 
@@ -79,6 +81,27 @@ export function AppShell({
   isAdmin?: boolean;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  const router = useRouter();
+
+  /**
+   * The command chord jumps to the markets.
+   *
+   * Here rather than on the markets page, because the point of an
+   * accelerator is that it works from wherever you already are. Bound
+   * once on the shell that every screen sits inside; the matching, and
+   * the question of whether a keystroke belongs to somebody who is
+   * typing, live in lib/ui/shortcuts where they are tested.
+   */
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcutFor(e) !== "markets") return;
+      e.preventDefault();
+      setMobileNavOpen(false);
+      router.push("/markets");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router]);
 
   return (
     <div className="flex min-h-dvh">
