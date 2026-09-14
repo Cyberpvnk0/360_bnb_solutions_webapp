@@ -4,6 +4,7 @@ import {
   Columns3,
   Crosshair,
   Globe2,
+  LifeBuoy,
   Settings,
   ShieldCheck,
   type LucideIcon,
@@ -67,6 +68,15 @@ export const NAV_MAIN: NavItem[] = [
 ];
 
 export const NAV_SYSTEM: NavItem[] = [
+  // Below the work, above the account: a person looking for help looks
+  // at the bottom of the sidebar, and a person who has found a bug is
+  // already annoyed enough without hunting for the door.
+  {
+    href: "/support",
+    label: "Support",
+    icon: LifeBuoy,
+    match: (p) => p.startsWith("/support"),
+  },
   {
     href: "/settings",
     label: "Settings",

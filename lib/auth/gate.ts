@@ -61,6 +61,34 @@ export function isStaff(email: string | null | undefined, env?: string): boolean
   return list.has(email.trim().toLowerCase());
 }
 
+/**
+ * May this email read OTHER PEOPLE'S support tickets?
+ *
+ * Deliberately not isStaff. isStaff opens to everyone signed in when
+ * ADMIN_EMAILS is unset, which is the right default for a page of
+ * aggregate figures and the wrong one for a support inbox: a ticket
+ * holds one member's private correspondence — an address, an invoice
+ * question, a screenshot of their account — and "the beta is all
+ * friends" is not a reason to show it to every account that can reach
+ * the signup form.
+ *
+ * So this one fails CLOSED, on the same reasoning as requireOperator.
+ * With no ADMIN_EMAILS set, nobody is support staff and every ticket
+ * is visible only to the member who raised it. Naming the team turns
+ * the queue on, and a named address must also be confirmed, because a
+ * project with confirmations off hands out sessions for any address
+ * somebody types.
+ */
+export function isSupportStaff(
+  user: { email?: string | null; email_confirmed_at?: string | null } | null | undefined,
+  env?: string
+): boolean {
+  const list = adminEmails(env);
+  if (list.size === 0) return false;
+  if (!user?.email || !user.email_confirmed_at) return false;
+  return list.has(user.email.trim().toLowerCase());
+}
+
 function refuse(status: number, reason: string, extra: Record<string, unknown> = {}) {
   return NextResponse.json({ ok: false, live: false, reason, ...extra }, { status });
 }
@@ -119,6 +147,23 @@ export async function requireStaff(): Promise<Gate<{ user: SessionUser }>> {
   }
   if (!isStaff(user.email)) return { ok: false, response: refuse(403, "admin-only") };
   return { ok: true, user };
+}
+
+/**
+ * Any signed-in account, told whether it is support staff.
+ *
+ * Support is the one surface both audiences share: a member and the
+ * team open the same route and get different answers out of it. Rather
+ * than two gates and a branch in every handler, the gate answers the
+ * question once and hands the route an actor to pass into the rules in
+ * lib/support/ticket.
+ */
+export async function requireSupportActor(): Promise<
+  Gate<{ user: SessionUser; staff: boolean }>
+> {
+  const user = await currentUser();
+  if (!user) return { ok: false, response: refuse(401, "signed-out") };
+  return { ok: true, user, staff: isSupportStaff(user) };
 }
 
 /**

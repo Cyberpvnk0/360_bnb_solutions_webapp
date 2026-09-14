@@ -8,6 +8,7 @@ import { useSession } from "@/components/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { chordLabel } from "@/lib/ui/shortcuts";
+import { useSupportUnread } from "@/lib/support/unread";
 import { cn } from "@/lib/utils";
 
 const MAIN_ITEMS: NavItem[] = NAV_MAIN;
@@ -32,6 +33,18 @@ function useChordLabel(): string {
   );
 }
 
+/**
+ * The count beside Support, when there is one.
+ *
+ * Only that link asks for it — every other nav item is a place rather
+ * than an inbox, and a badge on a link that can never carry one is a
+ * component that renders nothing forever.
+ */
+function useBadge(href: string): number {
+  const unread = useSupportUnread();
+  return href === "/support" ? unread : 0;
+}
+
 function NavLink({
   item,
   pathname,
@@ -44,6 +57,7 @@ function NavLink({
   const active = item.match(pathname);
   const Icon = item.icon;
   const chord = useChordLabel();
+  const badge = useBadge(item.href);
   return (
     <Link
       href={item.href}
@@ -58,6 +72,17 @@ function NavLink({
     >
       <Icon aria-hidden className="size-4" strokeWidth={1.75} />
       {item.label}
+      {badge > 0 ? (
+        <span
+          className={cn(
+            "ml-2 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular",
+            active ? "bg-white/25 text-white" : "bg-gold-fill text-[#1c1503]"
+          )}
+        >
+          {badge > 99 ? "99+" : badge}
+          <span className="sr-only"> unread</span>
+        </span>
+      ) : null}
       {/* The chord, where somebody can find it. Hidden from the
           accessibility tree: it is a hint about the keyboard, not a
           second name for the link. */}
@@ -81,6 +106,7 @@ function NavLink({
 function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const active = item.match(pathname);
   const Icon = item.icon;
+  const badge = useBadge(item.href);
   return (
     <Link
       href={item.href}
@@ -92,13 +118,21 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
     >
       <span
         className={cn(
-          "flex size-9 items-center justify-center rounded-sm border transition-colors duration-150",
+          "relative flex size-9 items-center justify-center rounded-sm border transition-colors duration-150",
           active
             ? "border-select bg-select text-white shadow-[0_1px_3px_rgba(0,0,0,0.25)]"
             : "border-transparent text-muted-foreground group-hover:bg-secondary/60 group-hover:text-foreground"
         )}
       >
         <Icon aria-hidden className="size-4" strokeWidth={1.75} />
+        {/* The rail is too narrow for a figure, so it carries the fact
+            that there is something rather than how much. The count
+            itself is one click away, and on the wider nav. */}
+        {badge > 0 ? (
+          <span className="absolute right-1 top-1 size-1.5 rounded-full bg-gold-fill ring-2 ring-surface">
+            <span className="sr-only">{badge} unread</span>
+          </span>
+        ) : null}
       </span>
       <span
         className={cn(

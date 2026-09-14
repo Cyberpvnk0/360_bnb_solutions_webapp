@@ -31,6 +31,27 @@ signed-in account switch plans with no payment behind it, for testing
 the other tiers. `ADMIN_EMAILS` is optional: unset, every account sees
 /admin; set, only the listed emails do.
 
+### Support tickets
+
+Run `supabase/support-schema.sql` once, alongside `auth-schema.sql`.
+Members open tickets at `/support` and the thread is the whole
+conversation; replies mail both ways when `RESEND_API_KEY` and
+`ALERTS_FROM` are set.
+
+**`ADMIN_EMAILS` behaves differently here, and deliberately so.** For
+/admin an unset list means everyone is staff. For the support queue an
+unset list means *nobody* is: a ticket holds one member's private
+correspondence, so with no team named, every ticket is visible only to
+the member who raised it and the "All tickets" view does not exist. Name
+the team in `ADMIN_EMAILS` — confirmed addresses only — to turn the
+queue on. The two rules live side by side in `lib/auth/gate.ts` as
+`isStaff` and `isSupportStaff`.
+
+The tables carry row-level security with **no policies**, so the browser
+key cannot reach them at all; every read and write goes through
+`/api/support/*`, which is where the owner/staff decision is made. Don't
+add a policy to them.
+
 ### Live rentals (RentCast)
 
 Copy `.env.example` to `.env.local` and set `RENTCAST_API_KEY`. With the
