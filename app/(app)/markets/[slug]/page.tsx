@@ -17,6 +17,7 @@ import { storedMarketPacing } from "@/lib/live/market-pacing";
 import { buildAreas } from "@/lib/markets/areas";
 import { buildSizes } from "@/lib/markets/sizes";
 import { readAmenities } from "@/lib/markets/amenities";
+import { readCompetition } from "@/lib/markets/competition";
 import { zipOf } from "@/lib/live/zip";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 import { MarketDetail } from "@/components/markets/market-detail";
@@ -83,6 +84,8 @@ export default async function MarketPage({
   // Free, and better the more this market is used: every analysis drops
   // its comps here, amenities included.
   const amenities = readAmenities(pool.comps);
+  // Who a first unit would be bidding against — same pool, same price.
+  const competition = readCompetition(pool.comps);
 
   return (
     <MarketDetail
@@ -102,6 +105,7 @@ export default async function MarketPage({
       pace={pacing?.days ?? []}
       paceAt={pacing?.at ?? null}
       amenities={amenities}
+      competition={competition}
       listingsAt={store?.listingsAt ?? null}
       areas={areas}
       sizes={sizes}

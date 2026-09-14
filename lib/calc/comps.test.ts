@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EVIDENCED_REVIEWS,
   revenueBasis,
   revenueQuartiles,
   compSetStrength,
@@ -53,6 +54,53 @@ describe("compSetStrength", () => {
 
   it("handles an empty set", () => {
     expect(compSetStrength([])).toEqual({ score: 1, label: "Thin" });
+  });
+
+  /**
+   * The hole this closed: count and agreement can both be satisfied by
+   * listings nobody has ever rented. Ten hopefuls all asking the same
+   * $400 look exactly like ten well-traded units at $400.
+   */
+  describe("and how many of them guests have actually reviewed", () => {
+    const tight = (n: number, reviews?: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        adr: 400 + i,
+        occupancy: 0.6,
+        ...(reviews === undefined ? {} : { reviews }),
+      }));
+
+    it("marks a large, tight set of never-reviewed listings down", () => {
+      const asking = compSetStrength(tight(10, 0));
+      expect(asking.score).toBeLessThan(5);
+      // The same set, guest-corroborated, is the High it always was.
+      expect(compSetStrength(tight(10, 40))).toEqual({ score: 5, label: "High" });
+    });
+
+    it("leaves a set that says nothing about reviews exactly where it was", () => {
+      // Comps pulled before the feed carried reviews must not be
+      // silently downgraded for a field that did not exist.
+      expect(compSetStrength(tight(10))).toEqual({ score: 5, label: "High" });
+    });
+
+    it("judges only the comps that said, not the whole set", () => {
+      const mixed = [...tight(8, 40), ...tight(4)];
+      expect(compSetStrength(mixed).score).toBe(5);
+    });
+
+    it("treats a handful of reviews as corroboration, not a popularity contest", () => {
+      expect(compSetStrength(tight(10, EVIDENCED_REVIEWS)).score).toBe(5);
+      expect(compSetStrength(tight(10, EVIDENCED_REVIEWS - 1)).score).toBeLessThan(5);
+    });
+
+    it("never drops below the floor or climbs past the ceiling", () => {
+      const scattered = [
+        { adr: 90, occupancy: 0.5, reviews: 0 },
+        { adr: 240, occupancy: 0.6, reviews: 0 },
+        { adr: 150, occupancy: 0.7, reviews: 0 },
+      ];
+      expect(compSetStrength(scattered).score).toBe(1);
+      expect(compSetStrength(tight(20, 500)).score).toBe(5);
+    });
   });
 });
 

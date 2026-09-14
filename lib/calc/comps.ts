@@ -13,6 +13,9 @@ export interface StrCompLike {
   /** What the listing actually earned over twelve months, when the feed
    *  reports it. Absent on seeded comps. */
   annualRevenue?: number;
+  /** Guest reviews, when the feed carries them. Read only by
+   *  compSetStrength, and only as evidence — see there. */
+  reviews?: number;
 }
 
 export interface LtrCompLike {
@@ -78,10 +81,37 @@ export function deriveMarketAssumptions(comps: StrCompLike[]): {
   return { adr, marketOccupancy };
 }
 
+/** Reviews before a comp counts as corroborated by guests rather than
+ *  by its calendar alone. */
+export const EVIDENCED_REVIEWS = 3;
+
+/** The share of a set that must be corroborated before it lifts the
+ *  score, and the share below which it pulls the score down. */
+export const WELL_EVIDENCED = 0.7;
+export const POORLY_EVIDENCED = 0.3;
+
 /**
  * Comp set strength: how much to trust the projection, 1 (thin) to 5
- * (high). More comps and tighter ADR agreement mean a stronger read.
- * Purely descriptive — never a deal grade.
+ * (high). Purely descriptive — never a deal grade.
+ *
+ * THREE THINGS, NOT TWO. How many comps there are, how closely they
+ * agree on a rate, and — since the feed started carrying it — how many
+ * of them guests have actually reviewed.
+ *
+ * The third exists because the first two can be satisfied by listings
+ * nobody has ever rented. Ten hopeful listings all asking $400 have a
+ * high count and tight agreement, and this function used to call that
+ * "High" — maximum confidence in a number assembled entirely out of
+ * asking prices. A set most of whose comps carry reviews is evidenced
+ * by guests; one where almost none do rests on what the calendars
+ * looked like the day they were read.
+ *
+ * It moves CONFIDENCE and never a dollar: deriveMarketAssumptions does
+ * not look at reviews, and no comp is dropped for having none. A new
+ * listing takes real bookings long before its first review, so a zero
+ * is thin evidence rather than proof of a dead listing. Comps from
+ * before the feed carried reviews have none at all, which is why a set
+ * that says nothing either way is left exactly where it was.
  */
 export function compSetStrength(comps: StrCompLike[]): {
   score: 1 | 2 | 3 | 4 | 5;
@@ -99,6 +129,16 @@ export function compSetStrength(comps: StrCompLike[]): {
   if (n >= 10) score += 1;
   if (cv < 0.12) score += 1;
   else if (cv > 0.2) score -= 1;
+
+  // Only among comps that said. A set that carries no review counts at
+  // all is judged on the two things it does carry, as before.
+  const said = comps.filter((c) => typeof c.reviews === "number");
+  if (said.length > 0) {
+    const evidenced =
+      said.filter((c) => (c.reviews ?? 0) >= EVIDENCED_REVIEWS).length / said.length;
+    if (evidenced >= WELL_EVIDENCED) score += 1;
+    else if (evidenced <= POORLY_EVIDENCED) score -= 1;
+  }
   const clamped = Math.min(5, Math.max(1, score)) as 1 | 2 | 3 | 4 | 5;
   const label =
     clamped >= 5 ? "High" : clamped === 4 ? "Good" : clamped === 3 ? "Fair" : "Thin";

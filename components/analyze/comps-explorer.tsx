@@ -11,7 +11,7 @@ import { ArrowUpRight, RotateCcw, Trash2 } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
-import { fmtDate, fmtMiles, fmtMoney, fmtPct } from "@/lib/format";
+import { fmtDate, fmtMiles, fmtMoney, fmtPct, fmtNum} from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { InfoHint } from "@/components/primitives/info-hint";
@@ -105,6 +105,32 @@ function strColumns(
     align: "right",
     cell: (c) => fmtMiles(c.distanceMiles),
     sortValue: (c) => c.distanceMiles,
+  },
+  {
+    /**
+     * How many guests have actually stayed and said so.
+     *
+     * The rate and occupancy beside it come from a calendar read once;
+     * this is the only column that says people have been through the
+     * door. A comp with none is not necessarily dead — a new listing
+     * takes bookings long before its first review — but it is the one
+     * the reader should look at twice before letting it set their
+     * number, and striking it is a click away in the next column.
+     */
+    key: "reviews",
+    header: "Reviews",
+    align: "right",
+    cell: (c) =>
+      typeof c.reviews !== "number" ? (
+        <span className="text-muted-foreground/60">—</span>
+      ) : c.reviews === 0 ? (
+        <span className="text-muted-foreground">None</span>
+      ) : (
+        <span className="text-muted-foreground">{fmtNum(c.reviews)}</span>
+      ),
+    // Comps that never said sort last, rather than with the zeros:
+    // "we did not ask" and "nobody stayed" are different answers.
+    sortValue: (c) => (typeof c.reviews === "number" ? c.reviews : -1),
   },
   {
     key: "strike",

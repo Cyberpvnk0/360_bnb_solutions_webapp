@@ -883,6 +883,8 @@ export function readAmenities(row: Row): string[] {
   return [];
 }
 
+const REVIEW_KEYS = ["num_reviews", "reviews_count", "review_count", "reviews"];
+
 const LAT_KEYS = ["latitude", "lat"];
 const LON_KEYS = ["longitude", "lng", "lon", "long"];
 
@@ -980,6 +982,33 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
   const revenue = nestedNumber(row, "performance_metrics", REV_KEYS, REV_KEYS);
   const amenities = readAmenities(row);
 
+  /**
+   * HOW WELL EVIDENCED THIS COMP IS, AND WHO RUNS IT.
+   *
+   * Both arrive in the same ten-cent comparables call as everything
+   * else — ratings.num_reviews and host_info.{superhost,
+   * professional_management}, observed on all twenty-five comps of a
+   * real payload.
+   *
+   * A review count is guest corroboration. It is NOT a second occupancy
+   * figure and nothing here treats it as one: a new listing takes real
+   * bookings before it has a single review, so a zero says the calendar
+   * is standing alone, not that the listing is dead.
+   */
+  const reviews = nestedNumber(row, "ratings", REVIEW_KEYS, REVIEW_KEYS);
+  const host = group(row, "host_info");
+  const flag = (keys: string[]): boolean | undefined => {
+    for (const scope of [host, row]) {
+      if (!scope) continue;
+      for (const k of keys) {
+        if (typeof scope[k] === "boolean") return scope[k] as boolean;
+      }
+    }
+    return undefined;
+  };
+  const superhost = flag(["superhost", "is_superhost"]);
+  const managed = flag(["professional_management", "professionally_managed"]);
+
   return {
     id: `sc-live-${id}`,
     name: name ?? `${Math.max(1, Math.round(bedrooms))} BR nearby rental`,
@@ -996,6 +1025,9 @@ export function mapComp(raw: unknown, index: number): StrComp | null {
     ...placed,
     ...(revenue !== null && revenue > 0 ? { annualRevenue: Math.round(revenue) } : {}),
     ...(amenities.length > 0 ? { amenities } : {}),
+    ...(reviews !== null && reviews >= 0 ? { reviews: Math.round(reviews) } : {}),
+    ...(superhost === undefined ? {} : { superhost }),
+    ...(managed === undefined ? {} : { professionallyManaged: managed }),
   };
 }
 

@@ -79,6 +79,11 @@ export interface PoolComp {
    * market-level answer is free by the time anyone asks for it.
    */
   am?: string[];
+  /** Guest reviews, when the feed carried them. */
+  rv?: number;
+  /** Badged host / run by a management company, when the feed said. */
+  sh?: boolean;
+  pm?: boolean;
 }
 
 /** One analysis's footing: where it was, what size, what it stood on. */
@@ -218,6 +223,11 @@ export function toPoolComps(
       occ: Math.round(c.occupancy * 1000) / 1000,
       at,
       ...(c.amenities?.length ? { am: c.amenities } : {}),
+      ...(typeof c.reviews === "number" ? { rv: c.reviews } : {}),
+      ...(typeof c.superhost === "boolean" ? { sh: c.superhost } : {}),
+      ...(typeof c.professionallyManaged === "boolean"
+        ? { pm: c.professionallyManaged }
+        : {}),
     };
     if (typeof c.lat === "number" && typeof c.lon === "number") {
       out.push({ ...base, lat: c.lat, lon: c.lon });

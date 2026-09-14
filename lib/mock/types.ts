@@ -177,6 +177,30 @@ export interface StrComp {
    * was read and on any feed that does not send it.
    */
   amenities?: string[];
+  /**
+   * Guest reviews on the listing, when the feed carries it.
+   *
+   * CORROBORATION, NOT A SECOND OCCUPANCY. A listing with two hundred
+   * reviews has demonstrably been rented by people; one with none rests
+   * entirely on what its calendar looked like when the feed read it.
+   * That difference is worth showing and worth weighing confidence by
+   * — but a new listing takes real bookings long before its first
+   * review, so a zero here is thin evidence, never proof of a dead
+   * listing, and nothing drops a comp for it.
+   */
+  reviews?: number;
+  /** Whether the platform badges this host, when the feed says. */
+  superhost?: boolean;
+  /**
+   * Whether a management company runs it rather than an individual.
+   *
+   * Who a first-timer is actually bidding against. A market whose
+   * listings are mostly professionally run has a median achieved by
+   * operators with dynamic pricing, cleaning crews and round-the-clock
+   * response — a real number, and not one a first unit should be
+   * underwritten against without knowing that.
+   */
+  professionallyManaged?: boolean;
 }
 
 export interface LtrComp {

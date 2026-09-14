@@ -83,6 +83,11 @@ import {
   type AmenityReading,
   type AmenityRow,
 } from "@/lib/markets/amenities";
+import {
+  FIELD_NOTE,
+  fieldOf,
+  type CompetitionReading,
+} from "@/lib/markets/competition";
 import { benchmark2brInputs } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import type { StoredMarketStats } from "@/lib/db/market-store";
@@ -135,6 +140,9 @@ interface Props {
   /** What the earners here have that the others do not, read off the
    *  same pool the sizes are. Null when it cannot be answered fairly. */
   amenities: AmenityReading | null;
+  /** Who a first unit would be bidding against here. Null when the
+   *  pool is too thin, or predates the flags, to characterise. */
+  competition: CompetitionReading | null;
   listingsAt: string | null;
   areas: AreaRow[];
   /** What each bedroom count earns and costs here, from the same real
@@ -214,6 +222,7 @@ export function MarketDetail({
   pace,
   paceAt,
   amenities,
+  competition,
   listingsAt,
   areas,
   sizes,
@@ -593,6 +602,8 @@ export function MarketDetail({
     ],
     []
   );
+
+  const field = competition ? fieldOf(competition) : null;
 
   const best = React.useMemo(() => bestSize(sizes), [sizes]);
   /** Sizes that have a rate, which is to say sizes somebody has run an
@@ -1337,6 +1348,59 @@ export function MarketDetail({
             rows={amenities.rows}
             rowKey={(r) => r.amenity}
           />
+        </section>
+      ) : null}
+
+      {/* Who a first unit would be bidding against. Free, off the same
+          pool — and expectation-setting, never a grade. */}
+      {competition ? (
+        <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
+          <div className="border-b border-border px-5 py-3.5">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              Who you&apos;re up against
+              <InfoHint label="who you&apos;re up against">
+                Every revenue figure on this page is what the listings
+                here achieve. Who achieves it matters: a market run by
+                management companies hits its median with dynamic
+                pricing, cleaning crews and round-the-clock guest
+                response. The figures are real either way — this says
+                what they are likely to mean for one unit and one
+                operator. It is not a verdict on the market.
+              </InfoHint>
+            </h2>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Of the short-let listings seen in {market.name}
+            </p>
+          </div>
+          <div className="grid gap-px bg-border sm:grid-cols-2">
+            <div className="bg-card px-5 py-4">
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                Professionally run
+              </p>
+              <p className="mt-1 font-display text-xl font-semibold tabular text-foreground md:text-2xl">
+                {fmtPct(competition.managed)}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                of {fmtNum(competition.managedOf)} that said
+              </p>
+            </div>
+            <div className="bg-card px-5 py-4">
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                Badged hosts
+              </p>
+              <p className="mt-1 font-display text-xl font-semibold tabular text-foreground md:text-2xl">
+                {fmtPct(competition.badged)}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                of {fmtNum(competition.badgedOf)} that said
+              </p>
+            </div>
+          </div>
+          {field ? (
+            <p className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground">
+              {FIELD_NOTE[field]}
+            </p>
+          ) : null}
         </section>
       ) : null}
 
