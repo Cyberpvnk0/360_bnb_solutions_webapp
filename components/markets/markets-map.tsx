@@ -387,15 +387,27 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
                 }`
               : "No measured figures yet"}
           </p>
-          {/* What the dot's colour actually said, spelled out. */}
+          {/* What the dot's colour actually said, spelled out — and what
+              it does not say. The figure is revenue less rent, which is
+              the shortlisting number, not the take-home one, and the
+              card is where somebody is looking when they need to know
+              the difference. */}
           {card.spread !== null ? (
-            <p className="mt-0.5 text-[11px] tabular">
-              <span style={{ color: colorOf(card) }}>
-                {card.spread >= 0 ? "+" : "−"}
-                {fmtMoneyShort(Math.abs(card.spread))}
-              </span>
-              <span className="text-muted-foreground"> over the lease</span>
-            </p>
+            <>
+              <p className="mt-0.5 text-[11px] tabular">
+                <span style={{ color: colorOf(card) }}>
+                  {card.spread >= 0 ? "+" : "−"}
+                  {fmtMoneyShort(Math.abs(card.spread))}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  {card.spread >= 0 ? "over" : "under"} a year&apos;s rent
+                </span>
+              </p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground/80">
+                Before cleaning, fees and furnishing
+              </p>
+            </>
           ) : null}
         </div>
       ) : null}

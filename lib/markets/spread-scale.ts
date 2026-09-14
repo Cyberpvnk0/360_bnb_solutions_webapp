@@ -8,7 +8,7 @@
  * on every row of the table.
  *
  * SPREAD, NOT REVENUE. A year of measured letting revenue less a year
- * of the lease. Revenue alone would paint the expensive cities darkest
+ * of rent. Revenue alone would paint the expensive cities darkest
  * — they earn the most and cost the most, and an arbitrage operator
  * keeps the difference. Spread is the difference.
  *
@@ -57,15 +57,23 @@ export const SPREAD_BANDS: SpreadBand[] = [
 /**
  * What each band is called.
  *
- * Plainly about the lease, because that is what the number is measured
- * against and a reader should never have to guess the baseline.
+ * RENT, NOT LEASE. "Over lease" was the first wording and it made a
+ * reader stop and ask what the baseline was — which is a label that has
+ * failed, whatever it technically means. A lease is the agreement; the
+ * rent is the money, and the money is what the dot is measured against.
+ *
+ * AND NOT "PROFIT", which would be the obvious word and the wrong one.
+ * This is revenue less rent and nothing else: no cleaning, no platform
+ * fees, no management, no furnishing, no utilities. A market well over
+ * the rent is one worth underwriting, not one whose spread anybody
+ * pockets, and a legend that said "profit" would promise the second.
  */
 export const BAND_LABEL: Record<SpreadBand, string> = {
-  "well-behind": "Well under lease",
-  behind: "Under lease",
+  "well-behind": "Well under rent",
+  behind: "Under rent",
   level: "About level",
-  ahead: "Over lease",
-  "well-ahead": "Well over lease",
+  ahead: "Over rent",
+  "well-ahead": "Well over rent",
 };
 
 /**
