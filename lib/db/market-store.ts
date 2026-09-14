@@ -463,8 +463,8 @@ export async function readMarketStatsFor(slugs: string[]): Promise<StatsRows> {
 /**
  * A market's live KPIs.
  *
- * Two billed calls produced these, so losing them to a deployment is
- * two calls thrown away per market — across 409 markets that is the
+ * A billed call produced these, so losing them to a deployment is a
+ * call thrown away per market — across 409 markets that is the
  * kind of arithmetic that turns a plan into a monthly surprise.
  */
 export async function writeMarketStats(

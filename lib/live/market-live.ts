@@ -5,9 +5,11 @@
  * deterministic from a `kind`, plausible, and entirely made up. That was
  * honest while no live source existed. One does, and this fetches it.
  *
- * COST IS THE WHOLE DESIGN. At the measured price of $0.18 a call, the
- * three-call version of this — identity, summary, history — is $0.54 a
- * market, and $221 for the catalogue. So nothing is pre-fetched: a
+ * COST IS THE WHOLE DESIGN. At the vendor's published prices the
+ * three-call version of this — a $0.01 identity, a $0.10 summary and
+ * the $0.20 pair behind the history — is $0.31 a market and $127 for
+ * the catalogue; the cheap setting is $0.10 and $41. So nothing is
+ * pre-fetched: a
  * market costs money the first time someone opens it and not before,
  * and the answer is kept in the durable store for as long as the TTL
  * allows. A market nobody visits costs nothing, forever.
@@ -36,7 +38,7 @@
 import {
   airRoiBudget,
   fetchMarketIdentity,
-  fetchMarketMetrics,
+  fetchMarketMonths,
   fetchMarketSummary,
   hasAirRoiKey,
   type LiveMarketMonth,
@@ -163,7 +165,7 @@ export async function fetchLiveMarket(
     // one that falls back to seeded everything because the series was
     // unavailable.
     const monthly = history
-      ? await fetchMarketMetrics(ref).catch(() => [])
+      ? await fetchMarketMonths(ref).catch(() => [])
       : [];
 
     if (!ignoreSearchQuota) commitLiveSearch(key);

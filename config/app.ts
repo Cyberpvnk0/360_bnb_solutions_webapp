@@ -68,7 +68,7 @@ export const TIERS: Record<TierId, Tier> = {
   /**
    * THE CAPS ARE UNIT ECONOMICS, NOT ROUND NUMBERS. Each paid tier
    * clears its own cost in the worst case — every analysis a fresh
-   * vendor purchase at $0.18 plus its contacts and images, every market
+   * vendor purchase at about $0.10 plus its contacts and images, every market
    * bought once for this account alone — with a gross margin above
    * forty percent: Starter 54%, Pro 52%, Scale 45%. Realistic margins,
    * with half the cap used and the cache shared, run above eighty.
@@ -277,7 +277,8 @@ export const ASSISTANT_MESSAGE_CREDITS: number = 2;
  *
  * A ZIP costs two billed calls: one to turn its point into the data
  * provider's own district, one for that district's figures. At the
- * measured price of $0.18 a call that is $0.36 of somebody else's money
+ * published price of $0.11 for the pair — a $0.01 coordinate lookup and
+ * a $0.10 summary — that is eleven cents of somebody else's money
  * every time a student presses the button.
  *
  * A credit is worth twenty-seven cents on the cheapest plan — Scale
@@ -296,27 +297,50 @@ export const AREA_MEASURE_CREDITS: number = 2;
 /**
  * What measuring one market spends.
  *
- * One billed call at $0.18 — the market addressed by its own name,
- * which needs no coordinate lookup — against a credit worth
- * twenty-seven cents at the very least, so one clears it on every plan
- * and every pack. Half what an area costs, because an area needs the
- * lookup and a market does not. Bought once and read free by everybody
+ * One billed call at $0.10 — the summary, addressed by the market's own
+ * name, which needs no coordinate lookup — against a credit worth
+ * twenty-seven cents at the very least, so one clears it comfortably on
+ * every plan and every pack. Bought once and read free by everybody
  * after.
+ *
+ * NOTE ON THE AREA PRICE ABOVE. These two now cost within a penny of
+ * each other: an area adds only the $0.01 lookup. The two-credit area
+ * price was set when every call was believed to cost $0.18, which the
+ * vendor's own published table says is not so. It is left alone here
+ * rather than changed in a comment sweep, because what a student pays
+ * is not a thing to alter as a side effect of correcting arithmetic.
  */
 export const MARKET_MEASURE_CREDITS: number = 1;
 
 /**
  * What buying a market's twelve months spends.
  *
- * One billed call at $0.18 — the metrics endpoint, addressed by the
- * market's own name, with no summary and no coordinate lookup in front
- * of it — so the same arithmetic as measuring a market puts it at one
- * credit. Deliberately NOT folded into the measure: opening a market
- * would then cost two credits whether or not the reader ever wanted
- * the seasonal picture, and most opens are a glance. Bought once and
- * read free by everybody after.
+ * Two billed calls at $0.10 — monthly occupancy and monthly rate, which
+ * is everything the chart draws once RevPAR is derived from the pair.
+ * The all-metrics endpoint would answer in one call at $0.50, and the
+ * extra thirty cents buys a monthly revenue figure nothing displays.
+ * So $0.20 against a credit worth at least twenty-seven cents.
+ *
+ * Deliberately NOT folded into the measure: opening a market would then
+ * cost more whether or not the reader ever wanted the seasonal picture,
+ * and most opens are a glance. Bought once and read free by everybody
+ * after.
  */
 export const MARKET_HISTORY_CREDITS: number = 1;
+
+/**
+ * What buying a market's forward book spends.
+ *
+ * One billed call at $0.20 against a credit worth at least twenty-seven
+ * cents — the forward-pacing endpoint, twice the price of a trailing
+ * one and the only figure here that is not a matter of record.
+ * Unlike the year, this one is genuinely re-bought: a forward book
+ * moves every night somebody reserves, so it is held for a week and
+ * charged again per calendar month rather than once forever. That is
+ * the honest trade — a stale "already booked" figure looks exactly as
+ * current as a fresh one, which makes it worse than none.
+ */
+export const MARKET_PACING_CREDITS: number = 1;
 
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {

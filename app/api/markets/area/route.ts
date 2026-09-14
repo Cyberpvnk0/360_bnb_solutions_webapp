@@ -9,7 +9,8 @@
  * count a sample can never give. Stored under the ZIP and shared with
  * every account after, so the same neighbourhood is bought once.
  *
- * PRICED, BECAUSE IT SPENDS REAL MONEY. Two billed calls the first time
+ * PRICED, BECAUSE IT SPENDS REAL MONEY. Two billed calls — a $0.01
+ * coordinate lookup and a $0.10 summary — the first time
  * a ZIP is asked about, at config/app AREA_MEASURE_CREDITS. The room is
  * read before the feed is asked and the credits are taken only once an
  * answer is actually in hand, so:

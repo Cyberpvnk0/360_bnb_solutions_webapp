@@ -13,6 +13,7 @@ import { readMarketStore } from "@/lib/db/market-store";
 import { readPool } from "@/lib/live/comp-pool";
 import { readAreaStats } from "@/lib/live/area-stats";
 import { storedMarketMonths } from "@/lib/live/market-history";
+import { storedMarketPacing } from "@/lib/live/market-pacing";
 import { buildAreas } from "@/lib/markets/areas";
 import { buildSizes } from "@/lib/markets/sizes";
 import { zipOf } from "@/lib/live/zip";
@@ -59,10 +60,11 @@ export default async function MarketPage({
   const market = MARKET_BY_SLUG.get(slug);
   if (!market) notFound();
 
-  const [store, pool, history] = await Promise.all([
+  const [store, pool, history, pacing] = await Promise.all([
     readMarketStore(slug).catch(() => null),
     readPool(slug).catch(() => ({ comps: [], anchors: [] })),
     storedMarketMonths(slug).catch(() => null),
+    storedMarketPacing(slug).catch(() => null),
   ]);
 
   const listings = store?.listings ?? [];
@@ -93,6 +95,8 @@ export default async function MarketPage({
       // by a later standalone buy would be telling the reader the
       // wrong thing about the numbers in front of them.
       monthsAt={inline.length > 0 ? (store?.statsAt ?? null) : (history?.at ?? null)}
+      pace={pacing?.days ?? []}
+      paceAt={pacing?.at ?? null}
       listingsAt={store?.listingsAt ?? null}
       areas={areas}
       sizes={sizes}

@@ -13,11 +13,11 @@
  * through the rest of the queue, and every response reports the calls
  * the meter actually recorded rather than the number the plan assumed.
  *
- * WHAT A MARKET COSTS. At the measured $0.18 a call:
+ * WHAT A MARKET COSTS. At the vendor's published per-endpoint prices:
  *
- *   identity + summary + history   3 calls   $0.54   the page-load default
+ *   identity + summary + history   4 calls   $0.31   the page-load default
  *   identity + summary             2 calls   $0.36   history=0
- *   summary                        1 call    $0.18   history=0&identity=catalogue
+ *   summary                        1 call    $0.10   history=0&identity=catalogue
  *
  * Across the 75 course markets that is $40.50, $27.00 or $13.50. The
  * cheap row is not free of consequences — addressing a market by name
@@ -43,7 +43,13 @@ import {
   storeStatus,
   writeMarketStats,
 } from "@/lib/db/market-store";
-import { batchSize, callsPerMarket, money } from "@/lib/live/backfill-plan";
+import {
+  batchSize,
+  callsPerMarket,
+  dollarsPerCall,
+  dollarsPerMarket,
+  money,
+} from "@/lib/live/backfill-plan";
 
 export const maxDuration = 300;
 
@@ -180,7 +186,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       market: market.slug,
-      spent: { calls, cost: money(calls) },
+      spent: { calls, cost: money(calls * dollarsPerCall({ identity, history })) },
       byLookup: {
         ref: byLookup?.market ?? null,
         fullName: byLookup?.fullName ?? null,
@@ -197,7 +203,7 @@ export async function GET(request: Request) {
        * to: one is a ZIP, the other a city.
        */
       verdict: works
-        ? "identity=catalogue works. It skips a billed call per market, at $0.18 each, " +
+        ? "identity=catalogue works. It skips a billed call per market, at $0.01 each, " +
           "and measures the whole city rather than the ZIP the market's centre falls in. " +
           "Compare the two summaries above and decide which area you want on the cards."
         : "identity=catalogue did NOT return usable figures for this market. " +
@@ -223,11 +229,13 @@ export async function GET(request: Request) {
       stored: stored.size,
       pending: pending.length,
       callsToFinish: calls,
-      costToFinish: money(calls),
+      costToFinish: money(pending.length * dollarsPerMarket({ identity, history })),
       budgetLeftToday: airRoiBudget().left,
       cheapest: {
         callsToFinish: pending.length,
-        costToFinish: money(pending.length),
+        costToFinish: money(
+          pending.length * dollarsPerMarket({ identity: "catalogue", history: false })
+        ),
         how: "&identity=catalogue&history=0 — run &probe=<slug> first to see what that measures.",
       },
       note: courseOnly
@@ -311,10 +319,10 @@ export async function GET(request: Request) {
       writeFailed: unsaved.length,
       /** What this run actually cost, from the call meter. */
       callsMade,
-      cost: money(callsMade),
+      cost: money(callsMade * dollarsPerCall({ identity, history })),
       remaining: left,
       callsToFinish: left * perMarket,
-      costToFinish: money(left * perMarket),
+      costToFinish: money(left * dollarsPerMarket({ identity, history })),
       budgetLeftToday: airRoiBudget().left,
       throttled:
         limit < asked

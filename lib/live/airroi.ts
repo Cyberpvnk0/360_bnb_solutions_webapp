@@ -83,7 +83,32 @@ export const MARKET_PATH = "/markets/lookup";
 export const MARKET_SUMMARY_PATH = "/markets/summary";
 
 /** The same figures as a monthly series with percentiles. POST. */
+/**
+ * Every trailing metric in one call — and the most expensive thing in
+ * this file at $0.50, five times what a single metric costs.
+ *
+ * NOT what the seasonality chart buys. That chart draws rate, occupancy
+ * and RevPAR, and RevPAR is rate times occupancy, so the two single
+ * endpoints below answer it for $0.20 and the extra $0.30 here buys a
+ * monthly revenue figure nothing in the product displays. Kept for a
+ * caller that genuinely wants the lot.
+ */
 export const MARKET_METRICS_PATH = "/markets/metrics/all";
+
+/** One metric each, $0.10 apiece — what the chart is actually made of. */
+export const MARKET_OCCUPANCY_PATH = "/markets/metrics/occupancy";
+export const MARKET_ADR_PATH = "/markets/metrics/average-daily-rate";
+
+/**
+ * What is ALREADY BOOKED in this market, ahead of today.
+ *
+ * Every other market figure here is trailing: it says what happened.
+ * This one reads forward off the calendars that are on sale right now,
+ * which is the only thing in the feed that can catch a market that has
+ * just turned — a rule change, a wave of new supply, a season that is
+ * not coming back — while a trailing twelve still looks healthy.
+ */
+export const MARKET_PACING_PATH = "/markets/metrics/future/pacing";
 
 /**
  * Their own revenue model for a specific property.
@@ -116,7 +141,8 @@ export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
  * whose whole promise is measured ones. The plan meter is the limit;
  * this exists for an operator who wants a hard brake on the vendor
  * bill, and it holds only when they name the figure. For sizing one:
- * the measured price is $0.18 a call, and roughly (accounts x average
+ * a call runs $0.01 to $0.50 and most are $0.10, and roughly
+ * (accounts x average
  * monthly entitlement) / 30, times two for headroom, is the floor.
  *
  * Per-instance and per-day, like the quota beside it. A serverless
@@ -958,6 +984,18 @@ export interface LiveMarketMonth {
   revpar: number | null;
 }
 
+/** One date ahead of today, and how much of it is already sold. */
+export interface LiveMarketPace {
+  /** YYYY-MM-DD. A month the feed aggregated arrives as its first. */
+  date: string;
+  /** Fraction of that date's supply already booked, 0–1. */
+  booked: number;
+  /** What those bookings are going out at, when the feed says. */
+  adr: number | null;
+  /** Listings counted for that date, when the feed gave the counts. */
+  listings: number | null;
+}
+
 export interface MarketSummary {
   adr: number | null;
   /** Fraction. */
@@ -1337,6 +1375,172 @@ export async function fetchMarketMetrics(
     })
     .filter((m): m is LiveMarketMonth => m !== null)
     .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * A market's trailing months, the cheap way.
+ *
+ * TWO CALLS AT $0.10 RATHER THAN ONE AT $0.50. The all-metrics endpoint
+ * returns monthly revenue and booking lead time and length of stay on
+ * top of these, and the seasonality chart draws none of them — it draws
+ * rate, occupancy, and a RevPAR it derives from the two. So this asks
+ * for exactly those two series and merges them by month, at forty per
+ * cent of the price and with nothing lost that anybody sees.
+ *
+ * Both calls go out together; a month either side is missing is not a
+ * month, since a rate with no occupancy cannot be plotted against
+ * anything and an occupancy with no rate is half a picture.
+ */
+export async function fetchMarketMonths(
+  market: {
+    country?: string;
+    region?: string;
+    locality?: string;
+    district?: string;
+  },
+  numMonths = 12
+): Promise<LiveMarketMonth[]> {
+  const body = { market, currency: "native", num_months: numMonths };
+  const [rates, occupancies] = await Promise.all([
+    call(MARKET_ADR_PATH, {}, MARKET_REVALIDATE_SECONDS, body),
+    call(MARKET_OCCUPANCY_PATH, {}, MARKET_REVALIDATE_SECONDS, body),
+  ]);
+
+  const byMonth = (payload: unknown): Map<string, number> => {
+    const rows =
+      (payload && typeof payload === "object" ? (payload as Row).results : null) ??
+      extractArray(payload);
+    const out = new Map<string, number>();
+    if (!Array.isArray(rows)) return out;
+    for (const raw of rows) {
+      if (!raw || typeof raw !== "object") continue;
+      const row = raw as Row;
+      const month = normaliseMonth(pickString(row, ["date", "month"]));
+      if (!month) continue;
+      // Averaged figures arrive as a group with avg/p50 inside; a flat
+      // number, or the metric under its own name, are the fallbacks.
+      const value =
+        pickNumber(group(row, "average_daily_rate") ?? {}, ["avg", "p50"]) ??
+        pickNumber(group(row, "occupancy") ?? {}, ["avg", "p50"]) ??
+        pickNumber(row, [
+          "average_daily_rate",
+          "occupancy",
+          "value",
+          "avg",
+          "p50",
+        ]);
+      if (value !== null) out.set(month, value);
+    }
+    return out;
+  };
+
+  const adrs = byMonth(rates);
+  const occs = byMonth(occupancies);
+  const months: LiveMarketMonth[] = [];
+  for (const [month, adr] of adrs) {
+    const occupancy = toFraction(occs.get(month) ?? null);
+    if (adr <= 0 || occupancy === null) continue;
+    months.push({
+      month,
+      adr: Math.round(adr),
+      occupancy: Math.round(occupancy * 1000) / 1000,
+      // Nothing displays a monthly revenue, and buying one costs more
+      // than both of these together — see MARKET_METRICS_PATH.
+      revenue: null,
+      revpar: Math.round(adr * occupancy),
+    });
+  }
+  return months.sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * A market's forward booking pace.
+ *
+ * POST, like every other market endpoint, and the same minimal body the
+ * summary takes. What comes back is a row per date ahead of today with
+ * how much of it is already sold.
+ *
+ * READ WIDELY, ON PURPOSE. This is the one endpoint in this file whose
+ * response shape has not been seen against real data from inside this
+ * sandbox, so occupancy is taken from whichever of the feed's several
+ * names for it is present, and DERIVED from the booked and available
+ * counts when it names none of them. A row that yields no share is
+ * dropped rather than zeroed: nothing booked and no answer look the
+ * same on a chart, and only one of them is a market in trouble.
+ */
+export async function fetchMarketPacing(
+  market: {
+    country?: string;
+    region?: string;
+    locality?: string;
+    district?: string;
+  }
+): Promise<LiveMarketPace[]> {
+  const body = await call(MARKET_PACING_PATH, {}, MARKET_REVALIDATE_SECONDS, {
+    market,
+    currency: "native",
+  });
+  const rows =
+    (body && typeof body === "object" ? (body as Row).results : null) ??
+    extractArray(body);
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map(readPaceRow)
+    .filter((p): p is LiveMarketPace => p !== null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** One forward row, from whichever shape the feed used. */
+function readPaceRow(raw: unknown): LiveMarketPace | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Row;
+  const date = normaliseDate(pickString(row, ["date", "day", "month", "check_in"]));
+  if (!date) return null;
+
+  // Averaged figures arrive as a group with avg/p50 inside, exactly as
+  // the trailing metrics do; flat numbers are the fallback.
+  const avg = (key: string): number | null => {
+    const g = group(row, key);
+    return g ? pickNumber(g, ["avg", "p50"]) : pickNumber(row, [key]);
+  };
+
+  const named = toFraction(
+    avg("occupancy") ?? avg("fill_rate") ?? avg("booked_rate") ?? avg("pacing")
+  );
+  const bookedCount = pickNumber(row, ["booked", "booked_count", "booked_nights"]);
+  const availableCount = pickNumber(row, [
+    "available",
+    "available_count",
+    "available_nights",
+  ]);
+  const supply =
+    bookedCount !== null && availableCount !== null ? bookedCount + availableCount : null;
+  const derived = supply !== null && supply > 0 ? bookedCount! / supply : null;
+
+  const booked = named ?? derived;
+  if (booked === null) return null;
+  const adr = avg("average_daily_rate") ?? avg("adr") ?? avg("rate");
+  return {
+    date,
+    booked: Math.round(Math.min(1, Math.max(0, booked)) * 1000) / 1000,
+    adr: adr !== null && adr > 0 ? Math.round(adr) : null,
+    listings: supply,
+  };
+}
+
+/**
+ * Their date to a plain YYYY-MM-DD.
+ *
+ * The forward rows may be days or months depending on how the feed
+ * aggregates; a bare month is padded to its first so both sort and
+ * group the same way.
+ */
+function normaliseDate(value: string | null): string | null {
+  if (!value) return null;
+  const day = value.trim().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) return day;
+  const month = value.trim().slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : null;
 }
 
 /**

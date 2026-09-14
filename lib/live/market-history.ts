@@ -23,7 +23,7 @@
  */
 
 import {
-  fetchMarketMetrics,
+  fetchMarketMonths,
   hasAirRoiKey,
   type LiveMarketMonth,
 } from "@/lib/live/airroi";
@@ -118,7 +118,7 @@ export type BuyMonthsResult =
 export async function buyMarketMonths(market: Market): Promise<BuyMonthsResult> {
   if (!hasAirRoiKey()) return { ok: false, reason: "no-key" };
   try {
-    const months = readMonths(await fetchMarketMetrics(catalogueRef(market)));
+    const months = readMonths(await fetchMarketMonths(catalogueRef(market)));
     if (months.length === 0) return { ok: false, reason: "not-found" };
     const at = new Date().toISOString();
     // Never let a storage failure cost the answer just paid for.

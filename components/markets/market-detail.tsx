@@ -26,6 +26,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Binoculars,
+  CalendarCheck,
   CalendarRange,
   Loader2,
   MapPin,
@@ -35,7 +36,10 @@ import {
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -57,7 +61,11 @@ import {
   fmtPct,
   fmtWhen,
 } from "@/lib/format";
-import { AREA_MEASURE_CREDITS, MARKET_HISTORY_CREDITS } from "@/config/app";
+import {
+  AREA_MEASURE_CREDITS,
+  MARKET_HISTORY_CREDITS,
+  MARKET_PACING_CREDITS,
+} from "@/config/app";
 import { HINTS } from "@/lib/copy/hints";
 import {
   AREA_SORTS,
@@ -73,7 +81,8 @@ import { MIN_RENTALS, bestSize, type SizeRow } from "@/lib/markets/sizes";
 import { benchmark2brInputs } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
 import type { StoredMarketStats } from "@/lib/db/market-store";
-import type { LiveMarketMonth } from "@/lib/live/airroi";
+import type { LiveMarketMonth, LiveMarketPace } from "@/lib/live/airroi";
+import { lastYearByMonth, paceMonths } from "@/lib/live/market-pacing";
 import {
   asTooltipContent,
   AXIS_PROPS,
@@ -97,6 +106,9 @@ const PRICE = `${AREA_MEASURE_CREDITS} ${AREA_MEASURE_CREDITS === 1 ? "credit" :
 /** What a year costs, said the same way. */
 const YEAR_PRICE = `${MARKET_HISTORY_CREDITS} ${MARKET_HISTORY_CREDITS === 1 ? "credit" : "credits"}`;
 
+/** And what the forward book costs. */
+const PACE_PRICE = `${MARKET_PACING_CREDITS} ${MARKET_PACING_CREDITS === 1 ? "credit" : "credits"}`;
+
 /** A figure nobody has measured. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
@@ -111,6 +123,10 @@ interface Props {
   months: LiveMarketMonth[];
   /** When that year was measured, for the chart's own byline. */
   monthsAt: string | null;
+  /** What is already booked ahead of today, when somebody has bought
+   *  it. Empty otherwise — the page never buys it either. */
+  pace: LiveMarketPace[];
+  paceAt: string | null;
   listingsAt: string | null;
   areas: AreaRow[];
   /** What each bedroom count earns and costs here, from the same real
@@ -187,6 +203,8 @@ export function MarketDetail({
   statsAt,
   months,
   monthsAt,
+  pace,
+  paceAt,
   listingsAt,
   areas,
   sizes,
@@ -207,6 +225,10 @@ export function MarketDetail({
   const [boughtMonths, setBoughtMonths] = React.useState<LiveMarketMonth[] | null>(null);
   const [buyingMonths, setBuyingMonths] = React.useState(false);
   const year = boughtMonths ?? months;
+
+  const [boughtPace, setBoughtPace] = React.useState<LiveMarketPace[] | null>(null);
+  const [buyingPace, setBuyingPace] = React.useState(false);
+  const ahead = boughtPace ?? pace;
 
   /**
    * OPENING THIS MARKET IS ASKING FOR ITS FIGURES.
@@ -381,6 +403,77 @@ export function MarketDetail({
     }
     if (owed) void measureArea(row);
     router.push(`/deals?zip=${row.zip}`);
+  };
+
+  /**
+   * The forward book, month by month, with last year's FINISHED
+   * occupancy beside it.
+   *
+   * Beside, never subtracted. "October is 34% booked" is a month still
+   * filling, read at whatever lead time today happens to be; "October
+   * finished at 71%" is a month that is over. A difference between them
+   * is mostly just the calendar, so the chart puts both up and labels
+   * each for what it is rather than inventing a verdict.
+   */
+  const paceRows = React.useMemo(() => {
+    const finished = lastYearByMonth(
+      year.map((m) => ({ month: m.month, occupancy: m.occupancy }))
+    );
+    return paceMonths(ahead).map((m) => {
+      const prior = finished.get(m.month.slice(5, 7));
+      return {
+        month: m.month,
+        booked: Math.round(m.booked * 100),
+        lastYear: prior === undefined ? null : Math.round(prior * 100),
+      };
+    });
+  }, [ahead, year]);
+
+  /** Buy what is already reserved in this market ahead of today. */
+  const buyPace = async () => {
+    if (buyingPace) return;
+    if (creditsRemaining + credits < MARKET_PACING_CREDITS) {
+      openUpgrade({ reason: "credits" });
+      return;
+    }
+    setBuyingPace(true);
+    try {
+      const res = await fetch("/api/markets/pacing", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market: market.slug }),
+      });
+      const data = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            days?: LiveMarketPace[];
+            message?: string;
+            reason?: string;
+            charged?: number;
+          }
+        | null;
+      if (res.status === 402 || data?.reason === "no-credits") {
+        openUpgrade({ reason: "credits" });
+        return;
+      }
+      if (!res.ok || !data?.ok || !data.days?.length) {
+        toast.error(data?.message ?? "Those figures could not be fetched.");
+        return;
+      }
+      setBoughtPace(data.days);
+      const charged = data.charged ?? 0;
+      toast.success(`${market.name} booked ahead`, {
+        description:
+          charged > 0
+            ? `${charged} ${charged === 1 ? "credit" : "credits"}`
+            : "No credits taken",
+      });
+      if (charged > 0) void refreshUsage();
+    } catch {
+      toast.error("Those figures could not be fetched.");
+    } finally {
+      setBuyingPace(false);
+    }
   };
 
   /**
@@ -1047,6 +1140,109 @@ export function MarketDetail({
                 />
               </AreaChart>
             </ResponsiveContainer>
+          </div>
+        ) : null}
+      </section>
+
+      {/* What is already reserved, ahead of today. */}
+      <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-3.5">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              Booked ahead
+              <InfoHint label="booked ahead">
+                The share of each coming month that is already reserved
+                across this market, read off the calendars on sale today.
+                Every other figure on this page is trailing — it says what
+                the market did. This is the only one that can catch a
+                market that has just turned while its year still looks
+                healthy. It is not last year&apos;s occupancy and is never
+                subtracted from it: a coming month is still filling, and a
+                finished one is not.
+              </InfoHint>
+            </h2>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {paceRows.length > 0
+                ? `Already reserved in ${market.name}${paceAt ? ` · ${fmtWhen(paceAt)}` : ""}.`
+                : "How much of each coming month is already reserved here."}
+            </p>
+          </div>
+          {paceRows.length > 0 ? null : (
+            <Button
+              type="button"
+              size="sm"
+              disabled={buyingPace}
+              onClick={() => void buyPace()}
+              className="h-8 shrink-0 gap-1.5 px-3 text-xs grad-brand"
+            >
+              {buyingPace ? (
+                <Loader2 aria-hidden className="size-3.5 animate-spin" />
+              ) : (
+                <CalendarCheck aria-hidden className="size-3.5" />
+              )}
+              Measure what&apos;s booked · {PACE_PRICE}
+            </Button>
+          )}
+        </div>
+        {paceRows.length > 0 ? (
+          <div className="px-2 pb-4 pt-5">
+            <ResponsiveContainer width="100%" height={252}>
+              <BarChart data={paceRows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+                <CartesianGrid {...GRID_PROPS} />
+                <XAxis
+                  {...AXIS_PROPS}
+                  dataKey="month"
+                  tickFormatter={(m: string) => fmtMonth(m)}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  {...AXIS_PROPS}
+                  width={44}
+                  domain={[0, 100]}
+                  tickFormatter={(v: number) => `${v}%`}
+                />
+                <Tooltip
+                  cursor={{ fill: "var(--hover)" }}
+                  content={asTooltipContent(
+                    makeTooltip(
+                      (value) => `${Math.round(value)}%`,
+                      (label) => fmtMonth(String(label))
+                    )
+                  )}
+                />
+                <Legend
+                  verticalAlign="top"
+                  height={28}
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
+                />
+                <Bar
+                  dataKey="booked"
+                  name="Booked so far"
+                  fill={CHART.primary}
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                />
+                {/* Only drawn when the year is on file. Its own series,
+                    its own name: this month is over and that one is not. */}
+                {paceRows.some((r) => r.lastYear !== null) ? (
+                  <Bar
+                    dataKey="lastYear"
+                    name="Finished last year"
+                    fill={CHART.comparison}
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive={false}
+                  />
+                ) : null}
+              </BarChart>
+            </ResponsiveContainer>
+            {year.length === 0 ? (
+              <p className="px-3 pt-1 text-[11px] text-muted-foreground">
+                Measure the year above to see what these months finished at
+                last time.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </section>
