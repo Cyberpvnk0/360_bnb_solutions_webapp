@@ -187,6 +187,45 @@ export async function GET(request: Request) {
       },
       { label: "the city page itself (can we reach the domain at all?)", url: root },
     ];
+    /**
+     * THE SAME URL, THROUGH THE PLAIN ENDPOINT.
+     *
+     * The structured endpoint returned 43 rows for Boston's for-sale
+     * page and 500 for every rental URL, which says the supplier's
+     * Redfin parser handles for-sale searches and not rentals — not
+     * that redfin.com is unreachable. This separates those for good:
+     * the generic endpoint returns the page's own HTML and does no
+     * parsing, so if it comes back, the site serves the URL and only
+     * their parser is the problem.
+     *
+     * No extraction here on purpose. It reports the status, the size,
+     * and whether the document smells like a rentals search — enough
+     * to decide, and no listing prose crosses this boundary.
+     */
+    const raw = async (url: string) => {
+      const key = process.env.SCRAPERAPI_KEY;
+      if (!key) return { ok: false, reason: "no-key" };
+      const q = new URLSearchParams({ api_key: key, url });
+      for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
+      try {
+        const res = await fetch(`https://api.scraperapi.com/?${q}`, {
+          signal: AbortSignal.timeout(45_000),
+          cache: "no-store",
+        });
+        const text = await res.text().catch(() => "");
+        return {
+          ok: res.ok,
+          status: res.status,
+          bytes: text.length,
+          // Signals only — never the document, never a listing's words.
+          looksLikeRentals: /for rent|rental listings|\/rent\//i.test(text),
+          hasListingJson: /__reactServerState|ReactServerAgent|"homes"\s*:/.test(text),
+        };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.name : "failed" };
+      }
+    };
+
     const results = [];
     for (const c of candidates) {
       try {
@@ -204,12 +243,19 @@ export async function GET(request: Request) {
         });
       }
     }
+    // One plain-endpoint read of the rentals URL, so the answer does
+    // not rest on the structured parser's opinion of it.
+    const plainRentals = searchParams.get("raw")
+      ? await raw(`${root}/apartments-for-rent`)
+      : null;
+
     const working = results.filter((r) => r.ok && r.rows > 0);
     return NextResponse.json({
       market: market.slug,
       cityId,
       tier,
       results,
+      ...(plainRentals ? { plainRentals } : {}),
       verdict:
         working.length > 0
           ? `These work: ${working.map((r) => r.label).join("; ")}. Build the URL that way.`
