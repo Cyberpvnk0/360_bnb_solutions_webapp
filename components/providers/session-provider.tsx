@@ -538,11 +538,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const persist = React.useCallback(
     (
       what: string,
-      run: (client: NonNullable<typeof supabase>, id: string) => Promise<{ ok: boolean; error: string | null }>
+      run: (client: NonNullable<typeof supabase>, id: string) => Promise<{ ok: boolean; error: string | null }>,
+      /** Told when the write did not land, for the few mutations where
+       *  the console is not a good enough answer — see writeCallLog. */
+      onFail?: (error: string | null) => void
     ) => {
       if (!supabase || !userId) return;
       void run(supabase, userId).then((r) => {
-        if (!r.ok) console.error(`[aircore] failed to save ${what}:`, r.error);
+        if (r.ok) return;
+        console.error(`[aircore] failed to save ${what}:`, r.error);
+        onFail?.(r.error);
       });
     },
     [supabase, userId]
@@ -866,31 +871,52 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       next: (prev: DealListItem["call"]) => DealListItem["call"],
       label: string
     ) => {
-      let written: DealListItem["call"] | null = null;
+      // The new value is computed HERE, from the list as it stands,
+      // rather than inside the updater below. Reading a variable the
+      // updater assigned works only because React evaluates the first
+      // updater of a batch eagerly to check for a bail-out — an
+      // internal optimisation it skips whenever another update is
+      // already pending on the same state. On the miss, the call shows
+      // on screen and is never written at all, which is the one
+      // failure this feature cannot have.
+      const item = lists
+        .find((l) => l.id === listId)
+        ?.items.find((i) => i.listing.id === listingId);
+      // Nothing matched — the row was removed from under the sheet.
+      // Writing anyway would resurrect a call log against a listing
+      // that is no longer in the list.
+      if (!item) return;
+      const call = next(item.call);
       setLists((prev) =>
         prev.map((l) => {
           if (l.id !== listId) return l;
           return {
             ...l,
-            items: l.items.map((item) => {
-              if (item.listing.id !== listingId) return item;
-              written = next(item.call);
-              return { ...item, call: written };
-            }),
+            items: l.items.map((x) =>
+              x.listing.id === listingId ? { ...x, call } : x
+            ),
           };
         })
       );
-      // Nothing matched — the row was removed from under the sheet.
-      // Writing anyway would resurrect a call log against a listing
-      // that is no longer in the list.
-      if (!written) return;
-      const call = written;
-      persist(label, async (client) => {
-        await listWrites.current.get(listId)?.catch(() => undefined);
-        return writeCall(client, listId, listingId, call);
-      });
+      persist(
+        label,
+        async (client) => {
+          await listWrites.current.get(listId)?.catch(() => undefined);
+          return writeCall(client, listId, listingId, call);
+        },
+        // Said out loud, unlike every other write here. The rest are
+        // things the person did to the app; this is something the
+        // person was told to write down — what a landlord said on the
+        // phone — and it is gone the moment they close the tab. A
+        // console line is not an answer to that.
+        () =>
+          toast.error("That call didn't save.", {
+            description:
+              "It's still on screen, but it won't survive a reload. Try logging it again.",
+          })
+      );
     },
-    [persist]
+    [lists, persist]
   );
 
   const logCall = React.useCallback(
@@ -910,28 +936,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const updateSavedListing = React.useCallback(
     (listId: string, listing: RentalListing) => {
-      let present = false;
+      // Asked before the update rather than recorded during it — see
+      // writeCallLog for why a variable assigned inside an updater is
+      // not reliably readable after it.
+      const present = lists
+        .find((l) => l.id === listId)
+        ?.items.some((i) => i.listing.id === listing.id);
+      // Not in this list any more: the upsert below would ADD it back.
+      if (!present) return;
       setLists((prev) =>
         prev.map((l) => {
           if (l.id !== listId) return l;
           return {
             ...l,
-            items: l.items.map((item) => {
-              if (item.listing.id !== listing.id) return item;
-              present = true;
-              return { ...item, listing };
-            }),
+            items: l.items.map((item) =>
+              item.listing.id === listing.id ? { ...item, listing } : item
+            ),
           };
         })
       );
-      // Not in this list any more: the upsert below would ADD it back.
-      if (!present) return;
       persist("saved rental", async (client, id) => {
         await listWrites.current.get(listId)?.catch(() => undefined);
         return persistListItem(client, id, listId, listing);
       });
     },
-    [persist]
+    [lists, persist]
   );
 
   const listsWithListing = React.useCallback(

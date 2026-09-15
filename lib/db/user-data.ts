@@ -166,12 +166,17 @@ export async function loadUserData(
     supabase.from("deal_lists").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
     supabase
       .from("deal_list_items")
-      // Named columns rather than *, so a store that has not been
-      // migrated yet fails loudly here instead of reading every saved
-      // rental back as "never called".
-      .select(
-        "list_id, listing, created_at, call_outcome, call_note, call_attempts, last_called_at"
-      )
+      // Every column, for the same reason loadUsage below reads every
+      // column: naming one the store has not been migrated to yet
+      // fails the WHOLE read, and this read is somebody's saved
+      // properties. Named columns looked like the careful choice and
+      // were the opposite — deployed a minute before the call-log
+      // migration ran, they would have shown every member an empty
+      // saved list, which reads as "the app lost my shortlist" rather
+      // than as a missing column. Reading * on an unmigrated store
+      // shows the properties, with every call reading as never made,
+      // which is a degraded answer instead of an alarming one.
+      .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
   ]);
