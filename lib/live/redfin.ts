@@ -595,6 +595,28 @@ export function looksSpent(detail: string): boolean {
   );
 }
 
+/**
+ * Whether a 500 is the scraper failing to FETCH the page, rather than
+ * the scraper itself being unwell.
+ *
+ * Their words, verbatim from a live failure:
+ *
+ *   "Request failed. You will not be charged for this request. Please
+ *    make sure your url is correct and try again. Protected domains
+ *    may require adding premium=true OR ultra_premium=true"
+ *
+ * The giveaway is "you will not be charged" — they bill for their own
+ * mistakes and not for ours, so a free failure is one where the page
+ * at the other end did not come back. For a city Redfin has no rentals
+ * page for, that is exactly what happens, and it arrives as a 500
+ * rather than as the 404 the site would show a browser.
+ */
+export function looksUpstream(detail: string): boolean {
+  return /will not be charged|make sure your url is correct|Protected domains may require/i.test(
+    detail
+  );
+}
+
 function creditsFrom(res: Response): number | null {
   for (const header of ["sa-credit-cost", "x-credit-cost", "sa-credits-used"]) {
     const value = res.headers.get(header);
@@ -770,42 +792,57 @@ function emptyWalk(): SearchWalk {
 }
 
 /**
- * Statuses that can mean "this filter combination has nothing", rather
- * than "the search is broken".
+ * Whether a failure is the kind that can mean "there is nothing here",
+ * rather than "the search is broken".
  *
- * 404/410: the site does not serve a page for a filter it holds
- * nothing for. 500: the scraping layer answers 500 when its parser
- * cannot make a result set out of what came back, and a no-results
- * page is exactly that. Neither is conclusive on its own, which is why
- * nothing below decides on the status alone.
+ * 404 and 410 are the site saying a page is not there, which is
+ * unambiguous enough to stand on the status alone. A 500 is not: the
+ * scraping layer returns it both when it could not fetch the page and
+ * when it is having its own trouble, and only the body tells them
+ * apart — hence looksUpstream.
  */
-const MAYBE_EMPTY = new Set([404, 410, 500]);
+function meansNothingHere(error: unknown): boolean {
+  if (!(error instanceof RedfinError) || error.reason !== "http") return false;
+  if (error.status === 404 || error.status === 410) return true;
+  return error.status === 500 && looksUpstream(error.detail ?? "");
+}
 
 /**
- * The walk, with one failure reinterpreted: a FILTERED search that
- * fails where the unfiltered city SUCCEEDS is a filter that matched
- * nothing.
+ * The walk, with one failure reinterpreted: a city the supplier cannot
+ * fetch a page for is a city with nothing to show, not an outage.
  *
- * Bailey, Colorado has no furnished rentals. Asking for them returned
- * an error, and the screen reported an outage — for the honest answer
- * "none". But the same error could equally mean the city path is
- * wrong, or the supplier is having a bad minute, and those must not be
- * guessed between. So the discriminator is a second request: the same
- * city, WITHOUT the filter, one page.
+ * Bailey, Colorado has around seven hundred people and no Redfin
+ * rentals page. Asking it for furnished rentals returned
  *
- * THE BAR IS DELIBERATELY HIGH. It is not enough for the unfiltered
- * probe to answer — it has to come back WITH ROWS. A 200 carrying
- * nothing proves only that the endpoint is up; rows prove that this
- * city, through this endpoint, in this minute, returns listings, which
- * leaves the filter as the only thing left to explain the failure.
- * Anything weaker and a bad minute at the supplier would be reported
- * to every member as "no furnished rentals here" — a lie that looks
- * exactly like a fact, in a product whose whole job is telling people
- * where the inventory is.
+ *   500 · "Request failed. You will not be charged for this request.
+ *          Please make sure your url is correct…"
+ *
+ * and the screen reported that as a failure — for a market whose
+ * honest answer is "none". Jacksonville, asked the same way in the
+ * same minute, answered fine. So the endpoint works, filter URLs work,
+ * and the only thing wrong was a small town having no page.
+ *
+ * THE DISCRIMINATOR IS THE SAME CITY WITHOUT THE FILTER. Whatever it
+ * says, it says about this city rather than about the filter:
+ *
+ *   rows back          the city works, so the filter is what is empty
+ *   no rows, no error  the city has no rentals, so it has no furnished ones
+ *   fails the same way the city has no page at all — still "none"
+ *   fails some OTHER way   a real problem; report it unchanged
+ *
+ * That last line is the one holding the whole thing up. A throttle, a
+ * rejected key, a timeout or a 500 that does NOT carry the supplier's
+ * upstream wording all fall through to the original error, so the
+ * failures that mean "we are broken" keep saying so.
+ *
+ * WHAT THIS STILL CANNOT SEE: if the site began refusing us
+ * everywhere, every city would fail this way and every market would
+ * read "no furnished rentals". That is a real gap, and the thing that
+ * catches it is a large market saying the same — Jacksonville going
+ * quiet is the canary, and it is a loud one.
  *
  * Costs one extra request, only on a path that otherwise returns
- * nothing usable at all, and only after the opening page has already
- * had its one retry.
+ * nothing usable, and only after the opening page has had its retry.
  */
 async function walkOrEmpty(
   market: Market,
@@ -816,26 +853,18 @@ async function walkOrEmpty(
   try {
     return await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages));
   } catch (error) {
-    const maybeEmpty =
-      error instanceof RedfinError &&
-      error.reason === "http" &&
-      MAYBE_EMPTY.has(error.status ?? 0);
-    if (!maybeEmpty || !filtered) throw error;
+    if (!filtered || !meansNothingHere(error)) throw error;
 
     const bare = await redfinRentalsUrl(market, {});
     if (!bare || bare === searchUrl) throw error;
 
-    let probe: SearchWalk;
     try {
-      probe = await fetchRedfinSearchRows(bare, 1);
-    } catch {
-      // The city itself is unreachable, so the failure was never about
-      // the filter. Report what actually happened first.
-      throw error;
+      await fetchRedfinSearchRows(bare, 1);
+    } catch (probeError) {
+      // The city has no page either — which answers the question that
+      // was asked. Anything else is a problem worth reporting.
+      if (!meansNothingHere(probeError)) throw error;
     }
-    // Up, but empty-handed: we have learned nothing about the filter,
-    // so we say nothing about it.
-    if (probe.raw.length === 0) throw error;
     return emptyWalk();
   }
 }
