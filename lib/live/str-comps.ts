@@ -26,7 +26,7 @@ import {
   selectNearbyComps,
 } from "@/lib/calc/comps";
 import { addressKey } from "@/lib/live/address";
-import { fetchEstimate, hasAirRoiKey } from "@/lib/live/airroi";
+import { AirRoiError, fetchEstimate, hasAirRoiKey } from "@/lib/live/airroi";
 import { addToPool } from "@/lib/live/comp-pool";
 import {
   estimateKey,
@@ -61,7 +61,26 @@ export type CompsFallbackReason =
   | "thin-set"
   /** The day's search budget is spent. */
   | "daily-cap"
-  /** The vendor refused, failed, or the budget ran out mid-call. */
+  /**
+   * The vendor call did not come back. FOUR OF THEM, because these are
+   * four different jobs for four different people.
+   *
+   * They were one "vendor" and a bare `catch {}` that discarded the
+   * error object. AirRoiError has carried the reason and the service's
+   * own explanation from the beginning — auth, quota, budget, http,
+   * network, with the status and the body — and every one of them
+   * arrived at the screen as "the live comp source could not be
+   * reached for this one", which is true of all five and useful for
+   * none. It cost this project two rounds of looking in the wrong
+   * place while the answer was in a variable nobody read.
+   */
+  /** The key is set and the service rejected it. */
+  | "vendor-key"
+  /** The service says this account is out of credits, or throttled. */
+  | "vendor-quota"
+  /** OUR OWN brake — AIRROI_DAILY_CALLS — not the vendor's. */
+  | "vendor-budget"
+  /** Refused, failed, or unreachable, with no better word for it. */
   | "vendor"
   /** The account's plan did not pay for this one. */
   | "not-paid";
@@ -361,11 +380,42 @@ export async function withLiveComps(
       thin: comps.length < MIN_COMPS,
       boughtAt: new Date().toISOString(),
     };
-  } catch {
-    // Budget spent, feed down, key rejected — the same ANSWER here
-    // (show the modelled comps), but no longer the same label. The page
-    // must never fail because a vendor did; it must also never pass
-    // their absence off as their output.
+  } catch (error) {
+    // The same ANSWER for all of them — show the modelled comps, never
+    // fail the page because a vendor did — but no longer the same
+    // WORD. A rejected key is an operator's five-minute fix, an empty
+    // vendor account is a billing one, our own brake is an environment
+    // variable, and a 502 is waiting. Sending all four to the screen
+    // as "could not be reached" is what made this untraceable.
+    //
+    // Logged as well as labelled: the service explains a rejection in
+    // its response body, and that sentence is worth more than anything
+    // this file could infer from a status code.
+    if (error instanceof AirRoiError) {
+      console.error(
+        `[aircore] live comps failed: ${error.reason}`,
+        error.status ?? "",
+        error.detail ?? ""
+      );
+      return { analysis, liveComps: false, reason: vendorReason(error) };
+    }
+    console.error("[aircore] live comps failed:", error);
     return { analysis, liveComps: false, reason: "vendor" };
+  }
+}
+
+/** The service's own word for what went wrong, in the page's terms. */
+function vendorReason(error: AirRoiError): CompsFallbackReason {
+  switch (error.reason) {
+    case "auth":
+      return "vendor-key";
+    case "quota":
+      return "vendor-quota";
+    case "budget":
+      return "vendor-budget";
+    case "no-key":
+      return "not-configured";
+    default:
+      return "vendor";
   }
 }

@@ -200,6 +200,12 @@ function reasonChip(reason: CompsFallbackReason | null | undefined): string {
       return "budget spent";
     case "thin-set":
       return "none nearby";
+    case "vendor-key":
+      return "key rejected";
+    case "vendor-quota":
+      return "out of credits";
+    case "vendor-budget":
+      return "daily brake";
     case "vendor":
       return "source down";
     case "no-point":
@@ -219,6 +225,12 @@ function fallbackNote(reason: CompsFallbackReason | null | undefined): string {
       return "The day's live-comp budget is spent; try again tomorrow.";
     case "thin-set":
       return "Too few real listings were found nearby to stand a projection on.";
+    case "vendor-key":
+      return "The comp service rejected this deployment's key.";
+    case "vendor-quota":
+      return "The comp service says this account is out of credits.";
+    case "vendor-budget":
+      return "This deployment's own daily call brake (AIRROI_DAILY_CALLS) is stopping the call.";
     case "vendor":
       return "The live comp source could not be reached for this one.";
     case "no-point":

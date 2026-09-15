@@ -21,9 +21,24 @@ vi.mock("@/lib/db/market-store", () => ({
   readEstimate: store.readEstimate,
   writeEstimate: store.writeEstimate,
 }));
+// Hoisted with the mock that returns it: vi.mock runs before the
+// module body, so a plain class declaration here is still in its TDZ.
+const { FakeAirRoiError } = vi.hoisted(() => ({
+  FakeAirRoiError: class extends Error {
+    constructor(
+      readonly reason: string,
+      readonly status?: number,
+      readonly detail?: string
+    ) {
+      super(`AirROI ${reason}`);
+      this.name = "AirRoiError";
+    }
+  },
+}));
 vi.mock("@/lib/live/airroi", () => ({
   fetchEstimate: feed.fetchEstimate,
   hasAirRoiKey: () => true,
+  AirRoiError: FakeAirRoiError,
 }));
 vi.mock("@/lib/live/quota", () => ({
   checkLiveSearch: () => ({ allowed: true }),
@@ -212,5 +227,61 @@ describe("where a bought set is filed", () => {
     await withLiveComps(ANALYSES[0], POINT);
 
     expect(store.writeEstimate).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Why the comps are modelled, said precisely.
+ *
+ * All five of these used to arrive at the screen as one word, from a
+ * bare `catch {}` that discarded the error object — while AirRoiError
+ * had been carrying the reason, the status and the service's own
+ * explanation the whole time. A rejected key is an operator's
+ * five-minute fix, an empty vendor account is a billing one, our own
+ * brake is an environment variable, and a 502 is waiting. Telling a
+ * member they are all "could not be reached" sent two rounds of
+ * debugging to the wrong place.
+ */
+describe("when the vendor call fails", () => {
+  beforeEach(() => {
+    store.readEstimate.mockResolvedValue(null);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it.each([
+    ["auth", "vendor-key"],
+    ["quota", "vendor-quota"],
+    ["budget", "vendor-budget"],
+    ["no-key", "not-configured"],
+    ["http", "vendor"],
+    ["network", "vendor"],
+  ])("reports %s as %s", async (thrown, expected) => {
+    feed.fetchEstimate.mockRejectedValue(new FakeAirRoiError(thrown, 401, "nope"));
+
+    const { liveComps, reason } = await withLiveComps(ANALYSES[0], POINT);
+
+    expect(liveComps).toBe(false);
+    expect(reason).toBe(expected);
+  });
+
+  it("still answers with the modelled set rather than failing the page", async () => {
+    feed.fetchEstimate.mockRejectedValue(new FakeAirRoiError("auth", 403, "bad key"));
+    const { analysis } = await withLiveComps(ANALYSES[0], POINT);
+    expect(analysis.strComps).toBe(ANALYSES[0].strComps);
+  });
+
+  it("logs what the service actually said, since a status alone explains nothing", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    feed.fetchEstimate.mockRejectedValue(
+      new FakeAirRoiError("http", 400, "bedrooms is required")
+    );
+    await withLiveComps(ANALYSES[0], POINT);
+    expect(logged.mock.calls.flat().join(" ")).toContain("bedrooms is required");
+  });
+
+  it("falls back to the plain word for something that is not an AirRoiError", async () => {
+    feed.fetchEstimate.mockRejectedValue(new TypeError("boom"));
+    const { reason } = await withLiveComps(ANALYSES[0], POINT);
+    expect(reason).toBe("vendor");
   });
 });

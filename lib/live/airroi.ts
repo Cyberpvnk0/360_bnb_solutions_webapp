@@ -151,8 +151,17 @@ export const MARKET_REVALIDATE_SECONDS = 604_800; // 7 days
  * analysis never reaches this counter.
  */
 const DAILY_CALL_BUDGET = (() => {
-  const raw = Number(process.env.AIRROI_DAILY_CALLS);
-  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : Number.POSITIVE_INFINITY;
+  // BLANK IS UNSET, NOT ZERO. Number("") is 0, and 0 is finite and
+  // >= 0, so a variable that exists in the dashboard with nothing
+  // typed into it — which is the normal state of a row somebody added
+  // and never filled — set the brake to zero and refused EVERY live
+  // comp call from the first request of the day. The page then showed
+  // modelled comps to everybody, and the reason was swallowed two
+  // layers up, so it looked like the vendor was down.
+  const raw = process.env.AIRROI_DAILY_CALLS?.trim();
+  if (!raw) return Number.POSITIVE_INFINITY;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : Number.POSITIVE_INFINITY;
 })();
 
 let spentDay = "";
