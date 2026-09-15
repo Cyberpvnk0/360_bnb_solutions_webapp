@@ -242,3 +242,69 @@ describe("a supplier that never answers", () => {
     expect(err.reason).toBe("network");
   });
 });
+
+/**
+ * The refusal that read as an empty country.
+ *
+ * Every request was going out on the standard tier. The supplier
+ * classes redfin.com as protected, refused all of them with the same
+ * body, and that body's "you will not be charged" wording was read as
+ * "this town has no rentals page". Boston, with 315 rentals listed,
+ * told members the feed carried no furnished units — and so did every
+ * other market, because the refusal is true of all of them equally.
+ */
+describe("when the supplier will not fetch the domain at all", () => {
+  const PROTECTED = JSON.stringify({
+    error:
+      "Request failed. You will not be charged for this request. Please make sure your url is correct and try again. Protected domains may require adding premium=true OR ultra_premium=true parameter",
+  });
+
+  const realTier = process.env.REDFIN_SCRAPE_TIER;
+  afterEach(() => {
+    if (realTier === undefined) delete process.env.REDFIN_SCRAPE_TIER;
+    else process.env.REDFIN_SCRAPE_TIER = realTier;
+  });
+
+  it("sends the premium flag by default, because the supplier asks for it", async () => {
+    const seen: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      seen.push(String(input));
+      return new Response(JSON.stringify(ROWS), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    await ask({});
+    expect(seen[0]).toContain("premium=true");
+  }, 20_000);
+
+  it("does not send it when an operator has turned the tier down", async () => {
+    process.env.REDFIN_SCRAPE_TIER = "standard";
+    const seen: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      seen.push(String(input));
+      return new Response(JSON.stringify(ROWS), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    await ask({});
+    expect(seen[0]).not.toContain("premium");
+  }, 20_000);
+
+  it("REPORTS a protected-domain refusal on the cheap tier — never 'none'", async () => {
+    process.env.REDFIN_SCRAPE_TIER = "standard";
+    vendor(() => ({ status: 500, text: PROTECTED }));
+    const err = await ask({ furnished: true }).catch((e) => e);
+    expect(err).toBeInstanceOf(RedfinError);
+    expect(err.reason).toBe("needs-premium");
+  }, 25_000);
+
+  it("still reads it as a missing page once the flag HAS been sent", async () => {
+    // Bailey, Colorado: we asked the way they wanted and the page
+    // genuinely is not there. That is the case this whole path exists
+    // for and it must keep working.
+    vendor(() => ({ status: 500, text: PROTECTED }));
+    await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
+  }, 25_000);
+});

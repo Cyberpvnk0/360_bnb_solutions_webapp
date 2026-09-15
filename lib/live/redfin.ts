@@ -48,6 +48,29 @@ export const REDFIN_SEARCH_ENDPOINT =
 export const REDFIN_REVALIDATE_SECONDS = 86_400;
 
 /**
+ * How hard the supplier is asked to try on redfin.com.
+ *
+ * `premium` by default because the supplier refuses the domain without
+ * it — see the request builder below. Each tier is several times the
+ * price of the one before, so this is the one knob between "the
+ * furnished search works" and "the furnished search is affordable",
+ * and it belongs in the environment rather than in a constant.
+ */
+export const SCRAPE_TIER_PARAMS = {
+  standard: {},
+  premium: { premium: "true" },
+  ultra: { ultra_premium: "true" },
+} as const;
+
+export type RedfinScrapeTier = keyof typeof SCRAPE_TIER_PARAMS;
+
+export function redfinScrapeTier(): RedfinScrapeTier {
+  const raw = process.env.REDFIN_SCRAPE_TIER?.trim();
+  return raw && raw in SCRAPE_TIER_PARAMS ? (raw as RedfinScrapeTier) : "premium";
+}
+
+
+/**
  * Pages to follow.
  *
  * Redfin paginates at ~41 rows and hands back the next page URLs, so
@@ -167,6 +190,12 @@ export const REDFIN_REASONS = [
    *  sends whoever reads the log hunting for a blocked domain or a bad
    *  key instead of a billing page. */
   "no-credits",
+  /** The supplier refuses redfin.com on the tier we asked for and names
+   *  the parameter it wants. Its own reason because it is a settings
+   *  fix, not an outage — and because for a while its wording was being
+   *  read as "this city has no rentals page", which made every market
+   *  in the product report no furnished inventory. */
+  "needs-premium",
   /** We reached them and they were too slow. Its own reason because
    *  "network" reads as "we could not reach them", and this is worth
    *  retrying where that is not. */
@@ -610,11 +639,32 @@ export function looksSpent(detail: string): boolean {
  * at the other end did not come back. For a city Redfin has no rentals
  * page for, that is exactly what happens, and it arrives as a 500
  * rather than as the 404 the site would show a browser.
+ *
+ * THE SAME BODY CARRIES "Protected domains may require adding
+ * premium=true", and that sentence is boilerplate: the supplier
+ * appends it to every failure of this kind, whether the page is
+ * genuinely absent or it simply refused to try. So the WORDING cannot
+ * separate the two — but the tier we asked on can.
+ *
+ * On the standard tier that sentence is almost certainly the whole
+ * explanation: the supplier will not fetch a protected domain without
+ * the flag, so it never looked. On premium or ultra we have already
+ * sent what it asked for, and the same body then means the page at the
+ * other end really did not come back.
+ *
+ * Getting this wrong cost the whole feature. Every request was going
+ * out on the standard tier, every city came back with this body, every
+ * city was read as "no rentals page here", and Boston — three hundred
+ * and fifteen rentals listed — told members "the feed carries no
+ * furnished units here today". A supplier refusing to try is not an
+ * empty market, and must never again be able to read as one.
  */
+export function needsPremium(detail: string): boolean {
+  return /premium=true|ultra_premium|protected domains?/i.test(detail);
+}
+
 export function looksUpstream(detail: string): boolean {
-  return /will not be charged|make sure your url is correct|Protected domains may require/i.test(
-    detail
-  );
+  return /will not be charged|make sure your url is correct/i.test(detail);
 }
 
 function creditsFrom(res: Response): number | null {
@@ -654,9 +704,30 @@ async function fetchPage(pageUrl: string): Promise<{
   const key = process.env.SCRAPERAPI_KEY;
   if (!key) throw new RedfinError("no-key");
 
-  // Exactly the parameters ScraperAPI's own snippet sends. Extras that
-  // "shouldn't hurt" are how a working request quietly stops working.
+  /**
+   * The supplier's own snippet, PLUS the parameter it now asks for by
+   * name.
+   *
+   * This used to be api_key and url alone, with a comment warning that
+   * extras which "shouldn't hurt" are how a working request quietly
+   * stops working. That was right about speculative extras and wrong
+   * about this one, because it is not speculative: every request to
+   * redfin.com came back
+   *
+   *   500 · "Request failed. You will not be charged for this request…
+   *          Protected domains may require adding premium=true OR
+   *          ultra_premium=true parameter"
+   *
+   * The supplier has classed the domain as protected and is telling us
+   * the flag to send. Premium requests cost several times a standard
+   * one, which is the real trade here and why the tier is settable:
+   * REDFIN_SCRAPE_TIER=standard turns it off if the domain is ever
+   * unprotected again, =ultra buys rendering when premium is refused.
+   */
   const params = new URLSearchParams({ api_key: key, url: pageUrl });
+  for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[redfinScrapeTier()])) {
+    params.set(k, v);
+  }
 
   let res: Response;
   try {
@@ -695,6 +766,14 @@ async function fetchPage(pageUrl: string): Promise<{
       );
     }
     if (res.status === 429) throw new RedfinError("quota", 429, detail);
+    // Asked on the cheap tier and told the domain is protected: the
+    // supplier never looked, so this says nothing about the city. On a
+    // tier that already sends the flag, the same body falls through to
+    // the upstream reading below, where it can still mean a town with
+    // no rentals page.
+    if (needsPremium(detail) && redfinScrapeTier() === "standard") {
+      throw new RedfinError("needs-premium", res.status, detail);
+    }
     throw new RedfinError("http", res.status, detail);
   }
 
