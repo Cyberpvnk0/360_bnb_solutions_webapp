@@ -29,14 +29,12 @@ import {
   ChevronRight,
   Mail,
   Phone,
-  PhoneOff,
   Search,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney, fmtNum, fmtWhen } from "@/lib/format";
 import { analyzeHref } from "@/lib/live/analyze-href";
-import { webLookupHref } from "@/lib/live/listing-links";
 import type { CallOutcome, DealList, DealListItem } from "@/lib/mock/types";
 import {
   band,
@@ -50,6 +48,7 @@ import {
 import { useSession } from "@/components/providers/session-provider";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { StatusChip } from "@/components/primitives/status-chip";
+import { ContactDetails } from "@/components/deals/contact-details";
 import {
   useListingContact,
   withKnownContact,
@@ -66,143 +65,115 @@ import {
 import { placeLine } from "./place-line";
 import { cn } from "@/lib/utils";
 
-/** The list the queue belongs to, so the cards below can write a
- *  found number back without threading the id through each of them. */
+/** The list the queue belongs to, so the card below can write a found
+ *  number back without threading the id through each of them. */
 const QueueListId = React.createContext<string | null>(null);
 
 /**
- * Who to call, at the size somebody reads it from a phone held in the
- * other hand.
+ * Who to call, and every way of finding out when nobody is on file.
  *
- * The number is a link on every device, not only the small ones: a
- * desktop with a softphone dials it, and a desktop without one at
- * least lets it be copied in one gesture rather than selected by
- * dragging across a line of small grey text.
+ * THE WAYS ON ARE ContactDetails', NOT THIS COMPONENT'S. That block
+ * already exists for the listing overlay and the analyzer, and its own
+ * comment says why: so the two never say different things about one
+ * address. This screen first shipped with a third, hand-rolled version
+ * that offered a page read and a web search and left out the deep
+ * records lookup entirely — so the one surface built for ringing
+ * landlords was the only one that could not find a number when the
+ * listing published none. It also answered "couldn't read this
+ * listing's page" for rows that never had a page to read. Both were
+ * the cost of not reusing the block that had already got it right.
+ *
+ * What stays local is WHEN the page is read. The other two surfaces
+ * read on open, for one property somebody chose to look at; a queue of
+ * twenty would be twenty billed scrapes for landlords nobody reaches
+ * before lunch. So it waits for a press here, and the answer is
+ * written back onto the saved row so the next pass does not pay again.
  */
 function CallCard({ item }: { item: DealListItem }) {
   const { updateSavedListing } = useSession();
-  const contact = item.listing.contact;
-  const dial = telHref(contact?.phone);
-  return (
-    <div className="rounded-sm border border-border bg-secondary/40 p-4 sm:p-5">
-      <MetricLabel>{contact?.role ?? "Who to call"}</MetricLabel>
-      {contact?.name || contact?.company ? (
-        <p className="mt-2 flex items-center gap-2 text-sm text-foreground">
-          <User aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 truncate">
-            {contact.name ? <span className="font-medium">{contact.name}</span> : null}
-            {contact.company ? (
-              <span className={contact.name ? "text-muted-foreground" : "font-medium"}>
-                {contact.name ? " · " : ""}
-                {contact.company}
-              </span>
-            ) : null}
-          </span>
-        </p>
-      ) : null}
-
-      {dial ? (
-        <a
-          href={dial}
-          className="mt-3 flex items-center gap-3 rounded-sm border border-gold/40 bg-gold-fill/10 px-4 py-3 transition-colors duration-150 hover:bg-gold-fill/15"
-        >
-          <Phone aria-hidden className="size-5 shrink-0 text-gold" />
-          <span className="font-display text-2xl font-semibold tracking-tight tabular text-foreground">
-            {contact?.phone}
-          </span>
-        </a>
-      ) : (
-        <FindTheNumber item={item} onFound={updateSavedListing} />
-      )}
-
-      {contact?.email ? (
-        <a
-          href={`mailto:${contact.email}`}
-          className="mt-2.5 flex items-center gap-2 text-sm text-muted-foreground transition-colors duration-150 hover:text-gold"
-        >
-          <Mail aria-hidden className="size-3.5 shrink-0" />
-          <span className="min-w-0 truncate">{contact.email}</span>
-        </a>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * A saved rental with nobody to ring.
- *
- * Reading the listing's page for a contact is billed, so it does not
- * happen because somebody opened the queue: twenty properties would be
- * twenty page reads, most of them for landlords nobody gets to before
- * lunch. It happens when this button is pressed, for this property,
- * and the answer is written back onto the saved row so the next pass
- * down the list does not pay for it again.
- */
-function FindTheNumber({
-  item,
-  onFound,
-}: {
-  item: DealListItem;
-  onFound: (listId: string, listing: DealListItem["listing"]) => void;
-}) {
+  const listId = React.useContext(QueueListId);
   const [asked, setAsked] = React.useState(false);
   const looked = useListingContact(item.listing, asked);
-  const listId = React.useContext(QueueListId);
+  const contact = item.listing.contact ?? looked.contact;
+  const dial = telHref(contact?.phone);
+  // A row with a page behind it is a real address, whatever its id
+  // looks like: a live row, or one saved with its listing page.
+  const real = item.listing.id.startsWith("live--") || Boolean(item.listing.sourceUrl);
 
-  // Writing during render is what a ref guards against: the answer
-  // lands in a module cache the hook reads back, so without this the
-  // same result is persisted on every subsequent render.
+  // Writing during render is what this ref guards against: the answer
+  // lands in a module cache the hook reads back, so without it the same
+  // result would be persisted on every subsequent render.
   const kept = React.useRef(false);
   React.useEffect(() => {
     if (kept.current || !looked.contact || !listId) return;
     kept.current = true;
-    onFound(listId, withKnownContact(item.listing, looked.contact, looked.page));
-  }, [looked.contact, looked.page, item.listing, listId, onFound]);
-
-  const web = webLookupHref(item.listing);
-
-  if (looked.status === "loading") {
-    return (
-      <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-        <svg viewBox="0 0 48 48" className="working-ring size-3.5 shrink-0" aria-hidden>
-          <circle className="track" cx="24" cy="24" r="20" />
-          <circle className="arc" cx="24" cy="24" r="20" />
-        </svg>
-        Reading the listing for who to call…
-      </p>
+    updateSavedListing(
+      listId,
+      withKnownContact(item.listing, looked.contact, looked.page)
     );
-  }
+  }, [looked.contact, looked.page, item.listing, listId, updateSavedListing]);
 
   return (
-    <div className="mt-3">
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <PhoneOff aria-hidden className="size-3.5 shrink-0" />
-        {!asked
-          ? "No number saved with this one."
-          : looked.status === "found"
-            ? "Found it — reopen this card."
-            : looked.status === "none"
-              ? "This listing's page publishes no number."
-              : looked.status === "no-page"
-                ? "This property isn't on the listing site contacts are read from."
-                : "Couldn't read this listing's page just now."}
-      </p>
-      <div className="mt-2.5 flex flex-wrap gap-2">
-        {!asked ? (
-          <Button size="sm" variant="secondary" onClick={() => setAsked(true)} className="gap-1.5">
-            <Search aria-hidden className="size-3.5" />
-            Find the number
-          </Button>
-        ) : null}
-        {web ? (
-          <Button asChild size="sm" variant="outline" className="gap-1.5">
-            <a href={web} target="_blank" rel="noopener noreferrer">
-              Web lookup
-              <ArrowUpRight aria-hidden className="size-3.5" />
+    <div className="rounded-sm border border-border bg-secondary/40 p-4 sm:p-5">
+      {dial ? (
+        <>
+          <MetricLabel>{contact?.role ?? "Who to call"}</MetricLabel>
+          {contact?.name || contact?.company ? (
+            <p className="mt-2 flex items-center gap-2 text-sm text-foreground">
+              <User aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">
+                {contact.name ? <span className="font-medium">{contact.name}</span> : null}
+                {contact.company ? (
+                  <span className={contact.name ? "text-muted-foreground" : "font-medium"}>
+                    {contact.name ? " · " : ""}
+                    {contact.company}
+                  </span>
+                ) : null}
+              </span>
+            </p>
+          ) : null}
+          {/* The number at the size somebody reads it from a phone held
+              in the other hand, and a link on every device: a desktop
+              with a softphone dials it, one without at least copies it
+              in a gesture rather than a drag across small grey text. */}
+          <a
+            href={dial}
+            className="mt-3 flex items-center gap-3 rounded-sm border border-gold/40 bg-gold-fill/10 px-4 py-3 transition-colors duration-150 hover:bg-gold-fill/15"
+          >
+            <Phone aria-hidden className="size-5 shrink-0 text-gold" />
+            <span className="font-display text-2xl font-semibold tracking-tight tabular text-foreground">
+              {contact?.phone}
+            </span>
+          </a>
+          {contact?.email ? (
+            <a
+              href={`mailto:${contact.email}`}
+              className="mt-2.5 flex items-center gap-2 text-sm text-muted-foreground transition-colors duration-150 hover:text-gold"
+            >
+              <Mail aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{contact.email}</span>
             </a>
-          </Button>
-        ) : null}
-      </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {/* Every way on the other two surfaces offer — the deep
+              records lookup included — from the one block that owns
+              them. */}
+          <ContactDetails listing={item.listing} looked={looked} real={real} />
+          {!asked && real ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setAsked(true)}
+              className="mt-3 gap-1.5"
+            >
+              <Search aria-hidden className="size-3.5" />
+              Read the listing page
+            </Button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
