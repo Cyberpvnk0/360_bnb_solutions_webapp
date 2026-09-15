@@ -28,11 +28,6 @@ export type RedfinFailureReason =
   | "quota"
   /** The scraping plan's credits are spent for the cycle. */
   | "no-credits"
-  /** The supplier will not fetch redfin.com on the tier we asked for,
-   *  and its own message names the parameter. A configuration fact
-   *  about this deployment, true of every market equally, and
-   *  emphatically NOT an empty market. */
-  | "needs-premium"
   /** We reached them and they were too slow. Not the same as absent. */
   | "timeout"
   | "http"
@@ -134,11 +129,6 @@ export function redfinFailureLabel(reason?: RedfinFailureReason): string {
       return "Furnished search is unavailable right now";
     case "no-credits":
       return "Furnished search is out of capacity this month";
-    case "needs-premium":
-      // Named rather than folded into "unavailable": an operator can
-      // fix this in one environment variable, and for a while it was
-      // reading as "no furnished rentals here" in every market.
-      return "Furnished search needs a higher scrape tier";
     case "quota":
       return "Furnished search is busy — try again in a moment";
     case "daily-cap":

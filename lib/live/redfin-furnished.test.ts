@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchRedfinRentals, looksUpstream, RedfinError } from "@/lib/live/redfin";
+import {
+  fetchRedfinRentals,
+  looksUpstream,
+  RedfinError,
+  resetRedfinEscalation,
+} from "@/lib/live/redfin";
 import type { Market } from "@/lib/mock/types";
 
 /**
@@ -259,6 +264,11 @@ describe("when the supplier will not fetch the domain at all", () => {
       "Request failed. You will not be charged for this request. Please make sure your url is correct and try again. Protected domains may require adding premium=true OR ultra_premium=true parameter",
   });
 
+  // The ladder's memory is module state and outlives a test: without
+  // this, an earlier case that exhausted the climb makes a later one
+  // skip it and read as a failure to climb at all.
+  beforeEach(() => resetRedfinEscalation());
+
   const realTier = process.env.REDFIN_SCRAPE_TIER;
   afterEach(() => {
     if (realTier === undefined) delete process.env.REDFIN_SCRAPE_TIER;
@@ -292,12 +302,50 @@ describe("when the supplier will not fetch the domain at all", () => {
     expect(seen[0]).not.toContain("premium");
   }, 20_000);
 
-  it("REPORTS a protected-domain refusal on the cheap tier — never 'none'", async () => {
+  it("CLIMBS a rung when the cheap tier is refused, and serves what the dear one gives", async () => {
     process.env.REDFIN_SCRAPE_TIER = "standard";
-    vendor(() => ({ status: 500, text: PROTECTED }));
-    const err = await ask({ furnished: true }).catch((e) => e);
-    expect(err).toBeInstanceOf(RedfinError);
-    expect(err.reason).toBe("needs-premium");
+    const tiersSeen: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const q = new URL(String(input)).searchParams;
+      const tier = q.get("ultra_premium")
+        ? "ultra"
+        : q.get("premium")
+          ? "premium"
+          : "standard";
+      tiersSeen.push(tier);
+      // Only the heaviest tier gets through, which is the situation
+      // the ladder exists for.
+      if (tier !== "ultra") return new Response(PROTECTED, { status: 500 });
+      return new Response(JSON.stringify(ROWS), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const out = await ask({});
+    expect(out.raw).toHaveLength(1);
+    // Started cheap, ended dear. The exact sequence has a 5xx retry in
+    // it, so the shape is what matters rather than the length.
+    expect(tiersSeen[0]).toBe("standard");
+    expect(tiersSeen).toContain("premium");
+    expect(tiersSeen.at(-1)).toBe("ultra");
+  }, 25_000);
+
+  it("does not keep climbing once the dear tier has been refused too", async () => {
+    // A town with no rentals page refuses identically on every tier.
+    // Paying thirty credits to re-learn that on each request is how a
+    // small town becomes the most expensive market in the product.
+    resetRedfinEscalation();
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls += 1;
+      return new Response(PROTECTED, { status: 500 });
+    }) as typeof fetch;
+
+    await ask({}).catch(() => undefined);
+    const afterFirst = calls;
+    await ask({}).catch(() => undefined);
+    expect(calls - afterFirst).toBeLessThan(afterFirst);
   }, 25_000);
 
   it("still reads it as a missing page once the flag HAS been sent", async () => {

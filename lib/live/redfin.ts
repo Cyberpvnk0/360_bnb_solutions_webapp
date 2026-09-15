@@ -64,6 +64,55 @@ export const SCRAPE_TIER_PARAMS = {
 
 export type RedfinScrapeTier = keyof typeof SCRAPE_TIER_PARAMS;
 
+/** One rung up. Null at the top — there is nothing dearer to try. */
+export const NEXT_TIER: Record<RedfinScrapeTier, RedfinScrapeTier | null> = {
+  standard: "premium",
+  premium: "ultra",
+  ultra: null,
+};
+
+/**
+ * Hosts this process has already found need the dearer tier.
+ *
+ * Per instance and per host rather than per market, because the
+ * refusal is the supplier's judgement about a DOMAIN: once Boston has
+ * proved redfin.com needs ultra on this instance, Worcester should not
+ * spend a premium call proving it again. A serverless fleet learns it
+ * once per warm instance, which is cheap enough not to need a round
+ * trip to the store on the hot path.
+ */
+const escalated = new Set<string>();
+
+/**
+ * Hosts where climbing did NOT help.
+ *
+ * The supplier's refusal is the same sentence whether it declined to
+ * fetch a protected domain or fetched it and found nothing there. So
+ * the climb is a question, and this remembers the answer "no" — after
+ * which a town with no rentals page costs one request to conclude
+ * that, not two.
+ */
+const exhausted = new Set<string>();
+
+/** Which hosts this process has escalated. Diagnostics and tests. */
+export function escalatedHosts(): string[] {
+  return [...escalated];
+}
+
+/** Tests only: forget what this process learned. */
+export function resetRedfinEscalation(): void {
+  escalated.clear();
+  exhausted.clear();
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "redfin";
+  }
+}
+
 export function redfinScrapeTier(): RedfinScrapeTier {
   const raw = process.env.REDFIN_SCRAPE_TIER?.trim();
   return raw && raw in SCRAPE_TIER_PARAMS ? (raw as RedfinScrapeTier) : "premium";
@@ -190,12 +239,6 @@ export const REDFIN_REASONS = [
    *  sends whoever reads the log hunting for a blocked domain or a bad
    *  key instead of a billing page. */
   "no-credits",
-  /** The supplier refuses redfin.com on the tier we asked for and names
-   *  the parameter it wants. Its own reason because it is a settings
-   *  fix, not an outage — and because for a while its wording was being
-   *  read as "this city has no rentals page", which made every market
-   *  in the product report no furnished inventory. */
-  "needs-premium",
   /** We reached them and they were too slow. Its own reason because
    *  "network" reads as "we could not reach them", and this is worth
    *  retrying where that is not. */
@@ -727,6 +770,12 @@ async function fetchPage(
    * REDFIN_SCRAPE_TIER=standard turns it off if the domain is ever
    * unprotected again, =ultra buys rendering when premium is refused.
    */
+  // Start where this process has already learned to start, never
+  // below it: a host known to refuse premium is not asked on premium
+  // again just to be told so a second time.
+  const escalationKey = hostOf(pageUrl);
+  if (escalated.has(escalationKey) && tier !== "ultra") tier = "ultra";
+
   const params = new URLSearchParams({ api_key: key, url: pageUrl });
   for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) {
     params.set(k, v);
@@ -774,8 +823,41 @@ async function fetchPage(
     // tier that already sends the flag, the same body falls through to
     // the upstream reading below, where it can still mean a town with
     // no rentals page.
-    if (needsPremium(detail) && redfinScrapeTier() === "standard") {
-      throw new RedfinError("needs-premium", res.status, detail);
+    if (needsPremium(detail)) {
+      /**
+       * CLIMB ONCE, HERE, RATHER THAN SURVEYING 409 MARKETS BY HAND.
+       *
+       * The supplier refuses some cities on premium and serves them on
+       * ultra_premium, and nothing but asking tells the two apart. So
+       * a refusal escalates one rung and asks again — and the answer
+       * is remembered per market, so the second visitor to a city that
+       * needs ultra does not spend a premium call finding that out for
+       * a second time.
+       *
+       * Ultra is 30 credits against premium's 10, so this is never
+       * speculative: it happens only after the cheaper tier has been
+       * refused in the supplier's own words.
+       */
+      const next = NEXT_TIER[tier];
+      if (next && !exhausted.has(escalationKey)) {
+        try {
+          const better = await fetchPage(pageUrl, next);
+          // ONLY NOW is the lesson worth keeping. Recording the climb
+          // before knowing it helped is how one seven-hundred-person
+          // town with no rentals page — whose refusal reads exactly
+          // like this one — would pin every other market to the
+          // thirty-credit tier for the life of the instance.
+          escalated.add(escalationKey);
+          return better;
+        } catch {
+          // The dearer tier was refused too, so the tier was never the
+          // problem. Stop paying to re-learn that, and fall through to
+          // the ordinary reading below, where a bare-city probe still
+          // decides "this town has no page" against "we are broken".
+          exhausted.add(escalationKey);
+        }
+      }
+      throw new RedfinError("http", res.status, detail);
     }
     throw new RedfinError("http", res.status, detail);
   }
