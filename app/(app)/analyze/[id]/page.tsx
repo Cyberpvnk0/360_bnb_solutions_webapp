@@ -196,7 +196,7 @@ export default async function AnalyzeResultPage({
     const { check, tier } = await claimAnalysis(skeleton, point);
     // The point is the property itself, so the set is filed under its
     // address too — for the Deal Finder card of the same listing.
-    const { analysis, liveComps, boughtAt, reason } = check?.allowed
+    const { analysis, liveComps, boughtAt, reason, thin } = check?.allowed
       ? await withLiveComps(skeleton, point, { atProperty: true })
       : {
           analysis: skeleton,
@@ -233,6 +233,7 @@ export default async function AnalyzeResultPage({
         // the building somebody typed rather than of a city centre.
         propertyPoint={point}
         liveComps={liveComps}
+      compsThin={thin ?? false}
         compsReason={reason ?? null}
         compsBoughtAt={boughtAt ?? null}
         quota={check ? { ...check, tier: tier ?? DEFAULT_TIER } : null}
@@ -259,7 +260,7 @@ export default async function AnalyzeResultPage({
   // page derives — ADR, occupancy, breakeven, the revenue range — is real.
   // Same gate as a searched address: the plan pays for the comps.
   const { check, tier } = await claimAnalysis(seeded, center);
-  const { analysis, liveComps, boughtAt, reason } = check?.allowed
+  const { analysis, liveComps, boughtAt, reason, thin } = check?.allowed
     ? await withLiveComps(seeded, center)
     : {
         analysis: seeded,
@@ -278,6 +279,7 @@ export default async function AnalyzeResultPage({
       leaseComps={leaseComps}
       marketCenter={center}
       liveComps={liveComps}
+      compsThin={thin ?? false}
       compsReason={reason ?? null}
       compsBoughtAt={boughtAt ?? null}
       quota={check ? { ...check, tier: tier ?? DEFAULT_TIER } : null}

@@ -56,7 +56,8 @@ export type CompsFallbackReason =
   | "no-point"
   /** The vendor key is not set on this deployment. */
   | "not-configured"
-  /** Fewer comps came back than a projection may stand on. */
+  /** NOTHING came back that is still listed nearby — not merely few.
+   *  A set of one real listing is shown as one real listing. */
   | "thin-set"
   /** The day's search budget is spent. */
   | "daily-cap"
@@ -71,6 +72,19 @@ export interface CompsResolution {
   liveComps: boolean;
   /** Set whenever liveComps is false. The screen says which. */
   reason?: CompsFallbackReason;
+  /**
+   * True when fewer real listings came back than MIN_COMPS.
+   *
+   * A LABEL, NOT A VETO. It used to be a veto: below four survivors the
+   * whole set was discarded and INVENTED listings were shown in its
+   * place — so a property with three real Airbnb comps a few streets
+   * away displayed nine that do not exist, with no photos, no links,
+   * and every figure on the page drawn from them. Three real listings
+   * are weaker evidence than ten and infinitely better evidence than
+   * none, and a screen can say "three" perfectly well. The modelled set
+   * now stands in only when there is nothing real at all to show.
+   */
+  thin?: boolean;
   /**
    * When these listings were read, ISO — today for a fresh purchase,
    * the store's stamp for a set served from it.
@@ -231,7 +245,7 @@ export async function withLiveComps(
     void addToPool(analysis.marketSlug, held, point, anchorFor(analysis, comps)).catch(
       () => undefined
     );
-    if (comps.length >= MIN_COMPS) {
+    if (comps.length > 0) {
       return {
         analysis: {
           ...analysis,
@@ -241,11 +255,12 @@ export async function withLiveComps(
             : {}),
         },
         liveComps: true,
+        thin: comps.length < MIN_COMPS,
         boughtAt: cached.at,
       };
     }
-    // A thin set, remembered as thin: the modelled comps stand in, and
-    // the same answer is not bought again on every visit.
+    // Nothing real survived. Only now do the modelled figures stand in,
+    // and the same empty answer is not bought again on every visit.
     return { analysis, liveComps: false, reason: "thin-set" };
   }
 
@@ -331,7 +346,7 @@ export async function withLiveComps(
     void addToPool(analysis.marketSlug, comps0, point, anchorFor(analysis, comps)).catch(
       () => undefined
     );
-    if (comps.length < MIN_COMPS) {
+    if (comps.length === 0) {
       return { analysis, liveComps: false, reason: "thin-set" };
     }
     return {
@@ -343,6 +358,7 @@ export async function withLiveComps(
           : {}),
       },
       liveComps: true,
+      thin: comps.length < MIN_COMPS,
       boughtAt: new Date().toISOString(),
     };
   } catch {

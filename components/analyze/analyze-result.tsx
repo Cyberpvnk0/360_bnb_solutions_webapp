@@ -116,6 +116,7 @@ export function AnalyzeResult({
   marketCenter,
   propertyPoint = null,
   liveComps = false,
+  compsThin = false,
   compsReason = null,
   compsBoughtAt = null,
   searchedAddress = null,
@@ -145,6 +146,10 @@ export function AnalyzeResult({
   propertyPoint?: { lat: number; lon: number } | null;
   /** True when the comp set came from the live STR feed. */
   liveComps?: boolean;
+  /** True when the live set came back with fewer listings than a
+   *  projection would normally stand on. Shown, not hidden: it used to
+   *  mean the real listings were replaced by modelled ones. */
+  compsThin?: boolean;
   /** Why the modelled comps are standing in, when they are. */
   compsReason?: CompsFallbackReason | null;
   /** When those listings were read, ISO. Printed beside them: a comp
@@ -829,6 +834,7 @@ export function AnalyzeResult({
           propertyPoint={propertyPoint}
           marketCenter={marketCenter}
           live={liveComps}
+          thin={compsThin}
           reason={compsReason}
           boughtAt={compsBoughtAt}
         />

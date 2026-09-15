@@ -99,34 +99,96 @@ describe("a comp set stored in the current format", () => {
     expect(analysis.strComps).toEqual(roundedSet);
   });
 
-  it("never shows a comp marked as gone, and never re-buys a thin answer", async () => {
-    // Five stored, two of them gone: three is too thin to project on,
-    // so the modelled comps stand in — without buying the same thin
-    // answer again.
-    const stored = [...exactSet.slice(0, 3), { ...exactSet[3], active: false }, { ...exactSet[4], active: false }];
+  it("never shows a comp the feed marked as gone", async () => {
+    const stored = [
+      ...exactSet.slice(0, 3),
+      { ...exactSet[3], active: false },
+      { ...exactSet[4], active: false },
+    ];
     store.readEstimate.mockResolvedValue({
       estimate: { ...blank, v: ESTIMATE_VERSION, comps: stored },
       ...fresh,
     });
 
-    const { analysis, liveComps } = await withLiveComps(ANALYSES[0], POINT);
+    const { analysis } = await withLiveComps(ANALYSES[0], POINT);
 
     expect(feed.fetchEstimate).not.toHaveBeenCalled();
+    expect(analysis.strComps).toEqual(exactSet.slice(0, 3));
+  });
+
+  /**
+   * The rule this file used to enforce the other way round.
+   *
+   * Below four survivors, the real listings were discarded and the
+   * seeded ones were shown in their place — so a property with three
+   * real Airbnb comps nearby displayed nine that do not exist, with no
+   * photos and no links, and every figure on the page came from them.
+   * Three real listings are weaker evidence than ten and better
+   * evidence than none; the screen says how many and the reader
+   * weighs it.
+   */
+  it("SHOWS a thin set rather than replacing it with invented listings", async () => {
+    const stored = [
+      ...exactSet.slice(0, 3),
+      { ...exactSet[3], active: false },
+      { ...exactSet[4], active: false },
+    ];
+    store.readEstimate.mockResolvedValue({
+      estimate: { ...blank, v: ESTIMATE_VERSION, comps: stored },
+      ...fresh,
+    });
+
+    const { analysis, liveComps, thin } = await withLiveComps(ANALYSES[0], POINT);
+
+    expect(liveComps).toBe(true);
+    expect(thin).toBe(true);
+    expect(analysis.strComps).toHaveLength(3);
+    // Not the seeded set, which is what used to be returned here.
+    expect(analysis.strComps).not.toBe(ANALYSES[0].strComps);
+  });
+
+  it("falls back to the modelled set only when NOTHING real is left", async () => {
+    store.readEstimate.mockResolvedValue({
+      estimate: {
+        ...blank,
+        v: ESTIMATE_VERSION,
+        comps: exactSet.map((c) => ({ ...c, active: false })),
+      },
+      ...fresh,
+    });
+
+    const { analysis, liveComps, reason } = await withLiveComps(ANALYSES[0], POINT);
+
     expect(liveComps).toBe(false);
+    expect(reason).toBe("thin-set");
     expect(analysis.strComps).toBe(ANALYSES[0].strComps);
   });
 
-  it("remembers a thin purchase so it is not bought twice", async () => {
+  it("shows a thin PURCHASE too, and still stores it so it is not bought twice", async () => {
     store.readEstimate.mockResolvedValue(null);
     feed.fetchEstimate.mockResolvedValue({ ...blank, percentiles: {}, comps: exactSet.slice(0, 2) });
 
-    const { liveComps } = await withLiveComps(ANALYSES[0], POINT);
+    const { analysis, liveComps, thin } = await withLiveComps(ANALYSES[0], POINT);
 
-    expect(liveComps).toBe(false);
+    expect(liveComps).toBe(true);
+    expect(thin).toBe(true);
+    expect(analysis.strComps).toHaveLength(2);
     expect(store.writeEstimate).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ v: ESTIMATE_VERSION })
     );
+  });
+
+  it("a full set is not marked thin", async () => {
+    store.readEstimate.mockResolvedValue({
+      estimate: { ...blank, v: ESTIMATE_VERSION, comps: exactSet },
+      ...fresh,
+    });
+
+    const { liveComps, thin } = await withLiveComps(ANALYSES[0], POINT);
+
+    expect(liveComps).toBe(true);
+    expect(thin).toBe(false);
   });
 });
 

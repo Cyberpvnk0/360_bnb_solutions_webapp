@@ -10,7 +10,10 @@ import * as React from "react";
 import { ArrowUpRight, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
-import { deriveMarketAssumptions } from "@/lib/calc/comps";
+import {
+  COMPS_RADIUS_MAX_MILES,
+  deriveMarketAssumptions,
+} from "@/lib/calc/comps";
 import { fmtDate, fmtMiles, fmtMoney, fmtPct, fmtNum} from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
 import type { CompsFallbackReason } from "@/lib/live/str-comps";
@@ -178,6 +181,34 @@ function reachLabel(comps: readonly StrComp[]): string {
  * this" and "the feed is down": the first is a decision they can make,
  * the second is one they cannot.
  */
+/**
+ * The same reason, in two or three words, for the badge.
+ *
+ * On the badge because the sentence version lives in a paragraph that
+ * gets skimmed: a member looking at a screen of invented listings
+ * could not say WHY without being told where to look, and neither
+ * could anybody helping them. The badge is the one element on this
+ * header nobody misses.
+ */
+function reasonChip(reason: CompsFallbackReason | null | undefined): string {
+  switch (reason) {
+    case "not-paid":
+      return "plan";
+    case "not-configured":
+      return "not set up";
+    case "daily-cap":
+      return "budget spent";
+    case "thin-set":
+      return "none nearby";
+    case "vendor":
+      return "source down";
+    case "no-point":
+      return "no location";
+    default:
+      return "";
+  }
+}
+
 function fallbackNote(reason: CompsFallbackReason | null | undefined): string {
   switch (reason) {
     case "not-paid":
@@ -203,6 +234,7 @@ export function CompsExplorer({
   propertyPoint = null,
   marketCenter,
   live = false,
+  thin = false,
   boughtAt = null,
   reason = null,
   onStrike,
@@ -221,6 +253,8 @@ export function CompsExplorer({
   /** True when these came from the live STR feed rather than the
    *  seeded preview set — the reader deserves to know which. */
   live?: boolean;
+  /** Fewer real listings than a projection normally stands on. */
+  thin?: boolean;
   /** When the set was read, ISO. Printed under the heading: these are
    *  real listings as they stood on a day, and one of them can be off
    *  the platform by the time somebody clicks it. */
@@ -290,6 +324,18 @@ export function CompsExplorer({
               <>
                 The projection above is computed from these listings, nothing
                 else.
+                {/* SAID, NOT SUBSTITUTED. A set this small used to be
+                    thrown away and replaced by invented listings; the
+                    honest answer is to show what is really there and
+                    let the reader weigh it. */}
+                {thin ? (
+                  <>
+                    {" "}
+                    Only {comps.length} {comps.length === 1 ? "listing" : "listings"}{" "}
+                    still listed within {COMPS_RADIUS_MAX_MILES} miles — thin
+                    evidence, so weigh it accordingly.
+                  </>
+                ) : null}
                 {/* The date, not a promise. A comp set is what was listed
                     on the day it was read; a host can take a listing down
                     the next morning, and the link below it then opens the
@@ -319,6 +365,9 @@ export function CompsExplorer({
           <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1 text-[11px] font-medium text-muted-foreground">
             <TriangleAlert aria-hidden className="size-3" strokeWidth={2.5} />
             Modelled
+            {reasonChip(reason) ? (
+              <span className="font-normal opacity-80">· {reasonChip(reason)}</span>
+            ) : null}
           </span>
         )}
       </div>
