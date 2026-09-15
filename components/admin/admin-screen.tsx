@@ -14,7 +14,7 @@
 import * as React from "react";
 import { TriangleAlert } from "lucide-react";
 import { CREDIT_PACKS, TIERS } from "@/config/app";
-import type { AdminMetrics } from "@/lib/admin/metrics";
+import type { AdminAccount, AdminMetrics } from "@/lib/admin/metrics";
 import { fmtMoney, fmtMonth, fmtNum } from "@/lib/format";
 import { PageHeader } from "@/components/primitives/page-header";
 import { StatCard, StatHeader } from "@/components/primitives/stat-card";
@@ -22,6 +22,7 @@ import { StatusChip } from "@/components/primitives/status-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { PullVolumeChart, TierDonut } from "./admin-charts";
+import { AccountDrawer } from "./account-drawer";
 import { AdminUsersTable } from "./admin-users-table";
 
 function ChartCard({
@@ -78,6 +79,12 @@ function LedgerRow({
 export function AdminScreen() {
   const [metrics, setMetrics] = React.useState<AdminMetrics | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
+  /** Bumped after an account write, to re-read the figures it moved.
+   *  The previous body stays on screen while the new one is in
+   *  flight — `loading` is only true before the first answer. */
+  const [reload, setReload] = React.useState(0);
+  /** The account whose drawer is open, or null. */
+  const [editing, setEditing] = React.useState<AdminAccount | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -104,7 +111,7 @@ export function AdminScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reload]);
 
   const loading = metrics === null && failed === null;
   const sk = (w: string) => <Skeleton className={cn("mt-0.5 h-7", w)} />;
@@ -123,7 +130,6 @@ export function AdminScreen() {
             <StatusChip tone="outline">Staff</StatusChip>
           </span>
         }
-        description="Every account, what the month has bought, and what is outstanding. Read from the store; nothing here is modelled."
       />
 
       {failed || metrics?.error ? (
@@ -311,10 +317,29 @@ export function AdminScreen() {
           <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Newest first. Usage is this month&apos;s, against each plan&apos;s cap.
+            Open an account to reset it, move its plan, or grant credits.
           </p>
         </div>
-        <AdminUsersTable users={metrics?.accountsList ?? []} loading={loading} />
+        <AdminUsersTable
+          users={metrics?.accountsList ?? []}
+          loading={loading}
+          onOpen={setEditing}
+        />
       </div>
+
+      <AccountDrawer
+        /* The row AS IT NOW READS, not the snapshot that was clicked.
+           A grant lands, the table re-reads, and the drawer's own
+           "holds 120" would otherwise still say 120 — the one figure
+           the admin looks at to confirm the grant worked. */
+        account={
+          (editing && metrics?.accountsList.find((a) => a.id === editing.id)) || editing
+        }
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onChanged={() => setReload((n) => n + 1)}
+      />
     </div>
   );
 }

@@ -74,15 +74,19 @@ const COLUMNS: DataTableColumn<AdminAccount>[] = [
 export function AdminUsersTable({
   users,
   loading,
+  onOpen,
 }: {
   users: AdminAccount[];
   loading: boolean;
+  /** A row was clicked — open it for editing. */
+  onOpen?: (row: AdminAccount) => void;
 }) {
   return (
     <DataTable
       columns={COLUMNS}
       rows={users}
       rowKey={(row) => row.id}
+      onRowClick={onOpen}
       loading={loading}
       skeletonRows={8}
       initialSort={{ key: "joined", dir: "desc" }}

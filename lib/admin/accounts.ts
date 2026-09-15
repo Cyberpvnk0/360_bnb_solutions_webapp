@@ -257,7 +257,10 @@ export function setAccountTier(userId: string, tier: TierId): Promise<SetTierRes
  * The admin endpoint for revoking them varies by auth-server version
  * and could not be verified against this deployment, so rather than
  * ship a call that might quietly do nothing, the drawer says plainly
- * that a password change does not sign other devices out. An admin who
- * needs that today changes the email as well, which does force a
- * re-authentication.
+ * that nothing on it ends a session already open.
+ *
+ * Changing the address is NOT a workaround, whatever it does on other
+ * auth servers — it was never verified here either, and an admin
+ * acting on a compromised account needs to know what actually
+ * happened rather than a plausible story about it.
  */
