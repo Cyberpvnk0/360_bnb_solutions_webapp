@@ -19,6 +19,7 @@ import {
   fetchRedfinRentals,
   fetchRedfinSearchRows,
   redfinRentalsUrlFor,
+  redfinScrapeTier,
   RedfinError,
 } from "@/lib/live/redfin";
 import { cityIdFor } from "@/lib/live/redfin-city";
@@ -85,6 +86,12 @@ function failure(error: unknown) {
   );
 }
 
+/** The supplier's refusal wording, without importing the matcher's
+ *  whole module graph into this route. */
+function needsPremiumText(detail: string | null | undefined): boolean {
+  return Boolean(detail && /premium=true|ultra_premium|protected domains?/i.test(detail));
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const market = MARKET_BY_SLUG.get(searchParams.get("market") ?? "");
@@ -137,7 +144,17 @@ export async function GET(request: Request) {
       const url = redfinRentalsUrlFor(market, cityId, opts);
       try {
         const walk = await fetchRedfinSearchRows(url, 1);
-        return { url, ok: true, status: 200, reason: null, rows: walk.raw.length };
+        return {
+          url,
+          ok: true,
+          status: 200,
+          reason: null,
+          rows: walk.raw.length,
+          // What the supplier says this cost. The premium tier is
+          // several times a standard request and nobody should have to
+          // take my word for the multiplier.
+          credits: walk.credits,
+        };
       } catch (e) {
         const err = e instanceof RedfinError ? e : null;
         return {
@@ -159,6 +176,16 @@ export async function GET(request: Request) {
       market: market.slug,
       name: `${market.name}, ${market.stateCode}`,
       cityId,
+      /**
+       * Which tier these two requests went out on — and, because this
+       * field did not exist before the tier did, whether the build
+       * answering you is the one that sends the flag at all.
+       *
+       * Two identical probe results, before and after a fix, are
+       * either a fix that did not work or a deploy that did not land,
+       * and nothing in the old response could tell those apart.
+       */
+      scrapeTier: redfinScrapeTier(),
       bare,
       filtered,
       verdict: !bare.ok
@@ -170,6 +197,10 @@ export async function GET(request: Request) {
             : filtered.ok
               ? "The filtered URL works and genuinely returned no rows for page 1."
               : `The city works (${bare.rows} rows) and the FILTERED url fails (${filtered.reason} ${filtered.status ?? ""}). Open filtered.url in a browser: if it 404s there too, "is-furnished" is not how the site spells this filter any more and redfinRentalsUrlFor needs the real segment.`,
+      note:
+        !bare.ok && "detail" in bare && needsPremiumText(bare.detail)
+          ? `The supplier refused the domain. This probe ran on the "${redfinScrapeTier()}" tier — if that is "standard", set REDFIN_SCRAPE_TIER=premium; if it is already premium, try ultra.`
+          : undefined,
     });
   }
 
