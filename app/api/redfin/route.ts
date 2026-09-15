@@ -21,6 +21,7 @@ import {
   redfinRentalsUrlFor,
   redfinScrapeTier,
   RedfinError,
+  REDFIN_SEARCH_ENDPOINT,
   SCRAPE_TIER_PARAMS,
   type RedfinScrapeTier,
 } from "@/lib/live/redfin";
@@ -253,6 +254,45 @@ export async function GET(request: Request) {
      * exists — which is what separates "Boston is filed somewhere
      * else" from "this path redirects and the parser will not follow".
      */
+    /**
+     * THE STRUCTURED ENDPOINT WITH raw=true.
+     *
+     * Their support suggested it: raw mode skips further parsing, so
+     * if raw succeeds where parsed fails, the fault is the parser for
+     * these listings rather than the fetch. It is also a possible
+     * workaround — raw output we can read ourselves beats waiting.
+     */
+    const structuredRaw = searchParams.get("raw")
+      ? await (async () => {
+          const key = process.env.SCRAPERAPI_KEY;
+          if (!key) return { ok: false, reason: "no-key" };
+          const q = new URLSearchParams({
+            api_key: key,
+            url: `${root}/rentals`,
+            raw: "true",
+          });
+          for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
+          try {
+            const res = await fetch(`${REDFIN_SEARCH_ENDPOINT}?${q}`, {
+              signal: AbortSignal.timeout(45_000),
+              cache: "no-store",
+            });
+            const text = await res.text().catch(() => "");
+            return {
+              ok: res.ok,
+              status: res.status,
+              bytes: text.length,
+              // Structure only — enough to say whether anything usable
+              // came back, without carrying a listing's words out.
+              looksJson: /^\s*[[{]/.test(text),
+              detail: res.ok ? null : text.replace(/\s+/g, " ").slice(0, 160),
+            };
+          } catch (e) {
+            return { ok: false, reason: e instanceof Error ? e.name : "failed" };
+          }
+        })()
+      : null;
+
     const plain = searchParams.get("raw")
       ? {
           rentals: await raw(`${root}/rentals`),
@@ -267,6 +307,7 @@ export async function GET(request: Request) {
       tier,
       results,
       ...(plain ? { plain } : {}),
+      ...(structuredRaw ? { structuredRaw } : {}),
       verdict:
         working.length > 0
           ? `These work: ${working.map((r) => r.label).join("; ")}. Build the URL that way.`
