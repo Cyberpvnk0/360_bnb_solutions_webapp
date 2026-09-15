@@ -22,17 +22,22 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Coins, Crosshair, Loader2, MapPin } from "lucide-react";
+import {
+  ArrowRight,
+  Coins,
+  Crosshair,
+  Loader2,
+  MapPin,
+  TriangleAlert,
+} from "lucide-react";
 import type { Analysis } from "@/lib/mock/types";
 import { fmtWhen } from "@/lib/format";
 import { analyzeSearchHref } from "@/lib/live/analyze-href";
 import { useSession } from "@/components/providers/session-provider";
-import { EmptyState } from "@/components/primitives/empty-state";
 import { MetricLabel } from "@/components/primitives/metric-label";
 import { PageHeader } from "@/components/primitives/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { AddressSuggestionList } from "@/components/shell/address-suggestion-list";
 import {
   MIN_QUERY_LENGTH,
@@ -63,8 +68,30 @@ export function AnalyzeEntry({
   prefill?: AddressMatch | null;
 }) {
   const router = useRouter();
-  const { ready, tier, canSpend, creditsRemaining, spendCredit, openUpgrade, activity } =
-    useSession();
+  const {
+    ready,
+    tier,
+    canSpend,
+    creditsRemaining,
+    credits,
+    spendCredit,
+    openUpgrade,
+    activity,
+  } = useSession();
+
+  /**
+   * What this account can actually spend — the plan's remainder AND the
+   * packs on it, which is the figure the top bar has always shown.
+   *
+   * This line used to print creditsRemaining alone. On an account with
+   * 102 plan credits left and 1,349 bought, the bar said 1,451 and this
+   * said 102, a metre apart on the same screen. Both were "true" about
+   * different things and the difference was invisible: nothing on the
+   * page said one of them meant the plan only. A person reading "102
+   * left" while holding fourteen hundred is being told to ration
+   * something they have plenty of.
+   */
+  const spendable = creditsRemaining + Math.max(0, credits);
 
   const [query, setQuery] = React.useState(
     prefill?.address ??
@@ -203,60 +230,20 @@ export function AnalyzeEntry({
         description="One credit turns an address into a breakeven read backed by the comps around it."
       />
 
-      {/* Credit cost notice */}
-      <div
-        className={cn(
-          "mt-8 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border px-5 py-4",
-          !ready || canSpend
-            ? "border-gold-fill/40 bg-gold-fill/5"
-            : "border-neg/40 bg-neg/5"
-        )}
-      >
-        <Coins
-          aria-hidden
-          className={cn("size-4", canSpend ? "text-gold" : "text-neg")}
-        />
-        {!ready ? (
-          <Skeleton className="h-4 w-64" />
-        ) : canSpend ? (
-          <p className="text-sm text-foreground">
-            Submitting spends <span className="font-semibold">1 credit</span>.
-            You have{" "}
-            <span className="font-semibold tabular">{creditsRemaining}</span>{" "}
-            left this month.
-          </p>
-        ) : (
-          <p className="text-sm text-foreground">
-            {tier.id === "free"
-              ? "The Free plan includes no credits."
-              : "You've used every credit this month."}{" "}
-            <button
-              type="button"
-              onClick={() => openUpgrade({ reason: "credits" })}
-              className="font-medium text-gold underline-offset-2 transition-colors duration-150 hover:text-gold-bright hover:underline"
-            >
-              See plans
-            </button>
-          </p>
-        )}
-      </div>
-
-      {/* Property card — address, unit details and the submit action */}
-      <section
-        aria-label="Property"
-        className="mt-6 rounded-sm border border-border bg-card"
-      >
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Property</h2>
-        </div>
-        <div className="p-6">
-          {/* Address */}
+      {/* The one thing this page does, given the room to say so.
+          Previously the field sat two-thirds down a card titled
+          "Property" — a section heading for a section with one input —
+          underneath a tinted slab carrying a single sentence. The slab
+          was the loudest thing on a page whose whole job is a text box,
+          so it is now a line under the field it is about. */}
+      <section aria-label="Property address" className="mt-8">
+        <div className="rounded-lg border border-border bg-card p-6 md:p-8">
           <div className="relative">
             <MetricLabel className="pb-2">Property address</MetricLabel>
             <div className="relative">
               <MapPin
                 aria-hidden
-                className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
               />
               <input
                 type="text"
@@ -278,7 +265,7 @@ export function AnalyzeEntry({
                 onKeyDown={onKeyDown}
                 onFocus={() => setListOpen(true)}
                 onBlur={() => setListOpen(false)}
-                className="h-12 w-full rounded-sm border border-border bg-card pl-10 pr-10 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-select/50"
+                className="h-14 w-full rounded-sm border border-border bg-surface pl-11 pr-11 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-select/50"
               />
               {locating || (searching && !place) ? (
                 <Loader2
@@ -307,17 +294,50 @@ export function AnalyzeEntry({
             ) : null}
           </div>
 
-          <Button
-            size="lg"
-            className="mt-8 w-full gap-2 sm:w-auto"
-            disabled={!ready_ || !ready}
-            onClick={submit}
-          >
-            Run the numbers
-            <ArrowRight aria-hidden className="size-4" />
-          </Button>
+          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-3">
+            <Button
+              size="lg"
+              className="w-full gap-2 sm:w-auto"
+              disabled={!ready_ || !ready}
+              onClick={submit}
+            >
+              Run the numbers
+              <ArrowRight aria-hidden className="size-4" />
+            </Button>
+
+            {/* The price, and what is left to pay it with. Quiet, beside
+                the button that spends it, rather than a banner above. */}
+            {!ready ? (
+              <Skeleton className="h-4 w-56" />
+            ) : canSpend ? (
+              <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Coins aria-hidden className="size-3.5 text-gold" />
+                Spends <span className="font-medium text-foreground">1 credit</span>
+                <span aria-hidden>·</span>
+                <span className="font-medium tabular text-foreground">
+                  {spendable.toLocaleString("en-US")}
+                </span>{" "}
+                available
+              </p>
+            ) : (
+              <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-neg">
+                <TriangleAlert aria-hidden className="size-3.5" strokeWidth={2.5} />
+                {tier.id === "free"
+                  ? "The Free plan includes no credits."
+                  : "No credits left."}{" "}
+                <button
+                  type="button"
+                  onClick={() => openUpgrade({ reason: "credits" })}
+                  className="font-medium text-gold underline-offset-2 transition-colors duration-150 hover:text-gold-bright hover:underline"
+                >
+                  See plans
+                </button>
+              </p>
+            )}
+          </div>
+
           {ready_ ? null : (
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-3 text-xs text-muted-foreground">
               {locating
                 ? "Placing that address…"
                 : place && !place.point
@@ -330,15 +350,55 @@ export function AnalyzeEntry({
             </p>
           )}
         </div>
+
+        {/* What the credit buys, in the product's own language. The page
+            promised "a breakeven read backed by the comps around it" and
+            then showed nothing of it — half the screen was blank. These
+            are the three figures the result actually opens on. */}
+        {/* One panel with rules inside it, not three panels a pixel
+            apart: the card shadow leaked through those gaps and the
+            middle tile read as sunk. */}
+        <ul className="mt-4 grid overflow-hidden rounded-lg border border-border bg-card divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          {[
+            {
+              label: "Breakeven occupancy",
+              note: "The nights a month it has to fill to cover itself",
+            },
+            {
+              label: "Monthly cash flow",
+              note: "What is left after rent, furnishing and fees",
+            },
+            {
+              label: "Comps around it",
+              note: "Real short-let listings near that exact point",
+            },
+          ].map((item) => (
+            <li key={item.label} className="px-5 py-4">
+              <MetricLabel>{item.label}</MetricLabel>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                {item.note}
+              </p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {/* Recent pulls */}
       <section
         aria-label="Recent pulls"
-        className="mb-12 mt-12 overflow-hidden rounded-sm border border-border bg-card"
+        className="mb-12 mt-10 overflow-hidden rounded-lg border border-border bg-card"
       >
-        <div className="border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-4">
           <h2 className="text-sm font-semibold text-foreground">Recent pulls</h2>
+          {/* Exactly true, and no further: consumeUsage is keyed by the
+              property, so reopening the same one inside the billing
+              period is free. Next month it is a new pull. "Charged
+              once" would have been a promise the meter does not make. */}
+          {ready && recent.length > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              Reopening costs nothing this month
+            </span>
+          ) : null}
         </div>
         {!ready ? (
           <div className="divide-y divide-border">
@@ -353,17 +413,22 @@ export function AnalyzeEntry({
             ))}
           </div>
         ) : recent.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              icon={Crosshair}
-              title="No pulls yet"
-              description="Every analysis you run lands here, ready to reopen. Start with a rental somebody is actually advertising."
-              action={
-                <Button asChild size="sm" className="grad-brand">
-                  <Link href="/deals">Find a rental</Link>
-                </Button>
-              }
-            />
+          // A dashed box inside a bordered card was a border inside a
+          // border, and twenty rems of nothing under a form that is
+          // already short.
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-6 py-7">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-border bg-secondary">
+              <Crosshair aria-hidden className="size-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">No pulls yet</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Every analysis you run lands here, ready to reopen.
+              </p>
+            </div>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/deals">Find a rental</Link>
+            </Button>
           </div>
         ) : (
           <ul className="divide-y divide-border">
