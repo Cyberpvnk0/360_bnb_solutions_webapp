@@ -150,6 +150,29 @@ export async function requireStaff(): Promise<Gate<{ user: SessionUser }>> {
 }
 
 /**
+ * The gate in front of acting on SOMEBODY ELSE'S account.
+ *
+ * Setting a password is the account. So this is the strictest rule in
+ * the file and it fails closed exactly like the support queue: an
+ * address named in ADMIN_EMAILS, with a confirmed mailbox, and nobody
+ * whatsoever when that variable is unset.
+ *
+ * Deliberately NOT requireStaff, which opens to every signed-in
+ * account when the list is empty. That default is right for a page of
+ * totals and catastrophic here: the signup form is open, so it would
+ * hand account takeover to anyone who registered. And deliberately not
+ * requireOperator either — that one accepts CRON_SECRET in a query
+ * string, and a URL that can change a password does not belong in a
+ * log file.
+ */
+export async function requireAccountAdmin(): Promise<Gate<{ user: SessionUser }>> {
+  const user = await currentUser();
+  if (!user) return { ok: false, response: refuse(401, "signed-out") };
+  if (!isSupportStaff(user)) return { ok: false, response: refuse(403, "admin-only") };
+  return { ok: true, user };
+}
+
+/**
  * Any signed-in account, told whether it is support staff.
  *
  * Support is the one surface both audiences share: a member and the
