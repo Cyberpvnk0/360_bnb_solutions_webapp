@@ -94,6 +94,30 @@ const escalated = new Set<string>();
  */
 const exhausted = new Set<string>();
 
+/**
+ * Has the supplier served this domain at all, to this process?
+ *
+ * THE ONE THING THAT MAKES "no furnished rentals here" SAFE TO SAY.
+ *
+ * A missing page and a refused domain come back byte-identical — the
+ * same 500, the same sentence — so no single response can tell them
+ * apart. What can is whether the domain is working at all. A city
+ * failing while others succeed is a city with no rentals page: Bailey,
+ * Colorado, and "none" is the honest answer there. A city failing
+ * while NOTHING has succeeded says nothing about the city, and
+ * concluding "none" from it is how every market in this product told
+ * members Boston — 315 rentals listed — had no furnished inventory.
+ *
+ * Per process, and deliberately one-way: the first success unlocks the
+ * conclusion and nothing takes it back, because a later throttle does
+ * not un-prove that the domain is being served.
+ */
+let domainServed = false;
+
+export function redfinDomainServed(): boolean {
+  return domainServed;
+}
+
 /** Which hosts this process has escalated. Diagnostics and tests. */
 export function escalatedHosts(): string[] {
   return [...escalated];
@@ -103,6 +127,7 @@ export function escalatedHosts(): string[] {
 export function resetRedfinEscalation(): void {
   escalated.clear();
   exhausted.clear();
+  domainServed = false;
 }
 
 function hostOf(url: string): string {
@@ -856,11 +881,19 @@ async function fetchPage(
           // decides "this town has no page" against "we are broken".
           exhausted.add(escalationKey);
         }
+      } else if (!next) {
+        // Already at the dearest tier and still refused: there is
+        // nothing left to try, and that is a fact about the DOMAIN.
+        exhausted.add(escalationKey);
       }
       throw new RedfinError("http", res.status, detail);
     }
     throw new RedfinError("http", res.status, detail);
   }
+
+  // Something came back. From here on, a city that fails while others
+  // succeed is a city with no page — see redfinDomainServed.
+  domainServed = true;
 
   const text = await res.text();
   let body: unknown = null;
@@ -965,6 +998,21 @@ function emptyWalk(): SearchWalk {
  * when it is having its own trouble, and only the body tells them
  * apart — hence looksUpstream.
  */
+/**
+ * A "nothing here" that could equally be a refusal to look.
+ *
+ * The supplier's 500 carries the same sentence for a page that is not
+ * there and a domain it would not fetch. A 404 or 410 is the site's
+ * own answer and carries no such doubt.
+ */
+function isAmbiguousNothing(error: unknown): boolean {
+  return (
+    error instanceof RedfinError &&
+    error.reason === "http" &&
+    error.status === 500
+  );
+}
+
 function meansNothingHere(error: unknown): boolean {
   if (!(error instanceof RedfinError) || error.reason !== "http") return false;
   if (error.status === 404 || error.status === 410) return true;
@@ -1047,6 +1095,23 @@ async function walkOrEmpty(
       // The city has no page either — which answers the question that
       // was asked. Anything else is a problem worth reporting.
       if (!meansNothingHere(probeError)) throw error;
+      /**
+       * THE GAP THIS FUNCTION'S COMMENT ADMITTED IT COULD NOT SEE.
+       *
+       * "If the site began refusing us everywhere, every city would
+       * fail this way and every market would read no furnished
+       * rentals." That stopped being hypothetical the day the supplier
+       * classed the domain as protected: Boston, 315 rentals listed,
+       * told members it had none.
+       *
+       * A 404 is the site itself saying there is no such page, and
+       * stands on its own. The supplier's 500 does not: it reads the
+       * same whether the page is absent or it declined to fetch the
+       * domain. So for that one, "none" waits on proof the domain is
+       * being served at all — which arrives the moment any city in
+       * this process comes back.
+       */
+      if (isAmbiguousNothing(probeError) && !redfinDomainServed()) throw error;
       return emptyWalk();
     }
     // The city serves rentals. A filter that merely matched nothing

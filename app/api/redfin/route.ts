@@ -33,6 +33,15 @@ import {
   proseFields,
   statusStrings,
 } from "@/lib/live/shape";
+import {
+  furnishedKey,
+  FURNISHED_TTL_MS,
+  isFresh,
+  readFurnished,
+  writeFurnished,
+} from "@/lib/db/market-store";
+import { isListing } from "@/lib/storage/deal-lists";
+import type { RentalListing } from "@/lib/mock/types";
 import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 
 /** A parsed search of a whole market is slower than a plain fetch. */
@@ -402,6 +411,40 @@ export async function GET(request: Request) {
   const plan = await claimMarket(`market:${market.slug}`);
   if (!plan.allowed) return monthlyCap(plan.used, plan.cap);
 
+  /**
+   * THE SHARED WEEK, BEFORE THE WALLET.
+   *
+   * Read before the daily gate and before anything is spent: a hit
+   * costs one database read and no vendor request at all, and it
+   * survives deploys, which the framework's own cache does not.
+   *
+   * The plan meter above has already run, and is keyed by market for
+   * the month, so a student is charged for a market once whether the
+   * answer came from the store or the portal.
+   */
+  const storeKey = furnishedKey(market.slug, furnished);
+  const held = await readFurnished(storeKey).catch(() => null);
+  if (held && isFresh(held.at, FURNISHED_TTL_MS)) {
+    // Re-checked on the way out rather than trusted: the column is
+    // free-form JSON and a row written by an older build could hold a
+    // shape this no longer renders.
+    const listings = (held.set.listings as unknown[]).filter(isListing);
+    return NextResponse.json({
+      live: true,
+      // When it was READ, not now. A week-old set shown with today's
+      // timestamp is the kind of small lie that gets somebody to ring
+      // a listing that went in on Tuesday.
+      asOf: held.at,
+      cached: true,
+      source: "redfin",
+      market: market.slug,
+      furnished,
+      center: { lat: market.lat, lon: market.lon },
+      listings,
+      searchUrl: held.set.searchUrl ?? null,
+    });
+  }
+
   const cacheKey = `redfin:${market.slug}:${furnished ? "furnished" : "all"}`;
   const gate = checkLiveSearch(cacheKey);
   if (!gate.allowed) {
@@ -416,8 +459,20 @@ export async function GET(request: Request) {
       fetchRedfinRentals(market, { furnished })
     );
     const spent = commitLiveSearch(cacheKey);
+    // Written before the answer goes out, and written EVEN WHEN EMPTY:
+    // a market with genuinely no furnished inventory is the most
+    // expensive thing to keep re-asking, because it costs full price
+    // every visit to be told "none". Best effort — a failed write
+    // means the next visitor pays again, which is survivable, and the
+    // answer on screen is already correct either way.
+    void writeFurnished(storeKey, {
+      v: 1,
+      listings: listings as unknown as RentalListing[],
+      searchUrl: searchUrl ?? null,
+    }).catch(() => undefined);
     return NextResponse.json({
       live: true,
+      cached: false,
       asOf: new Date().toISOString(),
       source: "redfin",
       market: market.slug,

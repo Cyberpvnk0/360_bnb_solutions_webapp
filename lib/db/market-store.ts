@@ -663,6 +663,72 @@ export async function readEstimates(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* A market's furnished set, kept for a week                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * SEVEN DAYS, AND SHARED BY EVERYONE.
+ *
+ * A furnished search is the most expensive thing this product buys. It
+ * walks four pages of a portal the supplier classes as protected, so
+ * each page is a premium request — ten credits, thirty on the tier
+ * some cities need — and one market costs forty to a hundred and
+ * twenty credits to answer.
+ *
+ * Until this, that bought a day AT BEST. The only cache was the
+ * framework's own fetch cache, which is per deployment: ten deploys in
+ * an afternoon meant paying for the same market ten times. Nothing was
+ * ever written to the shared store, so a second student opening
+ * Jacksonville on a different instance paid for it again.
+ *
+ * Now it is one row, read by every instance and every account, held a
+ * week. Which furniture is in a rental does not turn over the way
+ * price does: a unit listed furnished on Monday is furnished on
+ * Friday, and the handful that come and go inside a week are not worth
+ * a hundred and twenty credits a day to chase. The screen shows when
+ * the set was read, so nobody mistakes it for a live window.
+ *
+ * An EMPTY answer is stored too. A market with genuinely no furnished
+ * inventory is the most expensive possible thing to keep re-asking:
+ * full price, every visit, for the word "none".
+ */
+export const FURNISHED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface StoredFurnished {
+  v: 1;
+  listings: unknown[];
+  searchUrl?: string | null;
+}
+
+function isFurnished(value: unknown): value is StoredFurnished {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Array.isArray((value as StoredFurnished).listings)
+  );
+}
+
+/** One key per market per filter, so the furnished set and the whole
+ *  set never overwrite each other. */
+export function furnishedKey(marketSlug: string, furnished: boolean): string {
+  return `redfin:set:v1:${marketSlug}:${furnished ? "furnished" : "all"}`;
+}
+
+export async function readFurnished(
+  key: string
+): Promise<{ set: StoredFurnished; at: string | null } | null> {
+  const hit = await readKeyed(key, isFurnished);
+  return hit ? { set: hit.value, at: hit.at } : null;
+}
+
+export async function writeFurnished(
+  key: string,
+  set: StoredFurnished
+): Promise<WriteResult> {
+  return writeKeyed(key, set);
+}
+
 export async function writeEstimate(
   key: string,
   estimate: StoredEstimate

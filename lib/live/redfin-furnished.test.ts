@@ -348,11 +348,37 @@ describe("when the supplier will not fetch the domain at all", () => {
     expect(calls - afterFirst).toBeLessThan(afterFirst);
   }, 25_000);
 
-  it("still reads it as a missing page once the flag HAS been sent", async () => {
-    // Bailey, Colorado: we asked the way they wanted and the page
-    // genuinely is not there. That is the case this whole path exists
-    // for and it must keep working.
+  it("refuses to call it 'none' while NOTHING has come back from the domain", async () => {
+    // Every request refused, on every tier. That is evidence about the
+    // supplier and none whatsoever about the city — and reading it as
+    // "no furnished rentals here" is exactly what told members Boston
+    // had none while 315 sat on the site.
+    resetRedfinEscalation();
+    vendor(() => ({ status: 500, text: PROTECTED }));
+    await expect(ask({ furnished: true })).rejects.toBeInstanceOf(RedfinError);
+  }, 25_000);
+
+  it("DOES read it as a missing page once the domain has proved itself", async () => {
+    // Bailey, Colorado, in a healthy deployment: other cities are
+    // coming back fine, so this one failing is a city with no rentals
+    // page. That is the case this whole path exists for.
+    resetRedfinEscalation();
+    let firstDone = false;
+    globalThis.fetch = vi.fn(async () => {
+      if (!firstDone) {
+        firstDone = true;
+        return new Response(JSON.stringify(ROWS), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(PROTECTED, { status: 500 });
+    }) as typeof fetch;
+
+    // The first call proves the domain is being served…
+    await ask({});
+    // …so the second, which fails everywhere, is about the city.
     vendor(() => ({ status: 500, text: PROTECTED }));
     await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
-  }, 25_000);
+  }, 30_000);
 });
