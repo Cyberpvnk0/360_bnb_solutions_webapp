@@ -246,7 +246,7 @@ export async function GET(request: Request) {
       for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
       try {
         const res = await fetch(`${REDFIN_SEARCH_ENDPOINT}?${q}`, {
-          signal: AbortSignal.timeout(20_000),
+          signal: AbortSignal.timeout(42_000),
           cache: "no-store",
         });
         const { head, total } = await headOf(res, 400_000);
@@ -270,7 +270,7 @@ export async function GET(request: Request) {
       for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
       try {
         const res = await fetch(`https://api.scraperapi.com/?${q}`, {
-          signal: AbortSignal.timeout(20_000),
+          signal: AbortSignal.timeout(42_000),
           cache: "no-store",
         });
         // The first slice only. A rentals page is three megabytes and
@@ -300,17 +300,30 @@ export async function GET(request: Request) {
      * which is a diagnostic that costs credits and teaches nothing.
      */
     if (searchParams.get("raw")) {
-      const structuredRawResult = await structuredRaw();
-      const plainResult = {
-        rentals: await raw(`${root}/rentals`),
-        apartmentsForRent: await raw(`${root}/apartments-for-rent`),
-      };
+      /**
+       * All three at once, and forty-two seconds each.
+       *
+       * Sequential with a twenty-second deadline reported two of the
+       * three as TimeoutError, which is my clock and not their answer
+       * — a three-megabyte page does not arrive in twenty seconds. Run
+       * side by side they all fit inside the function's ceiling, and
+       * the throttle worry that made the five-candidate probe
+       * sequential does not apply here: these are three different
+       * endpoints, not five reads of one.
+       */
+      const [structuredRawResult, rentals, apartmentsForRent] = await Promise.all([
+        structuredRaw(),
+        raw(`${root}/rentals`),
+        raw(`${root}/apartments-for-rent`),
+      ]);
+      const plainResult = { rentals, apartmentsForRent };
       return NextResponse.json({
         market: market.slug,
         cityId,
         tier,
         structuredRaw: structuredRawResult,
         plain: plainResult,
+        note: "A TimeoutError here is this probe's own clock, not the site's answer.",
         verdict: structuredRawResult.ok
           ? "raw=true SUCCEEDS where parsed fails — their parser is the fault, and raw output is a workaround we can read ourselves."
           : plainResult.rentals.ok || plainResult.apartmentsForRent.ok
