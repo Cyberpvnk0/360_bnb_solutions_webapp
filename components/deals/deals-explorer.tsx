@@ -305,6 +305,7 @@ export function DealsExplorer({
      *  the visible sentence — a member reads words, and whoever is
      *  helping them needs the number. */
     status?: number | null;
+    detail?: string | null;
   } | null>(null);
   /** The market Redfin has answered for — "checking" is derived from
    *  it, so nothing is assigned synchronously inside an effect. */
@@ -464,7 +465,15 @@ export function DealsExplorer({
    *  status, which is what a support ticket needs and a sentence on a
    *  chip has no room for. */
   const redfinMissDetail = redfinMiss
-    ? `${redfinMiss}${redfinReason?.status ? ` · ${redfinReason.status}` : ""}`
+    ? [
+        redfinMiss,
+        redfinReason?.status ? String(redfinReason.status) : null,
+        // Bounded again here: the server already trims it, and a
+        // tooltip is not a log viewer.
+        redfinReason?.detail ? redfinReason.detail.slice(0, 180) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : undefined;
   /** True once Redfin has answered for the market we're asking about. */
   const redfinActive = Boolean(
@@ -683,6 +692,7 @@ export function DealsExplorer({
         slug: furnishedTarget,
         reason: result.reason ?? "network",
         status: result.status ?? null,
+        detail: result.detail ?? null,
       });
       setFilters((prev) => (prev.furnishedOnly ? { ...prev, furnishedOnly: false } : prev));
     });

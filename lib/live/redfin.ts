@@ -770,22 +770,42 @@ function emptyWalk(): SearchWalk {
 }
 
 /**
- * The walk, with one failure reinterpreted: a FILTERED page that is
- * gone is a filter that matched nothing.
+ * Statuses that can mean "this filter combination has nothing", rather
+ * than "the search is broken".
  *
- * Redfin answers a filter combination it has no listings for with a
- * 404 rather than an empty result set, and a small market plus
- * `is-furnished` is exactly that combination — Bailey, Colorado has no
- * furnished rentals, and the honest answer is "none", not the outage
- * the screen used to report. But a 404 could equally mean the city
- * path is wrong, and those two must not be guessed between: so we ask
- * the same city WITHOUT the filter, one page, and let the site tell us
- * which it was. The city answering means the city is fine and the
- * filter is simply empty; the city 404ing too means the URL is wrong
- * and the original error was right.
+ * 404/410: the site does not serve a page for a filter it holds
+ * nothing for. 500: the scraping layer answers 500 when its parser
+ * cannot make a result set out of what came back, and a no-results
+ * page is exactly that. Neither is conclusive on its own, which is why
+ * nothing below decides on the status alone.
+ */
+const MAYBE_EMPTY = new Set([404, 410, 500]);
+
+/**
+ * The walk, with one failure reinterpreted: a FILTERED search that
+ * fails where the unfiltered city SUCCEEDS is a filter that matched
+ * nothing.
  *
- * Costs one extra request, only on a path that currently returns
- * nothing usable at all.
+ * Bailey, Colorado has no furnished rentals. Asking for them returned
+ * an error, and the screen reported an outage — for the honest answer
+ * "none". But the same error could equally mean the city path is
+ * wrong, or the supplier is having a bad minute, and those must not be
+ * guessed between. So the discriminator is a second request: the same
+ * city, WITHOUT the filter, one page.
+ *
+ * THE BAR IS DELIBERATELY HIGH. It is not enough for the unfiltered
+ * probe to answer — it has to come back WITH ROWS. A 200 carrying
+ * nothing proves only that the endpoint is up; rows prove that this
+ * city, through this endpoint, in this minute, returns listings, which
+ * leaves the filter as the only thing left to explain the failure.
+ * Anything weaker and a bad minute at the supplier would be reported
+ * to every member as "no furnished rentals here" — a lie that looks
+ * exactly like a fact, in a product whose whole job is telling people
+ * where the inventory is.
+ *
+ * Costs one extra request, only on a path that otherwise returns
+ * nothing usable at all, and only after the opening page has already
+ * had its one retry.
  */
 async function walkOrEmpty(
   market: Market,
@@ -796,21 +816,26 @@ async function walkOrEmpty(
   try {
     return await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages));
   } catch (error) {
-    const gone =
+    const maybeEmpty =
       error instanceof RedfinError &&
       error.reason === "http" &&
-      (error.status === 404 || error.status === 410);
-    if (!gone || !filtered) throw error;
+      MAYBE_EMPTY.has(error.status ?? 0);
+    if (!maybeEmpty || !filtered) throw error;
 
     const bare = await redfinRentalsUrl(market, {});
     if (!bare || bare === searchUrl) throw error;
+
+    let probe: SearchWalk;
     try {
-      await fetchRedfinSearchRows(bare, 1);
+      probe = await fetchRedfinSearchRows(bare, 1);
     } catch {
-      // The city itself is unreachable, so the 404 was never about the
-      // filter. Report what actually happened first.
+      // The city itself is unreachable, so the failure was never about
+      // the filter. Report what actually happened first.
       throw error;
     }
+    // Up, but empty-handed: we have learned nothing about the filter,
+    // so we say nothing about it.
+    if (probe.raw.length === 0) throw error;
     return emptyWalk();
   }
 }
@@ -909,7 +934,18 @@ export async function fetchRedfinSearchRows(
       // in flight across the whole fleet — lookups still retrying on
       // another instance, say — not a verdict on this search. One
       // patient retry, as the later pages already get.
-      if (why instanceof RedfinError && why.reason === "quota" && !retriedOpening) {
+      //
+      // A 5xx earns the same patience for a different reason: the
+      // scraping layer answers 500 when its own fetch of the page went
+      // wrong, which is as often a blip on their side as a fact about
+      // the page. Retrying once separates the two — and matters most
+      // here, because the alternative is telling a member their search
+      // failed on the strength of a single bad round trip.
+      const transient =
+        why instanceof RedfinError &&
+        (why.reason === "quota" ||
+          (why.reason === "http" && (why.status ?? 0) >= 500));
+      if (transient && !retriedOpening) {
         retriedOpening = true;
         await new Promise((r) => setTimeout(r, 2_500));
         queue = [...wave, ...queue];

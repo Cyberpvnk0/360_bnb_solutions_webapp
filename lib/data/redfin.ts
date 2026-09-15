@@ -46,6 +46,11 @@ export interface RedfinResult {
    *  be described precisely rather than guessed at — and so it can be
    *  pasted into a support ticket by whoever hit it. */
   status?: number | null;
+  /** The supplier explaining itself, already stripped of markup and
+   *  bounded server-side. A status alone says a request failed; this
+   *  says what the other end thought was wrong with it, which is the
+   *  difference between a diagnosis and another round of guessing. */
+  detail?: string | null;
 }
 
 const EMPTY: RentalListing[] = [];
@@ -89,6 +94,7 @@ export async function getRedfinFurnished(
       remaining: data?.remaining,
       cap: data?.cap,
       status: data?.status ?? res.status,
+      detail: data?.detail ?? null,
     };
   } catch (error) {
     // Our own deadline, on a route that never answered.

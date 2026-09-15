@@ -22,32 +22,67 @@ function vendor(table: (target: string) => { status: number; body?: unknown }) {
   }) as typeof fetch;
 }
 
-describe("a filtered page that 404s", () => {
-  it("is an EMPTY furnished set when the city itself is fine", async () => {
+/** One row, in the shape the extractor reads. */
+const ROWS = { listings: [{ streetLine: "1 Main St, Bailey, CO", price: 2000 }] };
+
+describe.each([404, 410, 500])("a filtered search that fails with %i", (status) => {
+  it("is an EMPTY furnished set when the same city returns rows unfiltered", async () => {
     process.env.SCRAPERAPI_KEY = "test";
     vendor((target) =>
-      target.includes("is-furnished")
-        ? { status: 404 }
-        : { status: 200, body: { listings: [] } }
+      target.includes("is-furnished") ? { status } : { status: 200, body: ROWS }
     );
     const out = await fetchRedfinRentals(BAILEY, { furnished: true, map: false });
     expect(out.listings).toEqual([]);
     expect(out.raw).toEqual([]);
-  });
+  }, 20_000);
 
-  it("is still an ERROR when the city 404s too", async () => {
+  it("is still an ERROR when the city fails too", async () => {
     process.env.SCRAPERAPI_KEY = "test";
-    vendor(() => ({ status: 404 }));
-    await expect(fetchRedfinRentals(BAILEY, { furnished: true, map: false }))
-      .rejects.toMatchObject({ reason: "http", status: 404 });
-  });
+    vendor(() => ({ status }));
+    await expect(
+      fetchRedfinRentals(BAILEY, { furnished: true, map: false })
+    ).rejects.toMatchObject({ reason: "http", status });
+  }, 20_000);
+
+  it("is still an ERROR when the city answers but carries NO rows", async () => {
+    // Up, and empty-handed. That proves the endpoint is alive and
+    // nothing at all about the filter — so reporting "no furnished
+    // rentals here" would be inventing a fact.
+    process.env.SCRAPERAPI_KEY = "test";
+    vendor((target) =>
+      target.includes("is-furnished") ? { status } : { status: 200, body: { listings: [] } }
+    );
+    await expect(
+      fetchRedfinRentals(BAILEY, { furnished: true, map: false })
+    ).rejects.toMatchObject({ reason: "http", status });
+  }, 20_000);
 
   it("is untouched for an UNFILTERED search — nothing to reinterpret", async () => {
     process.env.SCRAPERAPI_KEY = "test";
-    vendor(() => ({ status: 404 }));
-    await expect(fetchRedfinRentals(BAILEY, { map: false }))
-      .rejects.toMatchObject({ reason: "http", status: 404 });
-  });
+    vendor(() => ({ status }));
+    await expect(
+      fetchRedfinRentals(BAILEY, { map: false })
+    ).rejects.toMatchObject({ reason: "http", status });
+  }, 20_000);
+});
+
+describe("the opening page gets one retry on a 5xx", () => {
+  it("succeeds on the second attempt rather than failing the search", async () => {
+    process.env.SCRAPERAPI_KEY = "test";
+    let seen = 0;
+    globalThis.fetch = vi.fn(async () => {
+      seen += 1;
+      return seen === 1
+        ? new Response("<html>oops</html>", { status: 500 })
+        : new Response(JSON.stringify(ROWS), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+    }) as typeof fetch;
+    const out = await fetchRedfinRentals(BAILEY, { furnished: true, map: false });
+    expect(out.raw).toHaveLength(1);
+    expect(seen).toBeGreaterThanOrEqual(2);
+  }, 15_000);
 });
 
 describe("a vendor that never answers", () => {
