@@ -61,8 +61,26 @@ type Action = "set-password" | "set-email" | "send-reset" | "grant-credits" | "s
 interface Answer {
   ok?: boolean;
   detail?: string | null;
+  /** The action worked and something beside it did not — see setEmail. */
+  warning?: string | null;
   balance?: number;
   granted?: boolean;
+  /** The gate's own refusals carry this instead of a detail. */
+  reason?: string;
+}
+
+/**
+ * The gate answers with a machine reason and no sentence. Turned into
+ * one here, because "HTTP 403" tells an operator nothing about what to
+ * do, and the likeliest 403 on this panel has a precise remedy.
+ */
+function refusalLine(answer: Answer | null, status: number): string {
+  if (answer?.detail) return answer.detail;
+  if (answer?.reason === "admin-only") {
+    return "This account is not named in ADMIN_EMAILS, so it cannot act on other accounts.";
+  }
+  if (answer?.reason === "signed-out") return "Your session has expired — sign in again.";
+  return `That didn't go through (HTTP ${status})`;
 }
 
 /** A block of the drawer: a label, what it does, and its controls. */
@@ -140,8 +158,17 @@ export function AccountDrawer({
       });
       const answer = (await res.json().catch(() => null)) as Answer | null;
       if (!res.ok || !answer?.ok) {
-        toast.error(answer?.detail ?? `That didn't go through (HTTP ${res.status})`);
+        toast.error(refusalLine(answer, res.status));
         return;
+      }
+      // It worked, and something alongside it did not. Surfaced with
+      // the same weight as a failure, because a half-applied change to
+      // somebody else's account is worse than one that did not happen.
+      if (answer.warning) {
+        toast.warning("Only half of that landed", {
+          description: answer.warning,
+          duration: 12_000,
+        });
       }
       return answer;
     } catch {
@@ -295,7 +322,9 @@ export function AccountDrawer({
                         onClick={async () => {
                           const out = await run("set-email", { email });
                           if (!out) return;
-                          toast.success(`Address moved to ${out.detail ?? email}`);
+                          if (!out.warning) {
+                            toast.success(`Address moved to ${out.detail ?? email}`);
+                          }
                           onChanged();
                         }}
                       >

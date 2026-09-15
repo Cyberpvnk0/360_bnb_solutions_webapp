@@ -249,10 +249,27 @@ create table if not exists public.credit_ledger (
   created_at  timestamptz not null default now()
 );
 create index if not exists credit_ledger_user_idx on public.credit_ledger (user_id, created_at desc);
-/* A payment reference grants once. A webhook retried by the processor
-   must not hand out the pack twice. */
-create unique index if not exists credit_ledger_grant_ref_idx
-  on public.credit_ledger (ref) where reason like 'pack:%';
+/* A grant reference grants once. A webhook retried by the processor
+   must not hand out the pack twice — and neither must a support agent
+   pressing Grant again after a reply went missing.
+
+   ON delta > 0 RATHER THAN ON THE REASON STRING. The first version of
+   this read `where reason like 'pack:%'`, which covered the payment
+   webhook and nothing else. The admin grant added later writes the
+   reason "admin grant by <email>", so it fell outside the predicate:
+   grant_credits' unique_violation arm could never fire for it, the
+   reference it carefully built bought nothing, and every repeat landed
+   as a second real grant. Every positive delta in this ledger IS a
+   grant — the only other writers insert -1 and -v_from_pack under the
+   reason 'spend' — so the sign is the honest predicate and a new kind
+   of grant cannot quietly fall outside it again.
+
+   Created BEFORE the old one is dropped: if existing rows somehow
+   violate it, this fails and the deployment keeps the protection it
+   already had rather than ending up with none. */
+create unique index if not exists credit_ledger_grant_ref_unique
+  on public.credit_ledger (ref) where delta > 0;
+drop index if exists public.credit_ledger_grant_ref_idx;
 
 alter table public.credit_balance enable row level security;
 alter table public.credit_ledger  enable row level security;
@@ -292,8 +309,10 @@ begin
   insert into public.credit_balance (user_id) values (p_user)
   on conflict (user_id) do nothing;
 
-  -- The partial unique index refuses a repeated grant ref; catch it and
-  -- report the balance unchanged rather than failing the caller.
+  -- The partial unique index on positive deltas refuses a repeated
+  -- grant ref; catch it and report the balance unchanged rather than
+  -- failing the caller. This is what makes a retried webhook, and a
+  -- support agent pressing Grant twice, hand out one grant.
   begin
     insert into public.credit_ledger (user_id, delta, reason, ref)
     values (p_user, p_amount, p_reason, p_ref);

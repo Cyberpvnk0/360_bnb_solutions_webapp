@@ -14,7 +14,7 @@
 import * as React from "react";
 import { TriangleAlert } from "lucide-react";
 import { CREDIT_PACKS, TIERS } from "@/config/app";
-import type { AdminAccount, AdminMetrics } from "@/lib/admin/metrics";
+import type { AdminAccount, AdminPayload } from "@/lib/admin/metrics";
 import { fmtMoney, fmtMonth, fmtNum } from "@/lib/format";
 import { PageHeader } from "@/components/primitives/page-header";
 import { StatCard, StatHeader } from "@/components/primitives/stat-card";
@@ -77,7 +77,7 @@ function LedgerRow({
 }
 
 export function AdminScreen() {
-  const [metrics, setMetrics] = React.useState<AdminMetrics | null>(null);
+  const [metrics, setMetrics] = React.useState<AdminPayload | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
   /** Bumped after an account write, to re-read the figures it moved.
    *  The previous body stays on screen while the new one is in
@@ -91,7 +91,7 @@ export function AdminScreen() {
     fetch("/api/admin/metrics", { cache: "no-store" })
       .then(async (res) => {
         const body = (await res.json().catch(() => null)) as
-          | AdminMetrics
+          | AdminPayload
           | { reason?: string }
           | null;
         if (cancelled) return;
@@ -317,13 +317,28 @@ export function AdminScreen() {
           <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Newest first. Usage is this month&apos;s, against each plan&apos;s cap.
-            Open an account to reset it, move its plan, or grant credits.
+            {metrics?.accountAdmin
+              ? " Open an account to reset it, move its plan, or grant credits."
+              : null}
           </p>
+          {/* Said here rather than discovered by pressing a button that
+              refuses. Reading these figures is open to everyone signed
+              in while ADMIN_EMAILS is unset; acting on an account is
+              open to nobody. Offering the controls anyway would be five
+              buttons that always fail. */}
+          {metrics && !metrics.accountAdmin ? (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Account controls are off until this deployment names its admins.
+              Set <span className="font-medium text-foreground tabular">ADMIN_EMAILS</span>{" "}
+              to a comma-separated list of confirmed addresses and they turn on for
+              those accounts only.
+            </p>
+          ) : null}
         </div>
         <AdminUsersTable
           users={metrics?.accountsList ?? []}
           loading={loading}
-          onOpen={setEditing}
+          onOpen={metrics?.accountAdmin ? setEditing : undefined}
         />
       </div>
 

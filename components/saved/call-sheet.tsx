@@ -486,7 +486,17 @@ export function CallSheet({
               ) : null}
 
               <div className="mt-4">
-                <CallCard item={current} />
+                {/* KEYED ON THE PROPERTY. Without this React reuses one
+                    CallCard across the whole queue, and the state
+                    inside FindTheNumber goes with it: the "asked" flag
+                    stays true, so skipping from a property whose page
+                    published no number to the next one fires a BILLED
+                    page read nobody asked for — twenty properties,
+                    twenty scrapes, which is the exact thing that
+                    component exists to prevent. Its one-shot write-back
+                    ref carries over too, so the contact found for the
+                    second property was shown and never saved. */}
+                <CallCard key={current.listing.id} item={current} />
               </div>
 
               <div className="mt-5">

@@ -96,3 +96,67 @@ describe("granting credits", () => {
     expect(out.detail).toContain(String(MAX_GRANT));
   });
 });
+
+/**
+ * Moving an address is two writes: the login, and the copy every admin
+ * surface reads. The second one failing quietly is what points Send
+ * reset email at an address the account no longer has — and the
+ * recovery endpoint answers 200 for an address it does not know, so
+ * the failure would never surface on its own.
+ */
+describe("when only half of an address change lands", () => {
+  const OLD_URL = process.env.SUPABASE_URL;
+  const OLD_KEY = process.env.SUPABASE_SECRET_KEY;
+
+  afterEach(() => {
+    if (OLD_URL === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = OLD_URL;
+    if (OLD_KEY === undefined) delete process.env.SUPABASE_SECRET_KEY;
+    else process.env.SUPABASE_SECRET_KEY = OLD_KEY;
+  });
+
+  /** Auth says yes; the profile patch answers however the test says. */
+  function store(profilePatch: { ok: boolean } | "throws") {
+    process.env.SUPABASE_URL = "https://store.example";
+    process.env.SUPABASE_SECRET_KEY = "secret";
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/v1/")) return new Response("{}", { status: 200 });
+      if (profilePatch === "throws") throw new TypeError("fetch failed");
+      // `new Response("", { status: 204 })` throws — 204 may carry no body,
+      // and the rejection would land in the same catch a real failure does.
+      return new Response(null, { status: profilePatch.ok ? 204 : 503 });
+    }) as unknown as typeof fetch;
+  }
+
+  it("says so when the directory copy did not update", async () => {
+    store({ ok: false });
+    const out = await setEmail("u-1", "new@example.com");
+    expect(out.ok).toBe(true);
+    // The login DID move — reporting failure would be its own lie.
+    if (out.ok) {
+      expect(out.detail).toBe("new@example.com");
+      expect(out.warning).toBeTruthy();
+      // Names the thing an operator would otherwise do next and get
+      // a false success from.
+      expect(out.warning).toMatch(/reset/i);
+    }
+  });
+
+  it("says so when the patch never reached the store at all", async () => {
+    store("throws");
+    const out = await setEmail("u-1", "new@example.com");
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.warning).toBeTruthy();
+  });
+
+  it("stays quiet when both writes landed", async () => {
+    store({ ok: true });
+    const out = await setEmail("u-1", "new@example.com");
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.warning).toBeUndefined();
+      expect(out.detail).toBe("new@example.com");
+    }
+  });
+});

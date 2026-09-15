@@ -455,16 +455,29 @@ export async function persistListItem(
   return done(error);
 }
 
-/** What happened on the phone, against one saved rental. An update
- *  rather than an upsert: there is no call to log about a property
- *  that is not in the list. */
+/**
+ * What happened on the phone, against one saved rental.
+ *
+ * An update rather than an upsert: there is no call to log about a
+ * property that is not in the list.
+ *
+ * WHICH MEANS "MATCHED NOTHING" IS A FAILURE, AND HAS TO SAY SO. A
+ * PostgREST update that matches zero rows answers 204 with no error,
+ * so the bare version of this reported ok for a call that was written
+ * nowhere — which is the single worst outcome this feature has, and
+ * exactly the one the "that call didn't save" warning exists for. The
+ * row can be missing for ordinary reasons: another tab removed the
+ * property, or its insert failed earlier and only reached the console.
+ * So the update asks for what it changed and treats an empty answer as
+ * the failure it is.
+ */
 export async function writeCall(
   supabase: SupabaseClient,
   listId: string,
   listingId: string,
   call: CallLog
 ): Promise<WriteOutcome> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("deal_list_items")
     .update({
       call_outcome: call.outcome,
@@ -473,8 +486,12 @@ export async function writeCall(
       last_called_at: call.lastCalledAt,
     })
     .eq("list_id", listId)
-    .eq("listing_id", listingId);
-  return done(error);
+    .eq("listing_id", listingId)
+    .select("listing_id");
+  if (error) return done(error);
+  return (data ?? []).length > 0
+    ? done(null)
+    : { ok: false, error: "that rental is no longer in the list" };
 }
 
 export async function removeListItem(

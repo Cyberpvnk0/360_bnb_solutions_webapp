@@ -32,7 +32,15 @@ import type { TierId } from "@/config/app";
 const TIMEOUT_MS = 10_000;
 
 export type AdminActionResult =
-  | { ok: true; detail?: string }
+  | {
+      ok: true;
+      detail?: string;
+      /** The action did what it said, but something alongside it did
+       *  not — see setEmail. Shown to the admin rather than swallowed,
+       *  because a half-done change to somebody's account is the one
+       *  they most need to know about. */
+      warning?: string;
+    }
   | { ok: false; detail: string };
 
 /** The auth server's admin interface, as the service. */
@@ -126,20 +134,37 @@ export async function setEmail(
 
   const cfg = serviceConfig();
   if (cfg) {
-    // Best effort: the address of record has moved either way, and a
-    // stale copy in the profile is a display problem rather than an
-    // access one.
-    await fetch(`${cfg.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-      method: "PATCH",
-      headers: {
-        apikey: cfg.key,
-        authorization: `Bearer ${cfg.key}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ email: clean, updated_at: new Date().toISOString() }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
-    }).catch(() => undefined);
+    // NOT best effort, whatever the first version of this said. The
+    // login moved the moment the call above succeeded, but every admin
+    // surface reads the address out of the profile row — so a patch
+    // that quietly fails leaves the table, the drawer and, worst of
+    // all, the Send reset email button pointed at an address the
+    // account no longer has. That button would then report success for
+    // mail nobody can receive, because the recovery endpoint answers
+    // 200 for an address it does not know.
+    const synced = await fetch(
+      `${cfg.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: cfg.key,
+          authorization: `Bearer ${cfg.key}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ email: clean, updated_at: new Date().toISOString() }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        cache: "no-store",
+      }
+    )
+      .then((r) => r.ok)
+      .catch(() => false);
+    if (!synced) {
+      return {
+        ok: true,
+        detail: clean,
+        warning: `They sign in as ${clean} now, but the directory copy did not update — it will keep showing the old address, and Send reset email would go to it. Try the change again.`,
+      };
+    }
   }
   return { ok: true, detail: clean };
 }

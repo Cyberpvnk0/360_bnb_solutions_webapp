@@ -93,6 +93,8 @@ export async function POST(request: Request) {
       return NextResponse.json(out, { status: out.ok ? 200 : 400 });
     }
     case "set-email": {
+      // Carries `warning` when the login moved but the directory copy
+      // did not — a 200 the client still has to say something about.
       const out = await setEmail(userId, input.email ?? "");
       return NextResponse.json(out, { status: out.ok ? 200 : 400 });
     }

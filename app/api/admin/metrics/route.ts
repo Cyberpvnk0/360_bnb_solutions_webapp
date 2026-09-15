@@ -8,8 +8,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireStaff } from "@/lib/auth/gate";
-import { readAdminMetrics } from "@/lib/admin/metrics";
+import { adminEmails, requireStaff } from "@/lib/auth/gate";
+import { readAdminMetrics, type AdminPayload } from "@/lib/admin/metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -17,5 +17,8 @@ export async function GET() {
   const staff = await requireStaff();
   if (!staff.ok) return staff.response;
   const metrics = await readAdminMetrics();
-  return NextResponse.json(metrics, { headers: { "cache-control": "no-store" } });
+  // Whether anybody may act on an account here — see AdminPayload. Not
+  // WHO: the list itself is configuration and stays on the server.
+  const payload: AdminPayload = { ...metrics, accountAdmin: adminEmails().size > 0 };
+  return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
 }

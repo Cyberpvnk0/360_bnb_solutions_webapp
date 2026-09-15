@@ -41,6 +41,25 @@ export interface AdminAccount {
   joinedAt: string;
 }
 
+/**
+ * What the admin page is actually served: the figures, plus whether
+ * this deployment has named anybody who may ACT on an account.
+ *
+ * The two gates in front of this page disagree on purpose, and the
+ * page has to know it. Reading the figures is behind isStaff, which
+ * opens to every signed-in account when ADMIN_EMAILS is unset — right
+ * for a screen of totals during a beta. Acting on an account is behind
+ * requireAccountAdmin, which admits NOBODY in that same configuration,
+ * because the signup form is open and setting a password is the
+ * account. Without this flag the page would offer five controls to
+ * everyone and refuse all five with an opaque failure.
+ */
+export interface AdminPayload extends AdminMetrics {
+  /** True when ADMIN_EMAILS names somebody, so the account controls
+   *  can do anything at all. */
+  accountAdmin: boolean;
+}
+
 export interface AdminMetrics {
   /** The month the usage figures describe, YYYY-MM. */
   period: string;
