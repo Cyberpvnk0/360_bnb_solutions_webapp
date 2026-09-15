@@ -160,9 +160,17 @@ export function PricingCard({
           </li>
         ))}
       </ul>
+      {/* Pushed to the card's floor, not left floating after the last
+          feature. The grid stretches every card to the tallest, so a
+          plan with four features had its button two-thirds up and a
+          third of a card of nothing beneath it — four CTAs at four
+          different heights, which reads as unfinished rather than as
+          four plans. mt-auto takes up the slack; pt-5 keeps the gap
+          above it when there is none to take. */}
       {onSelect ? (
+        <div className="mt-auto w-full pt-5">
         <Button
-          className="mt-5 w-full"
+          className="w-full"
           variant={isCurrent ? "secondary" : recommended ? "default" : "outline"}
           disabled={isCurrent}
           onClick={() => onSelect(tier.id)}
@@ -175,6 +183,7 @@ export function PricingCard({
                 ? "Start free"
                 : `Choose ${tier.name}`}
         </Button>
+        </div>
       ) : null}
     </div>
   );
