@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { projectDeal, revpar, type DealInputs } from "@/lib/calc/arbitrage";
+import type { CompsFallbackReason } from "@/lib/live/str-comps";
 import { dealGrade, GRADE_TEXT } from "@/lib/calc/grade";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtMoney, fmtMonths, fmtPct } from "@/lib/format";
@@ -112,6 +113,7 @@ export function AnalyzeResult({
   marketCenter,
   propertyPoint = null,
   liveComps = false,
+  compsReason = null,
   compsBoughtAt = null,
   searchedAddress = null,
   quota = null,
@@ -140,6 +142,8 @@ export function AnalyzeResult({
   propertyPoint?: { lat: number; lon: number } | null;
   /** True when the comp set came from the live STR feed. */
   liveComps?: boolean;
+  /** Why the modelled comps are standing in, when they are. */
+  compsReason?: CompsFallbackReason | null;
   /** When those listings were read, ISO. Printed beside them: a comp
    *  set is a photograph of a market on a day, and a listing in it can
    *  come down the day after. */
@@ -811,6 +815,7 @@ export function AnalyzeResult({
           propertyPoint={propertyPoint}
           marketCenter={marketCenter}
           live={liveComps}
+          reason={compsReason}
           boughtAt={compsBoughtAt}
         />
         <LtrCompsTable

@@ -41,10 +41,36 @@ import type { Analysis, StrComp } from "@/lib/mock/types";
 
 export { MIN_COMPS } from "@/lib/calc/comps";
 
+/**
+ * Why the modelled comps are standing in, when they are.
+ *
+ * Seven code paths below fall back to the seeded set and, until now,
+ * all seven returned the same bare `liveComps: false`. That is how a
+ * screen ends up saying "Live comps — 9 short-term rentals" over nine
+ * invented listings: nothing downstream could tell a thin set from a
+ * spent budget from a missing key, so nothing downstream could say
+ * anything true about it.
+ */
+export type CompsFallbackReason =
+  /** No coordinates to search around. */
+  | "no-point"
+  /** The vendor key is not set on this deployment. */
+  | "not-configured"
+  /** Fewer comps came back than a projection may stand on. */
+  | "thin-set"
+  /** The day's search budget is spent. */
+  | "daily-cap"
+  /** The vendor refused, failed, or the budget ran out mid-call. */
+  | "vendor"
+  /** The account's plan did not pay for this one. */
+  | "not-paid";
+
 export interface CompsResolution {
   analysis: Analysis;
   /** True when the comps on screen came from AirROI. */
   liveComps: boolean;
+  /** Set whenever liveComps is false. The screen says which. */
+  reason?: CompsFallbackReason;
   /**
    * When these listings were read, ISO — today for a fresh purchase,
    * the store's stamp for a set served from it.
@@ -177,7 +203,10 @@ export async function withLiveComps(
     atProperty?: boolean;
   } = {}
 ): Promise<CompsResolution> {
-  if (!point || !hasAirRoiKey()) return { analysis, liveComps: false };
+  if (!point) return { analysis, liveComps: false, reason: "no-point" };
+  if (!hasAirRoiKey()) {
+    return { analysis, liveComps: false, reason: "not-configured" };
+  }
 
   const spec = compsSpecFor(analysis, point);
 
@@ -217,11 +246,13 @@ export async function withLiveComps(
     }
     // A thin set, remembered as thin: the modelled comps stand in, and
     // the same answer is not bought again on every visit.
-    return { analysis, liveComps: false };
+    return { analysis, liveComps: false, reason: "thin-set" };
   }
 
   const key = `str:${point.lat.toFixed(2)},${point.lon.toFixed(2)}`;
-  if (!checkLiveSearch(key).allowed) return { analysis, liveComps: false };
+  if (!checkLiveSearch(key).allowed) {
+    return { analysis, liveComps: false, reason: "daily-cap" };
+  }
 
   try {
     // Their calculator endpoint rather than plain comparables: same one
@@ -300,7 +331,9 @@ export async function withLiveComps(
     void addToPool(analysis.marketSlug, comps0, point, anchorFor(analysis, comps)).catch(
       () => undefined
     );
-    if (comps.length < MIN_COMPS) return { analysis, liveComps: false };
+    if (comps.length < MIN_COMPS) {
+      return { analysis, liveComps: false, reason: "thin-set" };
+    }
     return {
       analysis: {
         ...analysis,
@@ -313,9 +346,10 @@ export async function withLiveComps(
       boughtAt: new Date().toISOString(),
     };
   } catch {
-    // Budget spent, feed down, key rejected — all the same answer here:
-    // show the modelled comps and label them. The page must never fail
-    // because a vendor did.
-    return { analysis, liveComps: false };
+    // Budget spent, feed down, key rejected — the same ANSWER here
+    // (show the modelled comps), but no longer the same label. The page
+    // must never fail because a vendor did; it must also never pass
+    // their absence off as their output.
+    return { analysis, liveComps: false, reason: "vendor" };
   }
 }

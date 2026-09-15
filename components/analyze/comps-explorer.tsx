@@ -7,15 +7,15 @@
  */
 
 import * as React from "react";
-import { ArrowUpRight, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowUpRight, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
 import { deriveMarketAssumptions } from "@/lib/calc/comps";
 import { fmtDate, fmtMiles, fmtMoney, fmtPct, fmtNum} from "@/lib/format";
 import type { StrComp } from "@/lib/mock/types";
+import type { CompsFallbackReason } from "@/lib/live/str-comps";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { InfoHint } from "@/components/primitives/info-hint";
-import { MetricLabel } from "@/components/primitives/metric-label";
 import { HINTS } from "@/lib/copy/hints";
 import { CompsStreetMap } from "./comps-street-map";
 import { cn } from "@/lib/utils";
@@ -169,6 +169,34 @@ function reachLabel(comps: readonly StrComp[]): string {
   return "nearby";
 }
 
+/**
+ * Why there is a model here instead of listings, in one sentence.
+ *
+ * Every one of these used to be the same silent `liveComps: false`, so
+ * the screen could say nothing — and said "Live comps" instead. The
+ * reader is owed the difference between "your plan did not pay for
+ * this" and "the feed is down": the first is a decision they can make,
+ * the second is one they cannot.
+ */
+function fallbackNote(reason: CompsFallbackReason | null | undefined): string {
+  switch (reason) {
+    case "not-paid":
+      return "Your plan did not cover a live comp set for this one.";
+    case "not-configured":
+      return "Live comps are not configured on this deployment.";
+    case "daily-cap":
+      return "The day's live-comp budget is spent; try again tomorrow.";
+    case "thin-set":
+      return "Too few real listings were found nearby to stand a projection on.";
+    case "vendor":
+      return "The live comp source could not be reached for this one.";
+    case "no-point":
+      return "This property has no coordinates to search around.";
+    default:
+      return "";
+  }
+}
+
 export function CompsExplorer({
   comps,
   address,
@@ -176,6 +204,7 @@ export function CompsExplorer({
   marketCenter,
   live = false,
   boughtAt = null,
+  reason = null,
   onStrike,
   struckCount = 0,
   onRestore,
@@ -196,6 +225,8 @@ export function CompsExplorer({
    *  real listings as they stood on a day, and one of them can be off
    *  the platform by the time somebody clicks it. */
   boughtAt?: string | null;
+  /** Why the modelled set is standing in, when it is. */
+  reason?: CompsFallbackReason | null;
   /** Strike a comp out of the set. Absent when the set is down to the
    *  last one every figure on the page divides by. */
   onStrike?: (id: string) => void;
@@ -241,27 +272,54 @@ export function CompsExplorer({
     <section aria-label="Short-term rental comps">
       <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
         <div>
+          {/* THE WORD "LIVE" IS A CLAIM, and it used to be printed
+              whatever was underneath it. A modelled set rendered as
+              "Live comps — 9 short-term rentals" over nine invented
+              listings, contradicted only by a small badge to its right
+              that is hidden below 640px. Somebody reading this screen on
+              a phone had no way at all to know the listings were not
+              real, and the two symptoms that make it obvious once you
+              know — no cover photo, no working link — read as the
+              product being broken rather than as the set being a model. */}
           <h2 className="text-sm font-semibold text-foreground">
-            Live comps — {comps.length} short-term rentals {reachLabel(comps)}
+            {live ? "Live comps" : "Modelled comps"} — {comps.length} short-term
+            rentals {reachLabel(comps)}
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            The projection above is computed from these listings, nothing else.
-            {/* The date, not a promise. A comp set is what was listed on
-                the day it was read; a host can take a listing down the
-                next morning, and the link below it then opens the
-                platform's own error page rather than the property. */}
-            {live && readOn ? <> Read {readOn}; a listing can come down after that.</> : null}
+            {live ? (
+              <>
+                The projection above is computed from these listings, nothing
+                else.
+                {/* The date, not a promise. A comp set is what was listed
+                    on the day it was read; a host can take a listing down
+                    the next morning, and the link below it then opens the
+                    platform's own error page rather than the property. */}
+                {readOn ? (
+                  <> Read {readOn}; a listing can come down after that.</>
+                ) : null}
+              </>
+            ) : (
+              <>
+                These are typical figures for this size in this market, not
+                listings that exist. {fallbackNote(reason)} They carry no photo
+                and no link because there is nothing to link to.
+              </>
+            )}
           </p>
         </div>
+        {/* Shown at EVERY width now. The one case where the badge
+            matters most — a modelled set — was the case it was hidden
+            for on the screen most people read this on. */}
         {live ? (
-          <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3 py-1 text-[11px] font-medium text-gold sm:flex">
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3 py-1 text-[11px] font-medium text-gold">
             <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
             Live comps
           </span>
         ) : (
-          <MetricLabel className="hidden shrink-0 sm:block">
-            Preview comps
-          </MetricLabel>
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1 text-[11px] font-medium text-muted-foreground">
+            <TriangleAlert aria-hidden className="size-3" strokeWidth={2.5} />
+            Modelled
+          </span>
         )}
       </div>
 
