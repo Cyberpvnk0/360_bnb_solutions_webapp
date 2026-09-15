@@ -29,6 +29,31 @@ import { MARKET_BY_SLUG } from "@/lib/mock/markets";
 /** A parsed search of a whole market is slower than a plain fetch. */
 export const maxDuration = 60;
 
+/**
+ * Our own deadline, deliberately under maxDuration.
+ *
+ * When the platform kills a function at its limit, what reaches the
+ * browser is a gateway error with no body — the client parses nothing,
+ * falls back to "network", and the screen says the search was
+ * unreachable when in fact it was slow. Answering ourselves a few
+ * seconds early means the browser always gets JSON with a reason it
+ * can name.
+ */
+const BUDGET_MS = 50_000;
+
+/** The work, or a `timeout` reason — never a silent death. */
+async function withinBudget<T>(job: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new RedfinError("timeout")), BUDGET_MS);
+  });
+  try {
+    return await Promise.race([job, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function failure(error: unknown) {
   if (error instanceof RedfinError) {
     return NextResponse.json(
@@ -38,7 +63,14 @@ function failure(error: unknown) {
         status: error.status ?? null,
         detail: error.detail ?? null,
       },
-      { status: error.reason === "no-key" || error.reason === "no-city" ? 503 : 502 }
+      {
+        status:
+          error.reason === "no-key" || error.reason === "no-city"
+            ? 503
+            : error.reason === "timeout"
+              ? 504
+              : 502,
+      }
     );
   }
   return NextResponse.json(
@@ -194,9 +226,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { listings, credits, searchUrl } = await fetchRedfinRentals(market, {
-      furnished,
-    });
+    const { listings, credits, searchUrl } = await withinBudget(
+      fetchRedfinRentals(market, { furnished })
+    );
     const spent = commitLiveSearch(cacheKey);
     return NextResponse.json({
       live: true,

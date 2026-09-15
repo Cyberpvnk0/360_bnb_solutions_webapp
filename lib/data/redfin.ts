@@ -9,6 +9,16 @@
 
 import type { RentalListing } from "@/lib/mock/types";
 
+/**
+ * EVERY reason the server can send, and they must ALL be here.
+ *
+ * The label below falls through to "unreachable" for anything it does
+ * not recognise, so a reason the server knows and this union does not
+ * is a real failure reported as a fake one. That is what happened to
+ * `no-credits`: the server had the word, this list did not, and a spent
+ * scraping plan read on screen as a connection problem — sending
+ * whoever saw it to check their wifi instead of their bill.
+ */
 export type RedfinFailureReason =
   | "no-key"
   /** This market has no Redfin city id yet — not an error, a gap. */
@@ -16,6 +26,10 @@ export type RedfinFailureReason =
   | "auth"
   | "forbidden"
   | "quota"
+  /** The scraping plan's credits are spent for the cycle. */
+  | "no-credits"
+  /** We reached them and they were too slow. Not the same as absent. */
+  | "timeout"
   | "http"
   | "network"
   | "unknown-market"
@@ -28,6 +42,10 @@ export interface RedfinResult {
   listings: RentalListing[];
   remaining?: number;
   cap?: number;
+  /** The vendor's own status, when there was one. Carried so a miss can
+   *  be described precisely rather than guessed at — and so it can be
+   *  pasted into a support ticket by whoever hit it. */
+  status?: number | null;
 }
 
 const EMPTY: RentalListing[] = [];
@@ -63,31 +81,68 @@ export async function getRedfinFurnished(
     }
     return {
       live: false,
-      reason: data?.reason ?? "network",
+      // A body with no reason means the response was not ours at all —
+      // a gateway page, most often, where the platform cut the function
+      // off. `timeout` is the honest word for that, and a 504 says it.
+      reason: data?.reason ?? (res.status === 504 ? "timeout" : "network"),
       listings: EMPTY,
       remaining: data?.remaining,
       cap: data?.cap,
+      status: data?.status ?? res.status,
     };
-  } catch {
-    return { live: false, reason: "network", listings: EMPTY };
+  } catch (error) {
+    // Our own deadline, on a route that never answered.
+    const name = error instanceof Error ? error.name : "";
+    const timedOut = name === "TimeoutError" || name === "AbortError";
+    return {
+      live: false,
+      reason: timedOut ? "timeout" : "network",
+      listings: EMPTY,
+    };
   }
 }
 
-/** Plain-language explanation of a Redfin miss, for the toolbar. */
+/**
+ * Plain-language explanation of a miss, for the toolbar.
+ *
+ * No supplier is ever named here — this is read by members. Each
+ * reason gets its own sentence, because the whole point is that the
+ * reader can tell "try again" from "not in this market" from "we have
+ * a billing problem". Lumping them together is what made the screen
+ * say "unreachable" about four unrelated things.
+ */
 export function redfinFailureLabel(reason?: RedfinFailureReason): string {
   switch (reason) {
     case "no-city":
+    case "unknown-market":
       return "Furnished search isn't available for this market";
     case "no-key":
       return "Furnished search isn't configured";
     case "auth":
     case "forbidden":
       return "Furnished search is unavailable right now";
+    case "no-credits":
+      return "Furnished search is out of capacity this month";
     case "quota":
-      return "Furnished search quota reached";
+      return "Furnished search is busy — try again in a moment";
     case "daily-cap":
       return "Daily furnished-search limit reached";
+    case "timeout":
+      return "Furnished search timed out — try again";
+    case "http":
+      return "Furnished search failed — try again";
     default:
       return "Furnished search unreachable";
   }
+}
+
+/** True where clicking the chip again is worth doing. */
+export function redfinRetryable(reason?: RedfinFailureReason): boolean {
+  return (
+    reason === "timeout" ||
+    reason === "quota" ||
+    reason === "http" ||
+    reason === "network" ||
+    reason === undefined
+  );
 }

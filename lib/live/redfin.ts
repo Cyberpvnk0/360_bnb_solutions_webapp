@@ -144,22 +144,43 @@ export function redfinCoversMarket(market: Market): boolean {
   return REDFIN_CITY_ID[market.slug] !== undefined;
 }
 
+/**
+ * Every reason a fetch here can fail — as a VALUE, not only a type.
+ *
+ * The browser has its own copy of this list (lib/data/redfin) and turns
+ * each one into a sentence a member reads. When the two drifted apart,
+ * the sentence for the missing reason silently became the catch-all:
+ * a scraping plan out of credits reported itself on screen as
+ * "Furnished search unreachable", which sent the reader to check their
+ * connection over a billing problem. Exported as an array so a test can
+ * walk it and refuse the drift rather than trusting two hand-written
+ * unions to stay equal.
+ */
+export const REDFIN_REASONS = [
+  "no-key",
+  "no-city",
+  "auth",
+  "forbidden",
+  "quota",
+  /** The scraping plan's credits are spent for this cycle. Its own
+   *  reason because the vendor answers 403 for it, and "forbidden"
+   *  sends whoever reads the log hunting for a blocked domain or a bad
+   *  key instead of a billing page. */
+  "no-credits",
+  /** We reached them and they were too slow. Its own reason because
+   *  "network" reads as "we could not reach them", and this is worth
+   *  retrying where that is not. */
+  "timeout",
+  "http",
+  "network",
+] as const;
+
+export type RedfinReason = (typeof REDFIN_REASONS)[number];
+
 /** Why a Redfin fetch failed, in words the UI can show. */
 export class RedfinError extends Error {
   constructor(
-    readonly reason:
-      | "no-key"
-      | "no-city"
-      | "auth"
-      | "forbidden"
-      | "quota"
-      /** The scraping plan's credits are spent for this cycle. Its own
-       *  reason because the vendor answers 403 for it, and "forbidden"
-       *  sends whoever reads the log hunting for a blocked domain or a
-       *  bad key instead of a billing page. */
-      | "no-credits"
-      | "http"
-      | "network",
+    readonly reason: RedfinReason,
     readonly status?: number,
     readonly detail?: string
   ) {
@@ -587,6 +608,20 @@ function creditsFrom(res: Response): number | null {
  * One request per market per day, shared by every user.
  */
 /** One page of results, exactly as the vendor returns it. */
+/**
+ * How long one page may take.
+ *
+ * Under the route's own budget, which is under the platform's function
+ * limit, so the chain fails inward: a slow page loses, the route still
+ * answers in words, and the browser gets JSON saying why. WITHOUT this
+ * the fetch had no deadline at all — a vendor request that hung ran
+ * until the platform killed the whole function, and what reached the
+ * browser was not our error but a gateway timeout with no body. The
+ * screen read "Furnished search unreachable", which was the one thing
+ * it was not: we reached them, and waited, and got shot.
+ */
+const PAGE_TIMEOUT_MS = 45_000;
+
 async function fetchPage(pageUrl: string): Promise<{
   body: unknown;
   rows: Row[];
@@ -609,9 +644,17 @@ async function fetchPage(pageUrl: string): Promise<{
     res = await withScraperSlot(() =>
       fetch(`${REDFIN_SEARCH_ENDPOINT}?${params}`, {
         next: { revalidate: REDFIN_REVALIDATE_SECONDS },
+        signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
       })
     );
-  } catch {
+  } catch (error) {
+    // TimeoutError is the deadline above; AbortError is the request
+    // being cut off from outside. Both mean "we waited", which is a
+    // different fact from "we could not reach them".
+    const name = error instanceof Error ? error.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new RedfinError("timeout");
+    }
     throw new RedfinError("network");
   }
 
@@ -712,6 +755,66 @@ export async function mapRedfinRows(
   return { listings, skipped, geocodedBy };
 }
 
+/** Nothing found, said in the shape a successful walk has. */
+function emptyWalk(): SearchWalk {
+  return {
+    raw: [],
+    body: null,
+    parsed: true,
+    bytes: 0,
+    credits: null,
+    pages: 1,
+    morePages: false,
+    failedPages: 0,
+  };
+}
+
+/**
+ * The walk, with one failure reinterpreted: a FILTERED page that is
+ * gone is a filter that matched nothing.
+ *
+ * Redfin answers a filter combination it has no listings for with a
+ * 404 rather than an empty result set, and a small market plus
+ * `is-furnished` is exactly that combination — Bailey, Colorado has no
+ * furnished rentals, and the honest answer is "none", not the outage
+ * the screen used to report. But a 404 could equally mean the city
+ * path is wrong, and those two must not be guessed between: so we ask
+ * the same city WITHOUT the filter, one page, and let the site tell us
+ * which it was. The city answering means the city is fine and the
+ * filter is simply empty; the city 404ing too means the URL is wrong
+ * and the original error was right.
+ *
+ * Costs one extra request, only on a path that currently returns
+ * nothing usable at all.
+ */
+async function walkOrEmpty(
+  market: Market,
+  searchUrl: string,
+  opts: { furnished?: boolean; propertyType?: string; pages?: number }
+): Promise<SearchWalk> {
+  const filtered = Boolean(opts.furnished || opts.propertyType);
+  try {
+    return await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages));
+  } catch (error) {
+    const gone =
+      error instanceof RedfinError &&
+      error.reason === "http" &&
+      (error.status === 404 || error.status === 410);
+    if (!gone || !filtered) throw error;
+
+    const bare = await redfinRentalsUrl(market, {});
+    if (!bare || bare === searchUrl) throw error;
+    try {
+      await fetchRedfinSearchRows(bare, 1);
+    } catch {
+      // The city itself is unreachable, so the 404 was never about the
+      // filter. Report what actually happened first.
+      throw error;
+    }
+    return emptyWalk();
+  }
+}
+
 export async function fetchRedfinRentals(
   market: Market,
   opts: {
@@ -728,7 +831,7 @@ export async function fetchRedfinRentals(
 ): Promise<RedfinFetch> {
   const searchUrl = await redfinRentalsUrl(market, opts);
   if (!searchUrl) throw new RedfinError("no-city");
-  const walk = await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages));
+  const walk = await walkOrEmpty(market, searchUrl, opts);
   const furnished = Boolean(opts.furnished);
   const mapped =
     opts.map === false

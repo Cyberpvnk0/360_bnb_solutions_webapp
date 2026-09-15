@@ -301,6 +301,10 @@ export function DealsExplorer({
   const [redfinReason, setRedfinReason] = React.useState<{
     slug: string;
     reason: RedfinFailureReason;
+    /** The supplier's own status, for the hover title only. Never in
+     *  the visible sentence — a member reads words, and whoever is
+     *  helping them needs the number. */
+    status?: number | null;
   } | null>(null);
   /** The market Redfin has answered for — "checking" is derived from
    *  it, so nothing is assigned synchronously inside an effect. */
@@ -456,10 +460,27 @@ export function DealsExplorer({
       (zip !== null && redfinReason.slug === `zip:${zip}`))
       ? redfinReason.reason
       : null;
+  /** The same miss, spelled out for a hover — the reason and the
+   *  status, which is what a support ticket needs and a sentence on a
+   *  chip has no room for. */
+  const redfinMissDetail = redfinMiss
+    ? `${redfinMiss}${redfinReason?.status ? ` · ${redfinReason.status}` : ""}`
+    : undefined;
   /** True once Redfin has answered for the market we're asking about. */
   const redfinActive = Boolean(
     furnishedTarget && redfin?.slug === furnishedTarget
   );
+
+  /**
+   * The search worked and this market has none.
+   *
+   * A real answer, and it has to look like one. Before, an empty
+   * furnished set rendered as a lit "Furnished" chip over an empty grid
+   * — indistinguishable from a filter that had broken, and in a small
+   * market (Bailey, Colorado has no furnished rentals at all) that is
+   * the normal case rather than the exception.
+   */
+  const redfinEmpty = redfinActive && (redfin?.listings.length ?? 0) === 0;
 
   /**
    * What a market shows when the feed did not answer. A plan with no
@@ -658,7 +679,11 @@ export function DealsExplorer({
       // No answer: the filter comes back off rather than staying lit
       // over an unfiltered list, and the toolbar says why. The chip
       // stays clickable, so trying again is one click.
-      setRedfinReason({ slug: furnishedTarget, reason: result.reason ?? "network" });
+      setRedfinReason({
+        slug: furnishedTarget,
+        reason: result.reason ?? "network",
+        status: result.status ?? null,
+      });
       setFilters((prev) => (prev.furnishedOnly ? { ...prev, furnishedOnly: false } : prev));
     });
     return () => {
@@ -1045,13 +1070,21 @@ export function DealsExplorer({
               <Loader2 aria-hidden className="size-3.5 animate-spin" />
               Finding furnished rentals…
             </span>
+          ) : redfinEmpty ? (
+            <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
+              <Info aria-hidden className="size-3.5" />
+              No furnished rentals listed here
+            </span>
           ) : redfinActive ? (
             <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-gold/50 bg-gold-fill/10 px-3.5 text-xs font-medium text-gold">
               <span aria-hidden className="size-1.5 rounded-full bg-gold-fill" />
               Furnished
             </span>
           ) : redfinMiss ? (
-            <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground">
+            <span
+              title={redfinMissDetail}
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3.5 text-xs font-medium text-muted-foreground"
+            >
               <Info aria-hidden className="size-3.5" />
               {redfinFailureLabel(redfinMiss)}
             </span>
