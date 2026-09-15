@@ -1066,7 +1066,7 @@ export async function fetchRedfinSearchRows(
   while (queue.length > 0 && pages < limit) {
     const wave = queue.slice(0, limit - pages);
     queue = queue.slice(wave.length);
-    const settled = await Promise.allSettled(wave.map((url) => fetchPage(url)));
+    const settled = await Promise.allSettled(wave.map((url) => fetchPage(url, tier)));
     // The OPENING page failing is the search failing — surface why.
     // A later page lost to a throttle costs its rows, not the pass:
     // all-or-nothing here is how one 429 turned into "no houses".
@@ -1109,7 +1109,7 @@ export async function fetchRedfinSearchRows(
   if (failed.length > 0 && pages < limit) {
     const retrying = failed.splice(0, limit - pages);
     const settled = await Promise.allSettled(
-      retrying.map((url) => fetchPage(url))
+      retrying.map((url) => fetchPage(url, tier))
     );
     settled.forEach((result, i) => {
       if (result.status === "rejected") failed.push(retrying[i]);
