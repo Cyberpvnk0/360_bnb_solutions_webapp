@@ -187,3 +187,64 @@ describe("one card per flat, and only one", () => {
     ).toBe("3500 Greystone Dr, Austin, TX");
   });
 });
+
+/**
+ * A free number is the cheapest number there is.
+ *
+ * The feed's contact arrives with a rental pull we already make, so it
+ * costs nothing beyond the call itself. Dropping one sends the
+ * property to a billed page scrape, or to a records lookup that spends
+ * a member's credit, for something already in hand.
+ */
+describe("the contact that rides along with the listing", () => {
+  const mapped = (raw: RentCastListing) => {
+    const out = mapRentCastListing(raw, market);
+    if (!out) throw new Error("row did not map");
+    return out;
+  };
+  /** JAX, with only the contact fields varied. */
+  const row = (
+    agent: Record<string, string> | undefined,
+    office?: Record<string, string>
+  ): RentCastListing =>
+    ({
+      ...JAX,
+      ...(agent ? { listingAgent: agent } : {}),
+      ...(office ? { listingOffice: office } : {}),
+    }) as RentCastListing;
+
+  it("keeps a number the feed gave with no name against it", () => {
+    const listing = mapped(row({ phone: "(904) 555-0142" }));
+    expect(listing.contact?.phone).toBe("(904) 555-0142");
+    // Not invented: the role says what is actually known.
+    expect(listing.contact?.name).toBeUndefined();
+    expect(listing.contact?.role).toBe("Listing contact");
+  });
+
+  it("keeps an email the same way", () => {
+    const listing = mapped(row({ email: "leasing@example.com" }));
+    expect(listing.contact?.email).toBe("leasing@example.com");
+  });
+
+  it("falls back to the office's number when the agent has none", () => {
+    const listing = mapped(row({ name: "Dana Whitfield" }, { phone: "(904) 555-0188" }));
+    expect(listing.contact?.phone).toBe("(904) 555-0188");
+    expect(listing.contact?.role).toBe("Listing agent");
+  });
+
+  it("still carries a name with no number — somebody to ask for", () => {
+    const listing = mapped(row({ name: "Dana Whitfield" }));
+    expect(listing.contact?.name).toBe("Dana Whitfield");
+    expect(listing.contact?.phone).toBeUndefined();
+  });
+
+  it("invents nothing when the feed said nothing", () => {
+    const listing = mapped(row(undefined));
+    expect(listing.contact).toBeUndefined();
+  });
+
+  it("treats a blank field as absent, not as a contact", () => {
+    const listing = mapped(row({ phone: "   ", email: "" }));
+    expect(listing.contact).toBeUndefined();
+  });
+});

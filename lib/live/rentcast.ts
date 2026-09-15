@@ -169,19 +169,36 @@ export function featuresFromFeed(raw: RentCastListing): string[] | null {
   ]);
 }
 
-/** The feed's own agent/office, when it carries one — never invented:
- *  a made-up phone number on a real address would be worse than none. */
+/**
+ * The feed's own agent/office, when it carries one — never invented:
+ * a made-up phone number on a real address would be worse than none.
+ *
+ * A NUMBER WITH NO NAME IS STILL A NUMBER. This used to require a
+ * name and return nothing without one, so a feed row carrying
+ * listingAgent.phone and no listingAgent.name was discarded whole —
+ * a free, already-paid-for telephone number thrown away, and the
+ * property then went to the page scrape or the records lookup for
+ * something it already had in hand. ListingContact.name is optional
+ * for exactly this reason, and the page-scrape path beside this one
+ * has always kept number-without-name. The two now agree.
+ *
+ * What is never invented is the NAME. "Listing contact" is the honest
+ * role when a feed gives a number and does not say whose.
+ */
 function contactFromFeed(raw: RentCastListing): ListingContact | undefined {
   const agent = raw.listingAgent;
   const office = raw.listingOffice;
   const name = agent?.name ?? office?.name;
-  if (!name) return undefined;
+  const phone = agent?.phone?.trim() || office?.phone?.trim();
+  const email = agent?.email?.trim() || office?.email?.trim();
+  // Nothing to ring, write to, or put a name against.
+  if (!name && !phone && !email) return undefined;
   return {
-    name,
+    ...(name ? { name } : {}),
     company: agent?.name ? office?.name : undefined,
-    phone: agent?.phone ?? office?.phone,
-    email: agent?.email ?? office?.email,
-    role: "Listing agent",
+    phone,
+    email,
+    role: name ? "Listing agent" : "Listing contact",
   };
 }
 
