@@ -243,10 +243,21 @@ export async function GET(request: Request) {
         });
       }
     }
-    // One plain-endpoint read of the rentals URL, so the answer does
-    // not rest on the structured parser's opinion of it.
-    const plainRentals = searchParams.get("raw")
-      ? await raw(`${root}/apartments-for-rent`)
+    /**
+     * BOTH rental paths, through the plain endpoint.
+     *
+     * Jacksonville's furnished search works and Boston's does not, on
+     * the same parser, so the parser handles rentals and Boston's URL
+     * is the thing that is wrong. The plain endpoint does no parsing,
+     * so its status is the site's own answer about whether a path
+     * exists — which is what separates "Boston is filed somewhere
+     * else" from "this path redirects and the parser will not follow".
+     */
+    const plain = searchParams.get("raw")
+      ? {
+          rentals: await raw(`${root}/rentals`),
+          apartmentsForRent: await raw(`${root}/apartments-for-rent`),
+        }
       : null;
 
     const working = results.filter((r) => r.ok && r.rows > 0);
@@ -255,7 +266,7 @@ export async function GET(request: Request) {
       cityId,
       tier,
       results,
-      ...(plainRentals ? { plainRentals } : {}),
+      ...(plain ? { plain } : {}),
       verdict:
         working.length > 0
           ? `These work: ${working.map((r) => r.label).join("; ")}. Build the URL that way.`
