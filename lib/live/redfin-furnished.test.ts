@@ -14,6 +14,14 @@ import type { Market } from "@/lib/mock/types";
  * The line these tests defend is the one between "this town has none"
  * and "we are broken", because getting it wrong in the generous
  * direction means telling every member there is no inventory anywhere.
+ *
+ * WHICH IS WHAT HAPPENED. The first cut concluded "none" whenever the
+ * bare city URL worked, on the reasoning that a working city means the
+ * filter is simply empty. It does not: a valid filter on a working
+ * page answers 200 and empty, never 404. Boston — hundreds of
+ * furnished rentals listed — read "the feed carries no furnished units
+ * here today". Only a city with NO page, or a page with no rentals on
+ * it at all, concludes "none" now.
  */
 
 const BAILEY = {
@@ -97,9 +105,22 @@ describe("reading the supplier's 500", () => {
  * status alone. A 500 has to carry the wording as well — see below.
  */
 describe.each([404, 410])("a filtered search that fails with %i", (status) => {
-  it("says NONE when the same city returns rows unfiltered", async () => {
+  /**
+   * The line that read the other way round, and cost Boston.
+   *
+   * A valid filter on a working city page answers 200 with an empty
+   * result set. It does not answer 404. So a filtered URL that errors
+   * while the bare one serves rows is a broken URL, not an empty
+   * market — and "no furnished rentals listed in Boston" is a
+   * confident, specific, wrong answer in the one place a member
+   * decides whether a market is worth working.
+   */
+  it("REPORTS it when the city itself serves rows — the URL is what is wrong", async () => {
     vendor((t) => (furnishedUrl(t) ? { status } : { status: 200, body: ROWS }));
-    await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
+    await expect(ask({ furnished: true })).rejects.toMatchObject({
+      reason: "http",
+      status,
+    });
   }, 20_000);
 
   it("says NONE when the city answers but carries no rentals", async () => {
@@ -135,9 +156,26 @@ describe("a 500, where the wording decides", () => {
     await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
   }, 25_000);
 
-  it("says NONE when the city is there and the filter is what is empty", async () => {
+  it("REPORTS it when the city is there and serving rows", async () => {
+    // Same reasoning as the 404 case: a working city page plus a
+    // failing filtered URL is a URL problem, and an entire metro
+    // reading "none" is the worst possible way to present one.
     vendor((t) =>
       furnishedUrl(t) ? { status: 500, text: UPSTREAM_500 } : { status: 200, body: ROWS }
+    );
+    await expect(ask({ furnished: true })).rejects.toMatchObject({
+      reason: "http",
+      status: 500,
+    });
+  }, 25_000);
+
+  it("says NONE when the city answers with no rentals at all", async () => {
+    // A city with a page and nothing on it has no furnished units
+    // either. This is the branch that still concludes "none".
+    vendor((t) =>
+      furnishedUrl(t)
+        ? { status: 500, text: UPSTREAM_500 }
+        : { status: 200, body: { listings: [] } }
     );
     await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
   }, 25_000);

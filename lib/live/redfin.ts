@@ -825,21 +825,32 @@ function meansNothingHere(error: unknown): boolean {
  * THE DISCRIMINATOR IS THE SAME CITY WITHOUT THE FILTER. Whatever it
  * says, it says about this city rather than about the filter:
  *
- *   rows back          the city works, so the filter is what is empty
- *   no rows, no error  the city has no rentals, so it has no furnished ones
- *   fails the same way the city has no page at all — still "none"
- *   fails some OTHER way   a real problem; report it unchanged
+ *   fails the same way    the city has no page at all — "none"
+ *   no rows, no error     the city has no rentals — "none"
+ *   ROWS BACK             the city is FINE, so the filtered URL is what
+ *                         is broken — report it, never call it "none"
+ *   fails some OTHER way  a real problem; report it unchanged
  *
- * That last line is the one holding the whole thing up. A throttle, a
- * rejected key, a timeout or a 500 that does NOT carry the supplier's
- * upstream wording all fall through to the original error, so the
- * failures that mean "we are broken" keep saying so.
+ * THE THIRD LINE USED TO SAY THE OPPOSITE, and it was wrong in the way
+ * that matters most. It read "the city works, so the filter is what is
+ * empty", which sounds reasonable and is not: a VALID filter on a
+ * working city page answers 200 with an empty result set. It does not
+ * answer 404, and it does not answer the supplier's upstream 500. An
+ * error on the filtered URL while the bare URL serves rows says the
+ * URL is wrong, not that the inventory is empty.
  *
- * WHAT THIS STILL CANNOT SEE: if the site began refusing us
- * everywhere, every city would fail this way and every market would
- * read "no furnished rentals". That is a real gap, and the thing that
- * catches it is a large market saying the same — Jacksonville going
- * quiet is the canary, and it is a loud one.
+ * What that cost: Boston, with hundreds of furnished rentals listed,
+ * read "No furnished rentals listed in Boston — the feed carries no
+ * furnished units here today". A confident, specific, wrong answer, in
+ * the one place a member decides whether a market is worth working.
+ * The gap the old comment admitted it could not see — "if the site
+ * began refusing us everywhere, every market would read no furnished
+ * rentals" — was not hypothetical; it was live, and it presented as
+ * fact rather than as a failure.
+ *
+ * Bailey, Colorado — the case this whole function exists for — is
+ * untouched: it has no rentals page at all, so the bare probe fails
+ * the same way and the honest "none" still stands.
  *
  * Costs one extra request, only on a path that otherwise returns
  * nothing usable, and only after the opening page has had its retry.
@@ -858,13 +869,29 @@ async function walkOrEmpty(
     const bare = await redfinRentalsUrl(market, {});
     if (!bare || bare === searchUrl) throw error;
 
+    // The verdict is reached AFTER the probe's own try/catch, never
+    // inside it: a `throw error` in the try lands in the catch below,
+    // where the original error passes the meansNothingHere check and
+    // is swallowed — so the rethrow silently does nothing and every
+    // path still returns "none". It did exactly that on the first
+    // attempt at this fix, and the suite went green over a change that
+    // had no effect.
+    let plain: SearchWalk;
     try {
-      await fetchRedfinSearchRows(bare, 1);
+      plain = await fetchRedfinSearchRows(bare, 1);
     } catch (probeError) {
       // The city has no page either — which answers the question that
       // was asked. Anything else is a problem worth reporting.
       if (!meansNothingHere(probeError)) throw error;
+      return emptyWalk();
     }
+    // The city serves rentals. A filter that merely matched nothing
+    // would have answered 200 and empty, so this failure is about the
+    // URL rather than the inventory — and calling it "none" is how a
+    // whole metro reads as having no furnished units.
+    if (plain.raw.length > 0) throw error;
+    // The city has a page and no rentals on it at all, so it has no
+    // furnished ones either.
     return emptyWalk();
   }
 }
