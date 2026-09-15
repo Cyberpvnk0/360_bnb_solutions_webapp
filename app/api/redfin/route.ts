@@ -203,6 +203,66 @@ export async function GET(request: Request) {
      * and whether the document smells like a rentals search — enough
      * to decide, and no listing prose crosses this boundary.
      */
+    /**
+     * The opening of a response, and its true size.
+     *
+     * A rentals page is three megabytes; nothing here needs more than
+     * its first slice to say what it is. Reading two of them whole is
+     * what put this route past the platform's sixty-second ceiling.
+     */
+    const headOf = async (res: Response, cap: number) => {
+      const body = res.body;
+      if (!body) {
+        const text = await res.text().catch(() => "");
+        return { head: text.slice(0, cap), total: text.length };
+      }
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let head = "";
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (head.length < cap) head += decoder.decode(value, { stream: true });
+      }
+      return { head, total };
+    };
+
+    /**
+     * Their own suggestion: raw mode skips further parsing, so raw
+     * succeeding where parsed fails puts the fault in their parser
+     * rather than the fetch — and gives us output we can read
+     * ourselves instead of waiting on a ticket.
+     */
+    const structuredRaw = async () => {
+      const key = process.env.SCRAPERAPI_KEY;
+      if (!key) return { ok: false, reason: "no-key" };
+      const q = new URLSearchParams({
+        api_key: key,
+        url: `${root}/rentals`,
+        raw: "true",
+      });
+      for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
+      try {
+        const res = await fetch(`${REDFIN_SEARCH_ENDPOINT}?${q}`, {
+          signal: AbortSignal.timeout(20_000),
+          cache: "no-store",
+        });
+        const { head, total } = await headOf(res, 400_000);
+        return {
+          ok: res.ok,
+          status: res.status,
+          bytes: total,
+          looksJson: /^\s*[[{]/.test(head),
+          hasListingJson: /__reactServerState|"homes"\s*:/.test(head),
+          detail: res.ok ? null : head.replace(/\s+/g, " ").slice(0, 160),
+        };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.name : "failed" };
+      }
+    };
+
     const raw = async (url: string) => {
       const key = process.env.SCRAPERAPI_KEY;
       if (!key) return { ok: false, reason: "no-key" };
@@ -210,22 +270,54 @@ export async function GET(request: Request) {
       for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
       try {
         const res = await fetch(`https://api.scraperapi.com/?${q}`, {
-          signal: AbortSignal.timeout(45_000),
+          signal: AbortSignal.timeout(20_000),
           cache: "no-store",
         });
-        const text = await res.text().catch(() => "");
+        // The first slice only. A rentals page is three megabytes and
+        // nothing here needs more than its opening to say what it is —
+        // pulling the whole document twice is what put this route past
+        // the platform's sixty-second ceiling and timed the probe out.
+        const { head, total } = await headOf(res, 600_000);
         return {
           ok: res.ok,
           status: res.status,
-          bytes: text.length,
+          bytes: total,
           // Signals only — never the document, never a listing's words.
-          looksLikeRentals: /for rent|rental listings|\/rent\//i.test(text),
-          hasListingJson: /__reactServerState|ReactServerAgent|"homes"\s*:/.test(text),
+          looksLikeRentals: /for rent|rental listings|\/rent\//i.test(head),
+          hasListingJson: /__reactServerState|ReactServerAgent|"homes"\s*:/.test(head),
         };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.name : "failed" };
       }
     };
+
+    /**
+     * raw=1 IS ITS OWN RUN, not an addition to the five above.
+     *
+     * Together they were eight requests — five structured, one raw,
+     * and two three-megabyte page reads — against a sixty-second
+     * function. It timed out three times before anyone saw an answer,
+     * which is a diagnostic that costs credits and teaches nothing.
+     */
+    if (searchParams.get("raw")) {
+      const structuredRawResult = await structuredRaw();
+      const plainResult = {
+        rentals: await raw(`${root}/rentals`),
+        apartmentsForRent: await raw(`${root}/apartments-for-rent`),
+      };
+      return NextResponse.json({
+        market: market.slug,
+        cityId,
+        tier,
+        structuredRaw: structuredRawResult,
+        plain: plainResult,
+        verdict: structuredRawResult.ok
+          ? "raw=true SUCCEEDS where parsed fails — their parser is the fault, and raw output is a workaround we can read ourselves."
+          : plainResult.rentals.ok || plainResult.apartmentsForRent.ok
+            ? "The page is fetchable plainly and BOTH structured modes refuse it. That is their bug to reproduce, with the URLs above."
+            : "Neither the structured endpoint nor a plain read gets this page. Check the URL exists in a browser before reporting anything.",
+      });
+    }
 
     const results = [];
     for (const c of candidates) {
@@ -244,70 +336,12 @@ export async function GET(request: Request) {
         });
       }
     }
-    /**
-     * BOTH rental paths, through the plain endpoint.
-     *
-     * Jacksonville's furnished search works and Boston's does not, on
-     * the same parser, so the parser handles rentals and Boston's URL
-     * is the thing that is wrong. The plain endpoint does no parsing,
-     * so its status is the site's own answer about whether a path
-     * exists — which is what separates "Boston is filed somewhere
-     * else" from "this path redirects and the parser will not follow".
-     */
-    /**
-     * THE STRUCTURED ENDPOINT WITH raw=true.
-     *
-     * Their support suggested it: raw mode skips further parsing, so
-     * if raw succeeds where parsed fails, the fault is the parser for
-     * these listings rather than the fetch. It is also a possible
-     * workaround — raw output we can read ourselves beats waiting.
-     */
-    const structuredRaw = searchParams.get("raw")
-      ? await (async () => {
-          const key = process.env.SCRAPERAPI_KEY;
-          if (!key) return { ok: false, reason: "no-key" };
-          const q = new URLSearchParams({
-            api_key: key,
-            url: `${root}/rentals`,
-            raw: "true",
-          });
-          for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) q.set(k, v);
-          try {
-            const res = await fetch(`${REDFIN_SEARCH_ENDPOINT}?${q}`, {
-              signal: AbortSignal.timeout(45_000),
-              cache: "no-store",
-            });
-            const text = await res.text().catch(() => "");
-            return {
-              ok: res.ok,
-              status: res.status,
-              bytes: text.length,
-              // Structure only — enough to say whether anything usable
-              // came back, without carrying a listing's words out.
-              looksJson: /^\s*[[{]/.test(text),
-              detail: res.ok ? null : text.replace(/\s+/g, " ").slice(0, 160),
-            };
-          } catch (e) {
-            return { ok: false, reason: e instanceof Error ? e.name : "failed" };
-          }
-        })()
-      : null;
-
-    const plain = searchParams.get("raw")
-      ? {
-          rentals: await raw(`${root}/rentals`),
-          apartmentsForRent: await raw(`${root}/apartments-for-rent`),
-        }
-      : null;
-
     const working = results.filter((r) => r.ok && r.rows > 0);
     return NextResponse.json({
       market: market.slug,
       cityId,
       tier,
       results,
-      ...(plain ? { plain } : {}),
-      ...(structuredRaw ? { structuredRaw } : {}),
       verdict:
         working.length > 0
           ? `These work: ${working.map((r) => r.label).join("; ")}. Build the URL that way.`
