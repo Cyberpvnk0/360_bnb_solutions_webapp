@@ -15,7 +15,13 @@
 import { NextResponse } from "next/server";
 import { claimMarket, monthlyCap, requireOperator } from "@/lib/auth/gate";
 import { checkLiveSearch, commitLiveSearch } from "@/lib/live/quota";
-import { fetchRedfinRentals, redfinRentalsUrlFor, RedfinError } from "@/lib/live/redfin";
+import {
+  fetchRedfinRentals,
+  fetchRedfinSearchRows,
+  redfinRentalsUrlFor,
+  RedfinError,
+} from "@/lib/live/redfin";
+import { cityIdFor } from "@/lib/live/redfin-city";
 import { probeCityId } from "@/lib/live/redfin-city";
 import {
   amenityFields,
@@ -95,9 +101,76 @@ export async function GET(request: Request) {
   // ledger, and print the vendor's own schema: operator-only, and never
   // open by default. The furnished search below is a product feature
   // and answers to the account's plan.
-  if (shape || searchParams.get("resolve")) {
+  if (shape || searchParams.get("resolve") || searchParams.get("probe")) {
     const op = await requireOperator(request);
     if (!op.ok) return op.response;
+  }
+
+  /**
+   * THE FILTERED URL AND THE BARE ONE, SIDE BY SIDE.
+   *
+   *   /api/redfin?market=boston&probe=1
+   *
+   * Boston has hundreds of furnished rentals listed and this product
+   * said it had none. Two questions decide why, and neither can be
+   * answered by reading code: does the city's own rentals URL work,
+   * and does the same URL with /filter/is-furnished on the end work?
+   * This asks the site both, in one request, and prints the URLs, the
+   * statuses and the row counts.
+   *
+   * Two billed page reads, on purpose, operator-only. That is the
+   * price of an answer instead of another guess — and the whole
+   * furnished feature for 409 markets rests on the filter segment
+   * being spelled the way the site spells it today.
+   */
+  if (searchParams.get("probe")) {
+    const cityId = await cityIdFor(market);
+    if (cityId === null) {
+      return NextResponse.json({
+        market: market.slug,
+        cityId: null,
+        verdict:
+          "No city id — the resolver could not place this market. Try ?resolve=1.",
+      });
+    }
+    const look = async (opts: { furnished?: boolean }) => {
+      const url = redfinRentalsUrlFor(market, cityId, opts);
+      try {
+        const walk = await fetchRedfinSearchRows(url, 1);
+        return { url, ok: true, status: 200, reason: null, rows: walk.raw.length };
+      } catch (e) {
+        const err = e instanceof RedfinError ? e : null;
+        return {
+          url,
+          ok: false,
+          status: err?.status ?? null,
+          reason: err?.reason ?? "unknown",
+          detail: err?.detail?.slice(0, 200) ?? null,
+          rows: 0,
+        };
+      }
+    };
+    // Sequential, not parallel: the second answer only means something
+    // if the first one was allowed through, and two at once against a
+    // throttling supplier reads as a throttle rather than a verdict.
+    const bare = await look({});
+    const filtered = await look({ furnished: true });
+    return NextResponse.json({
+      market: market.slug,
+      name: `${market.name}, ${market.stateCode}`,
+      cityId,
+      bare,
+      filtered,
+      verdict: !bare.ok
+        ? `The city's own rentals URL fails (${bare.reason} ${bare.status ?? ""}). Open bare.url in a browser — if the site serves it, the path shape is wrong, not the filter.`
+        : bare.rows === 0
+          ? "The city's rentals URL answered but parsed no rows. The path may be right and the extractor wrong — compare against a browser."
+          : filtered.ok && filtered.rows > 0
+            ? "Both work. Furnished search is healthy for this market."
+            : filtered.ok
+              ? "The filtered URL works and genuinely returned no rows for page 1."
+              : `The city works (${bare.rows} rows) and the FILTERED url fails (${filtered.reason} ${filtered.status ?? ""}). Open filtered.url in a browser: if it 404s there too, "is-furnished" is not how the site spells this filter any more and redfinRentalsUrlFor needs the real segment.`,
+    });
   }
 
   // Resolver check: which city id this market lands on, and the URL it
