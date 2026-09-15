@@ -52,7 +52,10 @@ import { Assistant } from "@/components/assistant/assistant";
 import { AddToListMenu } from "@/components/deals/add-to-list-menu";
 import { ContactDetails } from "@/components/deals/contact-details";
 import { PhotosLink } from "@/components/deals/photos-link";
-import { useListingContact } from "@/components/deals/use-listing-contact";
+import {
+  useListingContact,
+  withKnownContact,
+} from "@/components/deals/use-listing-contact";
 import { RevenueRange } from "./revenue-range";
 import type { LeaseComp } from "@/lib/analyze/lease-evidence";
 import { HINTS } from "@/lib/copy/hints";
@@ -502,7 +505,18 @@ export function AnalyzeResult({
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-stretch gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center [&>*]:w-full sm:[&>*]:w-auto">
-            {listing ? <AddToListMenu listing={listing} size="default" variant="outline" /> : null}
+            {listing ? (
+              // With the contact this page resolved, not without it.
+              // The number shown two panels down is the reason the
+              // property gets saved at all; saving the row as it
+              // arrived threw it away and made the saved list pay to
+              // read the same page again.
+              <AddToListMenu
+                listing={withKnownContact(listing, contact, looked.page)}
+                size="default"
+                variant="outline"
+              />
+            ) : null}
             <Button variant="outline" onClick={handleExport} className="gap-1.5">
               <FileDown aria-hidden className="size-4" />
               Landlord packet (PDF)

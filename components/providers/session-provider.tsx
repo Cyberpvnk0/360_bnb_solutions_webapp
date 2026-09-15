@@ -37,18 +37,23 @@ import {
   persistListItem,
   persistWatch,
   removeListItem,
+  writeCall,
 } from "@/lib/db/user-data";
 import { readLists, writeLists } from "@/lib/storage/deal-lists";
+import { applyCall, editNote } from "@/lib/saved/call-queue";
 import type {
   ActivityEvent,
   Analysis,
+  CallOutcome,
   Deal,
   DealList,
+  DealListItem,
   Landlord,
   PipelineStage,
   RentalListing,
   SessionUser,
 } from "@/lib/mock/types";
+import { NO_CALLS } from "@/lib/mock/types";
 
 export type UpgradeReason = "credits" | "deals" | "export" | "generic";
 
@@ -116,6 +121,28 @@ interface SessionContextValue {
   deleteList: (listId: string) => void;
   /** Add or remove one rental from one list. */
   toggleListMembership: (listId: string, listing: RentalListing) => void;
+  /**
+   * Record a call to the landlord behind one saved rental.
+   *
+   * Every logged call is an ATTEMPT — ringing somebody a second time
+   * counts twice however the first one ended. The note replaces what
+   * was there; see lib/saved/call-queue for why.
+   */
+  logCall: (
+    listId: string,
+    listingId: string,
+    outcome: CallOutcome,
+    note: string
+  ) => void;
+  /** Change the words without claiming a call was made. */
+  setCallNote: (listId: string, listingId: string, note: string) => void;
+  /**
+   * Replace a saved rental's snapshot in place — for the one case that
+   * needs it: the call sheet found the landlord's number for a row
+   * saved before there was one. Reading that page was billed, so the
+   * answer is kept rather than found again on the next pass.
+   */
+  updateSavedListing: (listId: string, listing: RentalListing) => void;
   /** Which lists hold this rental. */
   listsWithListing: (listingId: string) => string[];
   /** Saved to any list at all. */
@@ -200,7 +227,7 @@ async function adoptLists(
     // the same moment waits here, then finds the key already cleared
     // by the first and moves nothing twice.
     const local = (readLists(window.localStorage) ?? []).filter(
-      (l) => l.listings.length > 0
+      (l) => l.items.length > 0
     );
     if (local.length === 0) return null;
 
@@ -220,11 +247,23 @@ async function adoptLists(
         console.error("[aircore] failed to move a list to the account:", made.error);
         continue;
       }
-      for (const listing of list.listings) {
-        const put = await persistListItem(supabase, userId, list.id, listing);
+      for (const item of list.items) {
+        const put = await persistListItem(supabase, userId, list.id, item.listing);
         if (!put.ok) {
           failures += 1;
           console.error("[aircore] failed to move a saved rental:", put.error);
+          continue;
+        }
+        // A device list predates the call log, so there is normally
+        // nothing here — but a list moved up from a newer build might
+        // carry one, and losing somebody's notes in the move would be
+        // the worst possible way to find that out.
+        if (item.call.outcome || item.call.note) {
+          const logged = await writeCall(supabase, list.id, item.listing.id, item.call);
+          if (!logged.ok) {
+            failures += 1;
+            console.error("[aircore] failed to move a call log:", logged.error);
+          }
         }
       }
     }
@@ -739,7 +778,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         id: storedId("list"),
         name: name.trim() || "Untitled list",
         createdAt: new Date().toISOString().slice(0, 10),
-        listings: [],
+        items: [],
       };
       setLists((prev) => [...prev, created]);
       persist("list", (client, id) => {
@@ -777,17 +816,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const toggleListMembership = React.useCallback(
     (listId: string, listing: RentalListing) => {
-      const has = lists
+      const existing = lists
         .find((l) => l.id === listId)
-        ?.listings.some((x) => x.id === listing.id);
+        ?.items.find((x) => x.listing.id === listing.id);
+      const has = Boolean(existing);
       setLists((prev) =>
         prev.map((l) => {
           if (l.id !== listId) return l;
           return {
             ...l,
-            listings: has
-              ? l.listings.filter((x) => x.id !== listing.id)
-              : [listing, ...l.listings],
+            items: has
+              ? l.items.filter((x) => x.listing.id !== listing.id)
+              : [
+                  {
+                    listing,
+                    savedAt: new Date().toISOString(),
+                    call: NO_CALLS,
+                  },
+                  ...l.items,
+                ],
           };
         })
       );
@@ -802,17 +849,102 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [lists, persist]
   );
 
+  /**
+   * A call, against one saved rental.
+   *
+   * Optimistic, like every other write here: the queue advances on the
+   * tap. A hunter logging four calls in four minutes cannot wait on a
+   * round trip between each, and the alternative — a spinner on the
+   * outcome buttons — would make the fast path feel like the slow one.
+   * The failure is reported by `persist`, which already tells the
+   * person when their work did not save.
+   */
+  const writeCallLog = React.useCallback(
+    (
+      listId: string,
+      listingId: string,
+      next: (prev: DealListItem["call"]) => DealListItem["call"],
+      label: string
+    ) => {
+      let written: DealListItem["call"] | null = null;
+      setLists((prev) =>
+        prev.map((l) => {
+          if (l.id !== listId) return l;
+          return {
+            ...l,
+            items: l.items.map((item) => {
+              if (item.listing.id !== listingId) return item;
+              written = next(item.call);
+              return { ...item, call: written };
+            }),
+          };
+        })
+      );
+      // Nothing matched — the row was removed from under the sheet.
+      // Writing anyway would resurrect a call log against a listing
+      // that is no longer in the list.
+      if (!written) return;
+      const call = written;
+      persist(label, async (client) => {
+        await listWrites.current.get(listId)?.catch(() => undefined);
+        return writeCall(client, listId, listingId, call);
+      });
+    },
+    [persist]
+  );
+
+  const logCall = React.useCallback(
+    (listId: string, listingId: string, outcome: CallOutcome, note: string) => {
+      const at = new Date().toISOString();
+      writeCallLog(listId, listingId, (prev) => applyCall(prev, outcome, note, at), "call");
+    },
+    [writeCallLog]
+  );
+
+  const setCallNote = React.useCallback(
+    (listId: string, listingId: string, note: string) => {
+      writeCallLog(listId, listingId, (prev) => editNote(prev, note), "call note");
+    },
+    [writeCallLog]
+  );
+
+  const updateSavedListing = React.useCallback(
+    (listId: string, listing: RentalListing) => {
+      let present = false;
+      setLists((prev) =>
+        prev.map((l) => {
+          if (l.id !== listId) return l;
+          return {
+            ...l,
+            items: l.items.map((item) => {
+              if (item.listing.id !== listing.id) return item;
+              present = true;
+              return { ...item, listing };
+            }),
+          };
+        })
+      );
+      // Not in this list any more: the upsert below would ADD it back.
+      if (!present) return;
+      persist("saved rental", async (client, id) => {
+        await listWrites.current.get(listId)?.catch(() => undefined);
+        return persistListItem(client, id, listId, listing);
+      });
+    },
+    [persist]
+  );
+
   const listsWithListing = React.useCallback(
     (listingId: string) =>
       lists
-        .filter((l) => l.listings.some((x) => x.id === listingId))
+        .filter((l) => l.items.some((x) => x.listing.id === listingId))
         .map((l) => l.id),
     [lists]
   );
 
   const isSaved = React.useCallback(
     (listingId: string) =>
-      lists.some((l) => l.listings.some((x) => x.id === listingId)),
+      lists.some((l) => l.items.some((x) => x.listing.id === listingId)),
     [lists]
   );
 
@@ -967,6 +1099,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     renameList,
     deleteList,
     toggleListMembership,
+    logCall,
+    setCallNote,
+    updateSavedListing,
     listsWithListing,
     isSaved,
     upgradeTo,

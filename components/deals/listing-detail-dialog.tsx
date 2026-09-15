@@ -45,7 +45,7 @@ import { ContactDetails } from "./contact-details";
 import { money, rangeText, rangeTone } from "./net-range";
 import { PhotosLink } from "./photos-link";
 import { PropertyImage } from "./property-image";
-import { useListingContact } from "./use-listing-contact";
+import { useListingContact, withKnownContact } from "./use-listing-contact";
 import { usePropertyFigures } from "./use-property-figures";
 import { cn } from "@/lib/utils";
 
@@ -361,16 +361,18 @@ export function ListingDetailDialog({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/50 px-4 py-3 sm:px-5">
-                <AddToListMenu listing={listing} />
+                {/* BOTH take what this panel learned, not the row it
+                    opened with. Saving a property is the move that ends
+                    in a phone call, so the number the page read just
+                    found is the single most valuable thing to keep —
+                    and it used to be dropped right here, one line above
+                    the button that kept it. */}
+                <AddToListMenu listing={withKnownContact(listing, contact, pageFound)} />
                 <AnalyzeButton
-                  // The result shows who to call too. What this panel
-                  // already knows goes with it, so the new tab does not
-                  // read the listing's page for an answer in hand.
-                  listing={{
-                    ...listing,
-                    ...(contact ? { contact } : {}),
-                    ...(listing.sourceUrl || !pageFound ? {} : { sourceUrl: pageFound }),
-                  }}
+                  // The result shows who to call too, so the new tab
+                  // does not read the listing's page for an answer
+                  // already in hand.
+                  listing={withKnownContact(listing, contact, pageFound)}
                   analyzed={analyzed}
                 />
                 <PhotosLink

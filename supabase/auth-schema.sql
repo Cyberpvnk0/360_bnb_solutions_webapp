@@ -621,3 +621,49 @@ grant select, insert, update, delete
 
 create index if not exists deal_lists_user_idx      on public.deal_lists (user_id, created_at);
 create index if not exists deal_list_items_user_idx on public.deal_list_items (user_id, list_id);
+
+/* ------------------------------------------------------------------ */
+/* The call log on a saved rental                                      */
+/* ------------------------------------------------------------------ */
+
+-- A saved list is a CALL list: the hunter shortlists rentals in the
+-- Deal Finder, then works down the list ringing landlords. Until these
+-- columns there was nowhere to record that a number had been tried,
+-- what was said, or that the line was dead — so every pass down the
+-- list looked identical to the first one and the real record lived in
+-- somebody's notebook.
+--
+-- Added rather than a new table: this is one row's worth of state
+-- about one saved rental, it is read on exactly the same query, and a
+-- join for four columns would buy nothing. Every one is nullable or
+-- defaulted, so rows saved before today read as "never called", which
+-- is the truth about them.
+alter table public.deal_list_items
+  add column if not exists call_outcome   text,
+  add column if not exists call_note      text    not null default '',
+  add column if not exists call_attempts  integer not null default 0,
+  add column if not exists last_called_at timestamptz;
+
+-- The four the buttons offer, and nothing else. A free-text column
+-- would take "voicemail?" and "VM" and "left msg" from three different
+-- clients and the queue could no longer sort on it.
+alter table public.deal_list_items
+  drop constraint if exists deal_list_items_call_outcome_check;
+alter table public.deal_list_items
+  add constraint deal_list_items_call_outcome_check
+  check (call_outcome is null
+         or call_outcome in ('no-answer', 'voicemail', 'spoke', 'wrong-number'));
+
+-- Bounded here as well as in the client: the policy lets a browser
+-- write this column directly, so the only limit that actually holds is
+-- the one the database enforces.
+alter table public.deal_list_items
+  drop constraint if exists deal_list_items_call_note_len;
+alter table public.deal_list_items
+  add constraint deal_list_items_call_note_len check (char_length(call_note) <= 2000);
+
+alter table public.deal_list_items
+  drop constraint if exists deal_list_items_call_attempts_sane;
+alter table public.deal_list_items
+  add constraint deal_list_items_call_attempts_sane
+  check (call_attempts >= 0 and call_attempts <= 1000);

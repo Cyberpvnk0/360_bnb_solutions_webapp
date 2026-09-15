@@ -168,3 +168,36 @@ export function resetListingContactCache(): void {
   answers.clear();
   pending.clear();
 }
+
+/**
+ * The row, plus whatever the page read just found.
+ *
+ * The lookup above is billed: it opens the property's own page and
+ * reads who to call. Everything that then hands the listing onward —
+ * "Add to list", "Run the numbers" — must hand on THIS rather than the
+ * row as it arrived, or the answer is thrown away the moment the panel
+ * closes.
+ *
+ * It was thrown away. The overlay resolved a contact, showed the
+ * member a phone number, and passed the un-enriched row to "Add to
+ * list" two lines above passing the enriched one to the analyzer. So a
+ * saved property had no phone on it, the saved list had nothing to
+ * dial, and reaching the same landlord from there paid to read the
+ * same page a second time. One function, used at every hand-off, is
+ * the guarantee that cannot drift apart again.
+ *
+ * The listing's own fields always win: a feed that stated a contact
+ * knows better than a page we guessed at, and a row that already
+ * carries its page keeps it.
+ */
+export function withKnownContact(
+  listing: RentalListing,
+  contact: ListingContact | null | undefined,
+  page?: string | null
+): RentalListing {
+  return {
+    ...listing,
+    ...(contact ? { contact } : {}),
+    ...(listing.sourceUrl || !page ? {} : { sourceUrl: page }),
+  };
+}

@@ -538,7 +538,7 @@ export function DealsExplorer({
         : marketRows
           ? collapseDuplicateListings(marketRows)
           : listFilter
-            ? (lists.find((l) => l.id === listFilter)?.listings ?? [])
+            ? (lists.find((l) => l.id === listFilter)?.items.map((i) => i.listing) ?? [])
             : [];
     // A ZIP search shows that ZIP and nothing else, whatever the source:
     // the furnished set above is a whole city's, and even the feed's own
@@ -602,7 +602,7 @@ export function DealsExplorer({
       .filter((r) => {
         if (!listFilter) return true;
         const list = lists.find((l) => l.id === listFilter);
-        return Boolean(list?.listings.some((x) => x.id === r.listing.id));
+        return Boolean(list?.items.some((x) => x.listing.id === r.listing.id));
       })
       // What the map is looking at, once the person has moved it.
       .filter((r) => !viewBounds || inBounds(r.listing, viewBounds))
@@ -1040,7 +1040,7 @@ export function DealsExplorer({
                 >
                   <Bookmark aria-hidden className="size-3.5" />
                   <span className="max-w-28 truncate">{open.name}</span>
-                  <span className="tabular">{open.listings.length}</span>
+                  <span className="tabular">{open.items.length}</span>
                   <X aria-hidden className="size-3" />
                 </button>
               ) : null;

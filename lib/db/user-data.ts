@@ -24,8 +24,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ActivityEvent,
   ActivityType,
+  CallLog,
+  CallOutcome,
   Deal,
   DealList,
+  DealListItem,
   Landlord,
   PipelineStage,
   RentalListing,
@@ -107,6 +110,8 @@ function toDeal(row: Row): Deal {
   };
 }
 
+const STR_POLICIES = new Set<StrPolicy>(["yes", "no", "negotiable"]);
+
 function toLandlord(row: Row): Landlord {
   return {
     id: str(row.id),
@@ -115,7 +120,15 @@ function toLandlord(row: Row): Landlord {
     phone: str(row.phone),
     email: str(row.email),
     unitsControlled: num(row.units_controlled),
-    allowsStr: (str(row.allows_str, "unknown") as StrPolicy) ?? "unknown",
+    // "negotiable" is the unknown: StrPolicy has three values and none
+    // of them is "don't know", which is what a row with no answer on
+    // file actually holds. It used to read back the literal string
+    // "unknown" — outside the union, so the policy chip rendered
+    // nothing and the CSV column came out blank. The Add landlord
+    // dialog has always opened on "negotiable" for the same question.
+    allowsStr: STR_POLICIES.has(str(row.allows_str) as StrPolicy)
+      ? (str(row.allows_str) as StrPolicy)
+      : "negotiable",
     notes: str(row.notes),
     dealIds: Array.isArray(row.deal_ids) ? (row.deal_ids as string[]) : [],
     lastContacted: str(row.last_contacted) || undefined,
@@ -151,7 +164,16 @@ export async function loadUserData(
     supabase.from("watched_markets").select("market_slug").eq("user_id", userId),
     supabase.from("activity").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(40),
     supabase.from("deal_lists").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
-    supabase.from("deal_list_items").select("list_id, listing, created_at").eq("user_id", userId).order("created_at", { ascending: false }),
+    supabase
+      .from("deal_list_items")
+      // Named columns rather than *, so a store that has not been
+      // migrated yet fails loudly here instead of reading every saved
+      // rental back as "never called".
+      .select(
+        "list_id, listing, created_at, call_outcome, call_note, call_attempts, last_called_at"
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
   ]);
 
   const failed = (
@@ -189,27 +211,61 @@ export async function loadUserData(
   };
 }
 
+const OUTCOMES = new Set<CallOutcome>([
+  "no-answer",
+  "voicemail",
+  "spoke",
+  "wrong-number",
+]);
+
+/**
+ * The call log off a row.
+ *
+ * An unrecognised outcome reads as never called rather than as itself:
+ * the column is constrained, but a store migrated half way or written
+ * by an older client can still hand back something the queue cannot
+ * sort on, and a property that sorts nowhere is a property that never
+ * gets rung.
+ */
+function toCall(row: Row): CallLog {
+  const outcome = str(row.call_outcome);
+  return {
+    outcome: OUTCOMES.has(outcome as CallOutcome) ? (outcome as CallOutcome) : null,
+    note: str(row.call_note),
+    lastCalledAt: str(row.last_called_at) || null,
+    attempts: Math.max(0, Math.trunc(num(row.call_attempts))),
+  };
+}
+
 /**
  * Lists and their items, joined here rather than in the query: two
  * flat selects under row-level security are simpler to reason about
  * than an embedded resource, and an item whose snapshot no longer
  * parses as a listing is dropped rather than rendered as a blank card.
+ *
+ * The item's own created_at comes through now. It used to be selected
+ * and then dropped on the floor, which is why a saved list could not
+ * say when anything was saved.
  */
 function toLists(listRows: Row[], itemRows: Row[]): DealList[] {
-  const byList = new Map<string, RentalListing[]>();
+  const byList = new Map<string, DealListItem[]>();
   for (const r of itemRows) {
     const listId = str(r.list_id);
     const snapshot = r.listing;
     if (!listId || !isListing(snapshot)) continue;
     const arr = byList.get(listId) ?? [];
-    arr.push(snapshot);
+    arr.push({
+      listing: snapshot,
+      savedAt: str(r.created_at),
+      call: toCall(r),
+    });
     byList.set(listId, arr);
   }
   return listRows.map((r) => ({
     id: str(r.id),
     name: str(r.name, "Untitled list"),
     createdAt: str(r.created_at).slice(0, 10),
-    listings: byList.get(str(r.id)) ?? [],
+    items: byList.get(str(r.id)) ?? [],
   }));
 }
 
@@ -367,8 +423,15 @@ export async function deleteListRow(
   return done(error);
 }
 
-/** One rental into one list, as it stands right now. Re-adding the
- *  same rental is a no-op rather than an error. */
+/**
+ * One rental into one list, as it stands right now. Re-adding the same
+ * rental is a no-op rather than an error.
+ *
+ * The call columns are deliberately NOT in this upsert. Re-saving a
+ * property somebody has already rung — which happens the moment they
+ * open it in the Deal Finder again — must not wipe the note they took
+ * on the phone. Only writeCall touches the call log.
+ */
 export async function persistListItem(
   supabase: SupabaseClient,
   userId: string,
@@ -384,6 +447,28 @@ export async function persistListItem(
     },
     { onConflict: "list_id,listing_id" }
   );
+  return done(error);
+}
+
+/** What happened on the phone, against one saved rental. An update
+ *  rather than an upsert: there is no call to log about a property
+ *  that is not in the list. */
+export async function writeCall(
+  supabase: SupabaseClient,
+  listId: string,
+  listingId: string,
+  call: CallLog
+): Promise<WriteOutcome> {
+  const { error } = await supabase
+    .from("deal_list_items")
+    .update({
+      call_outcome: call.outcome,
+      call_note: call.note,
+      call_attempts: call.attempts,
+      last_called_at: call.lastCalledAt,
+    })
+    .eq("list_id", listId)
+    .eq("listing_id", listingId);
   return done(error);
 }
 

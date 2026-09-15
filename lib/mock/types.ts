@@ -285,13 +285,79 @@ export interface ListingContact {
     | "Listing contact";
 }
 
+/**
+ * How a call to a landlord ended.
+ *
+ * Four, because four is what a person can pick from without reading,
+ * one-handed, seconds after hanging up. Anything finer belongs in the
+ * note beside it — "spoke, wants 12mo minimum" is a sentence, not a
+ * taxonomy, and a dropdown of fifteen states gets filled in wrong or
+ * not at all.
+ *
+ * The split that earns its place is no-answer against voicemail: one
+ * is worth dialling again this afternoon, the other is worth waiting
+ * on. Wrong number is the only one that takes a property OUT of the
+ * queue without anybody deciding to — there is nobody there to call.
+ */
+export type CallOutcome = "no-answer" | "voicemail" | "spoke" | "wrong-number";
+
+/**
+ * What happened when this saved rental was called.
+ *
+ * Absent outcome means never dialled, which is different from dialled
+ * and nobody picked up — the first is work to do, the second is work
+ * done. The queue on /saved reads exactly that difference.
+ */
+export interface CallLog {
+  /** null until somebody has actually rung. */
+  outcome: CallOutcome | null;
+  /** The hunter's own words. "Answered, wants a 12-month term" is the
+   *  whole point of the feature; the outcome above is just the sort. */
+  note: string;
+  /** When the last attempt was logged, ISO. */
+  lastCalledAt: string | null;
+  /** How many times this number has been tried. Three no-answers is a
+   *  different fact from one, and the row says so. */
+  attempts: number;
+}
+
+export const NO_CALLS: CallLog = {
+  outcome: null,
+  note: "",
+  lastCalledAt: null,
+  attempts: 0,
+};
+
+/**
+ * One rental in a saved list — the property AND the work done on it.
+ *
+ * This used to be a bare RentalListing, which is why the saved list
+ * could not be worked: there was nowhere to record that a landlord had
+ * been rung, what they said, or that the number was dead. A hunter
+ * going down a list of twenty kept that in their head or in a
+ * notebook, and the app they were paying for showed them the same
+ * twenty rows on every pass with no idea which ones were finished.
+ *
+ * The listing is the snapshot AS SAVED — the live feed rolls daily and
+ * a rental can be gone next week; what was shortlisted is what gets
+ * shown.
+ */
+export interface DealListItem {
+  listing: RentalListing;
+  /** When it was added, ISO. The list's natural order. */
+  savedAt: string;
+  call: CallLog;
+}
+
 /** A named collection of saved rentals — how a hunter organizes a
  *  browsing session into candidates worth a call. */
 export interface DealList {
   id: string;
   name: string;
   createdAt: string;
-  listings: RentalListing[];
+  /** Newest first, as saved. The call queue re-orders its own copy;
+   *  this stays the order things arrived in. */
+  items: DealListItem[];
 }
 
 /**

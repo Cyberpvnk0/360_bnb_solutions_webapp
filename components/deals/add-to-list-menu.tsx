@@ -103,7 +103,7 @@ export function AddToListMenu({
                   </span>
                   <span className="min-w-0 flex-1 truncate">{list.name}</span>
                   <span className="shrink-0 text-[11px] text-muted-foreground tabular">
-                    {list.listings.length}
+                    {list.items.length}
                   </span>
                 </button>
               </div>
