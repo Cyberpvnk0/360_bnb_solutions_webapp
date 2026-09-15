@@ -21,6 +21,8 @@ import {
   redfinRentalsUrlFor,
   redfinScrapeTier,
   RedfinError,
+  SCRAPE_TIER_PARAMS,
+  type RedfinScrapeTier,
 } from "@/lib/live/redfin";
 import { cityIdFor } from "@/lib/live/redfin-city";
 import { probeCityId } from "@/lib/live/redfin-city";
@@ -108,7 +110,12 @@ export async function GET(request: Request) {
   // ledger, and print the vendor's own schema: operator-only, and never
   // open by default. The furnished search below is a product feature
   // and answers to the account's plan.
-  if (shape || searchParams.get("resolve") || searchParams.get("probe")) {
+  if (
+    shape ||
+    searchParams.get("resolve") ||
+    searchParams.get("probe") ||
+    searchParams.get("paths")
+  ) {
     const op = await requireOperator(request);
     if (!op.ok) return op.response;
   }
@@ -130,6 +137,81 @@ export async function GET(request: Request) {
    * furnished feature for 409 markets rests on the filter segment
    * being spelled the way the site spells it today.
    */
+  /**
+   * WHICH URL, AND ON WHICH TIER, THE SUPPLIER WILL ACTUALLY FETCH.
+   *
+   *   /api/redfin?market=boston&paths=1
+   *   /api/redfin?market=boston&paths=1&tier=ultra
+   *
+   * Premium is going out and redfin.com is still refused, so the
+   * question is no longer the filter and no longer the flag. It is
+   * whether the path shape we build is one the supplier recognises —
+   * and, underneath that, whether it will fetch this domain at all.
+   *
+   * The last candidate is the discriminator. It is the city's plain
+   * page rather than a rentals search: if even THAT is refused, no URL
+   * shape will help and the answer is a conversation with the
+   * supplier. If it comes back and the rentals paths do not, the
+   * rentals path is simply spelled wrong and this prints the spelling
+   * that works.
+   *
+   * One billed request per candidate, sequential so a throttle cannot
+   * masquerade as a verdict, operator-only.
+   */
+  if (searchParams.get("paths")) {
+    const cityId = await cityIdFor(market);
+    if (cityId === null) {
+      return NextResponse.json({ market: market.slug, cityId: null, verdict: "No city id." });
+    }
+    const tierRaw = searchParams.get("tier") ?? "";
+    const tier: RedfinScrapeTier =
+      tierRaw in SCRAPE_TIER_PARAMS ? (tierRaw as RedfinScrapeTier) : redfinScrapeTier();
+    const city = market.name.trim().replace(/\s+/g, "-");
+    const root = `https://www.redfin.com/city/${cityId}/${market.stateCode}/${city}`;
+    const candidates: { label: string; url: string }[] = [
+      { label: "rentals (what we build today)", url: `${root}/rentals` },
+      { label: "apartments-for-rent", url: `${root}/apartments-for-rent` },
+      { label: "rentals + is-furnished", url: `${root}/rentals/filter/is-furnished` },
+      {
+        label: "apartments-for-rent + is-furnished",
+        url: `${root}/apartments-for-rent/filter/is-furnished`,
+      },
+      { label: "the city page itself (can we reach the domain at all?)", url: root },
+    ];
+    const results = [];
+    for (const c of candidates) {
+      try {
+        const walk = await fetchRedfinSearchRows(c.url, 1, tier);
+        results.push({ ...c, ok: true, status: 200, rows: walk.raw.length, credits: walk.credits });
+      } catch (e) {
+        const err = e instanceof RedfinError ? e : null;
+        results.push({
+          ...c,
+          ok: false,
+          status: err?.status ?? null,
+          reason: err?.reason ?? "unknown",
+          detail: err?.detail?.slice(0, 160) ?? null,
+          rows: 0,
+        });
+      }
+    }
+    const working = results.filter((r) => r.ok && r.rows > 0);
+    return NextResponse.json({
+      market: market.slug,
+      cityId,
+      tier,
+      results,
+      verdict:
+        working.length > 0
+          ? `These work: ${working.map((r) => r.label).join("; ")}. Build the URL that way.`
+          : results.some((r) => r.ok)
+            ? "Some answered but parsed no rows — the supplier reached the page and the extractor read nothing from it."
+            : tier !== "ultra"
+              ? `Every candidate refused on the "${tier}" tier, including the plain city page. Re-run with &tier=ultra before concluding anything about the paths.`
+              : "Every candidate refused on ULTRA, including the plain city page. The supplier will not fetch redfin.com for this account at all — that is a question for them, not a URL we can spell differently.",
+    });
+  }
+
   if (searchParams.get("probe")) {
     const cityId = await cityIdFor(market);
     if (cityId === null) {

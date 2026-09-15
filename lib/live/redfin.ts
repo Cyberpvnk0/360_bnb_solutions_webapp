@@ -694,7 +694,10 @@ function creditsFrom(res: Response): number | null {
  */
 const PAGE_TIMEOUT_MS = 45_000;
 
-async function fetchPage(pageUrl: string): Promise<{
+async function fetchPage(
+  pageUrl: string,
+  tier: RedfinScrapeTier = redfinScrapeTier()
+): Promise<{
   body: unknown;
   rows: Row[];
   parsed: boolean;
@@ -725,7 +728,7 @@ async function fetchPage(pageUrl: string): Promise<{
    * unprotected again, =ultra buys rendering when premium is refused.
    */
   const params = new URLSearchParams({ api_key: key, url: pageUrl });
-  for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[redfinScrapeTier()])) {
+  for (const [k, v] of Object.entries(SCRAPE_TIER_PARAMS[tier])) {
     params.set(k, v);
   }
 
@@ -1019,7 +1022,11 @@ export interface SearchWalk {
  */
 export async function fetchRedfinSearchRows(
   searchUrl: string,
-  limit: number
+  limit: number,
+  /** Diagnostics only: ask on a tier other than the configured one,
+   *  so a probe can measure whether a dearer one gets through without
+   *  an operator having to redeploy to find out. */
+  tier: RedfinScrapeTier = redfinScrapeTier()
 ): Promise<SearchWalk> {
   const raw: Row[] = [];
   let bytes = 0;
