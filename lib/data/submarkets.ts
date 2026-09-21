@@ -10,11 +10,9 @@ import {
   totalSubmarketCount,
 } from "@/lib/mock/submarkets";
 import type { Submarket } from "@/lib/mock/types";
-import { simulateLatency } from "./latency";
 
 /** Submarkets of one market, ranked by margin of safety. */
 export async function getSubmarkets(marketSlug: string): Promise<Submarket[]> {
-  await simulateLatency();
   const market = MARKET_BY_SLUG.get(marketSlug);
   if (!market) return [];
   return [...submarketsFor(market)].sort(
@@ -25,7 +23,6 @@ export async function getSubmarkets(marketSlug: string): Promise<Submarket[]> {
 
 /** Every submarket nationwide (~6.6k lean rows; generated once). */
 export async function getAllSubmarkets(): Promise<Submarket[]> {
-  await simulateLatency(600);
   return allSubmarkets();
 }
 
@@ -34,6 +31,5 @@ export async function getCoverageTotals(): Promise<{
   markets: number;
   submarkets: number;
 }> {
-  await simulateLatency(60);
   return { markets: MARKETS.length, submarkets: totalSubmarketCount() };
 }

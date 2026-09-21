@@ -2,9 +2,15 @@
  * The market page's shape while its store reads land — the same bands
  * in the same places, so the page settles rather than jumps.
  */
+import { Loader2 } from "lucide-react";
+
 export default function Loading() {
   return (
     <div className="px-4 py-7 md:px-6 lg:px-8" aria-busy>
+      <p role="status" className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+        Opening market…
+      </p>
       <div className="h-3 w-24 rounded-full bg-secondary" />
       <div className="mt-4 h-8 w-64 rounded-sm bg-secondary" />
       <div className="mt-3 h-3 w-96 max-w-full rounded-full bg-secondary" />

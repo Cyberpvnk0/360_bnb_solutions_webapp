@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { ArrowUpRight, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { annualRevenueFromAdr } from "@/lib/calc/arbitrage";
 import { compLinkNote, compListingUrl } from "@/lib/live/comp-links";
@@ -20,8 +21,19 @@ import type { CompsFallbackReason } from "@/lib/live/str-comps";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { InfoHint } from "@/components/primitives/info-hint";
 import { HINTS } from "@/lib/copy/hints";
-import { CompsStreetMap } from "./comps-street-map";
 import { cn } from "@/lib/utils";
+
+const CompsStreetMap = dynamic(
+  () => import("./comps-street-map").then((mod) => mod.CompsStreetMap),
+  {
+    ssr: false,
+    loading: () => (
+      <figure aria-hidden className="min-w-0 xl:sticky xl:top-24 xl:self-start">
+        <div className="relative h-[480px] overflow-clip rounded-lg border border-border bg-secondary/60 xl:h-[clamp(480px,calc(100vh-14rem),660px)]" />
+      </figure>
+    ),
+  }
+);
 
 function strColumns(
   onStrike: ((id: string) => void) | undefined

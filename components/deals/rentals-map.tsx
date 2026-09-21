@@ -29,23 +29,13 @@ import { createPricePin } from "@/lib/map/price-pin";
 import { autoCollapseAttribution } from "@/lib/map/attribution";
 import { cn } from "@/lib/utils";
 import type { GeoJSON } from "geojson";
+import type { MapBounds, MapFocus } from "@/lib/map/viewport";
 
 
 /** Continental-US default framing before any pins ask for better. */
 const US_CENTER: [number, number] = [-96.8, 38.6];
 const US_ZOOM = 3.2;
 
-/** Where the camera should sit for a targeted search: the searched
- *  area itself, so the whole metro frames even when pins cluster. */
-export interface MapFocus {
-  key: string;
-  lat: number;
-  lon: number;
-  radiusMiles: number;
-  /** The exact box to frame, when the area has a known outline — a
-   *  ZIP's boundary. Set, it replaces the radius above. */
-  bounds?: [number, number, number, number];
-}
 
 /* ------------------------------------------------------------------ */
 /* The searched ZIP's outline                                          */
@@ -102,26 +92,6 @@ function drawBoundary(map: maplibregl.Map, boundary: ZipBoundary | null): void {
     layout: { "line-join": "round", "line-cap": "round" },
     paint: { "line-color": BOUNDARY_RED, "line-width": 2.5, "line-opacity": 0.95 },
   });
-}
-
-/** The map's current viewport, in degrees. */
-export interface MapBounds {
-  west: number;
-  south: number;
-  east: number;
-  north: number;
-}
-
-/** Whether a point sits inside the viewport. Longitude wraps at the
- *  antimeridian, which the continental US never reaches, but the check
- *  is written for a box that does anyway. */
-export function inBounds(p: { lat: number; lon: number }, b: MapBounds): boolean {
-  const latOk = p.lat >= b.south && p.lat <= b.north;
-  const lonOk =
-    b.west <= b.east
-      ? p.lon >= b.west && p.lon <= b.east
-      : p.lon >= b.west || p.lon <= b.east;
-  return latOk && lonOk;
 }
 
 interface RentalsMapProps {

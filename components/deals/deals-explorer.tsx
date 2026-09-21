@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowDownWideNarrow,
   Bookmark,
@@ -77,10 +78,20 @@ import { Assistant } from "@/components/assistant/assistant";
 import { MAX_ROWS as ASSISTANT_ROWS, type AssistantContext } from "@/lib/assistant/context";
 import { gradeDeal } from "@/lib/calc/deal-grade";
 import { ListingCard } from "./listing-card";
-import { inBounds, RentalsMap, type MapBounds, type MapFocus } from "./rentals-map";
+import { inBounds, type MapBounds, type MapFocus } from "@/lib/map/viewport";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 24;
+
+// Keep the WebGL engine out of the code needed to operate the search.
+// Reserve exactly the existing map pane while its client-only code loads.
+const RentalsMap = dynamic(
+  () => import("./rentals-map").then((mod) => mod.RentalsMap),
+  {
+    ssr: false,
+    loading: () => <div aria-hidden className="relative min-h-0 min-w-0 flex-1 bg-secondary/60" />,
+  }
+);
 
 /**
  * How many cards load their picture eagerly.

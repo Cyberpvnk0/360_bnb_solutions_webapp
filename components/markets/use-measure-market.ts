@@ -30,6 +30,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { MARKET_MEASURE_CREDITS } from "@/config/app";
 import { useSession } from "@/components/providers/session-provider";
+import { requestMarketMeasurement, type MarketMeasurement } from "./measure-request";
 
 export const MEASURE_PRICE = `${MARKET_MEASURE_CREDITS} ${
   MARKET_MEASURE_CREDITS === 1 ? "credit" : "credits"
@@ -38,7 +39,7 @@ export const MEASURE_PRICE = `${MARKET_MEASURE_CREDITS} ${
 export type MeasureState =
   | { status: "idle" }
   | { status: "measuring" }
-  | { status: "done" }
+  | ({ status: "done" } & MarketMeasurement)
   | { status: "no-credits" }
   | { status: "failed"; message: string };
 
@@ -91,27 +92,19 @@ export function useMeasureMarket({
     setState({ status: "measuring" });
     void (async () => {
       try {
-        const res = await fetch("/api/markets/measure", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ market: slug }),
-        });
-        const data = (await res.json().catch(() => null)) as
-          | { ok?: boolean; message?: string; reason?: string; charged?: number }
-          | null;
-        if (res.status === 402 || data?.reason === "no-credits") {
+        const result = await requestMarketMeasurement(slug);
+        if (result.status === "no-credits") {
           setState({ status: "no-credits" });
           return;
         }
-        if (!res.ok || !data?.ok) {
-          setState({
-            status: "failed",
-            message: data?.message ?? "Those figures could not be fetched.",
-          });
+        if (result.status === "failed") {
+          setState(result);
           return;
         }
-        setState({ status: "done" });
-        const charged = data.charged ?? 0;
+        // The response already contains the bought figures. Show them now;
+        // the background route refresh must not be on the display path.
+        setState({ status: "done", ...result.measurement });
+        const charged = result.charged;
         if (charged > 0) {
           toast.success(`${name} measured`, {
             description: `${charged} ${charged === 1 ? "credit" : "credits"}`,

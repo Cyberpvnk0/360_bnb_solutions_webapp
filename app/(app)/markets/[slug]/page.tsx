@@ -89,6 +89,7 @@ export default async function MarketPage({
 
   return (
     <MarketDetail
+      key={market.slug}
       market={market}
       stats={store?.stats ?? null}
       statsAt={store?.statsAt ?? null}

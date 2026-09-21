@@ -109,6 +109,7 @@ import { useFinePointer } from "@/components/primitives/use-pointer-kind";
 import { actionLabel } from "@/lib/ui/pointer";
 import { useSession } from "@/components/providers/session-provider";
 import { MEASURE_PRICE, useMeasureMarket } from "./use-measure-market";
+import { MarketMeasuring } from "./market-measuring";
 import { SaveMarketButton } from "./save-market-button";
 import { cn } from "@/lib/utils";
 
@@ -217,8 +218,8 @@ function showTrend(value: number, trend: Trend): string {
 
 export function MarketDetail({
   market,
-  stats,
-  statsAt,
+  stats: initialStats,
+  statsAt: initialStatsAt,
   months,
   monthsAt,
   pace,
@@ -265,12 +266,17 @@ export function MarketDetail({
   const measure = useMeasureMarket({
     slug: market.slug,
     name: market.name,
-    wanted: stats === null,
+    wanted: initialStats === null,
     onDone: () => router.refresh(),
   });
+  const runMeasure = measure.run;
   React.useEffect(() => {
-    measure.run();
-  }, [measure]);
+    runMeasure();
+  }, [runMeasure]);
+
+  const stats = measure.state.status === "done" ? measure.state.stats : initialStats;
+  const statsAt = measure.state.status === "done" ? measure.state.at : initialStatsAt;
+  const measuring = stats === null && (measure.state.status === "idle" || measure.state.status === "measuring");
 
   const rows = React.useMemo(
     () =>
@@ -881,10 +887,12 @@ export function MarketDetail({
         </div>
       </header>
 
+      {measuring ? <MarketMeasuring name={market.name} /> : null}
+
       {/* The headline four, as a single band rather than four cards:
           they are one reading of one market, and four boxes read as
           four unrelated facts. */}
-      <section className="mt-6 overflow-hidden rounded-sm border border-border bg-card elev-card">
+      <section aria-busy={measuring} className="mt-6 overflow-hidden rounded-sm border border-border bg-card elev-card">
         <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 [&>*+*]:border-border sm:[&>*+*]:border-l">
           <Tile
             label="Revenue / yr"
@@ -986,8 +994,7 @@ export function MarketDetail({
               </>
             ) : measure.state.status === "failed" ? (
               <span>
-                {measure.state.message} Nothing was charged — reload to try
-                again.
+                {measure.state.message} Reload to check again.
               </span>
             ) : (
               <span>Measuring this market costs {MEASURE_PRICE}.</span>

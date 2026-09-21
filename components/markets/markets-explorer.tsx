@@ -21,6 +21,7 @@
  */
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowUpRight, FileDown, Map as MapIcon, Search, X } from "lucide-react";
@@ -42,7 +43,6 @@ import {
   type MarketSort,
 } from "@/lib/markets/explorer";
 import type { MarketTerrain, RegulationStatus } from "@/lib/mock/types";
-import { MarketsMap } from "./markets-map";
 import { SaveMarketButton } from "./save-market-button";
 import { DataTable, type DataTableColumn } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
@@ -61,6 +61,16 @@ import { cn } from "@/lib/utils";
 
 /** A figure the vendor did not measure. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
+
+const MarketsMap = dynamic(
+  () => import("./markets-map").then((mod) => mod.MarketsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div aria-hidden className="relative h-[clamp(15rem,58vw,26rem)] w-full overflow-hidden rounded-sm border border-border bg-secondary/40 xl:h-[clamp(22rem,calc(100dvh_-_15rem),38rem)]" />
+    ),
+  }
+);
 
 const PRESETS: { id: MarketSort; label: string; hint: string }[] = [
   { id: "revenue", label: "Highest revenue", hint: "What a typical listing earned there over the last twelve months." },
@@ -82,6 +92,13 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   /** The market lit on the map, from a pin or a row. */
   const [selected, setSelected] = React.useState<string | null>(null);
 
+  // Warm the route after deliberate interest in a row. The server page
+  // only reads stored data; purchasing still requires mounting its client.
+  React.useEffect(() => {
+    if (!selected) return;
+    const timer = window.setTimeout(() => router.prefetch(`/markets/${selected}`), 150);
+    return () => window.clearTimeout(timer);
+  }, [selected, router]);
 
   const states = React.useMemo(
     () => [...new Set(rows.map((r) => r.stateCode))].sort(),

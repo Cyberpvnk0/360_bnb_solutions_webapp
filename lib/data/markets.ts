@@ -5,7 +5,6 @@
 
 import { MARKET_BY_SLUG, MARKETS } from "@/lib/mock/markets";
 import type { Market } from "@/lib/mock/types";
-import { simulateLatency } from "./latency";
 
 export interface MarketFilters {
   states?: string[];
@@ -16,7 +15,6 @@ export interface MarketFilters {
 }
 
 export async function getMarkets(filters?: MarketFilters): Promise<Market[]> {
-  await simulateLatency();
   let out = MARKETS;
   if (filters) {
     out = out.filter((m) => {
@@ -32,12 +30,10 @@ export async function getMarkets(filters?: MarketFilters): Promise<Market[]> {
 }
 
 export async function getMarket(slug: string): Promise<Market | null> {
-  await simulateLatency();
   return MARKET_BY_SLUG.get(slug) ?? null;
 }
 
 /** Distinct state codes present in the dataset, for the state filter. */
 export async function getMarketStates(): Promise<string[]> {
-  await simulateLatency(80);
   return [...new Set(MARKETS.map((m) => m.stateCode))].sort();
 }
