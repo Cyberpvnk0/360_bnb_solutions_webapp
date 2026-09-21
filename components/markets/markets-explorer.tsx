@@ -91,6 +91,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
   const [mapOpen, setMapOpen] = React.useState(true);
   /** The market lit on the map, from a pin or a row. */
   const [selected, setSelected] = React.useState<string | null>(null);
+  const [mapCardOpen, setMapCardOpen] = React.useState(false);
 
   // Warm the route after deliberate interest in a row. The server page
   // only reads stored data; purchasing still requires mounting its client.
@@ -466,11 +467,20 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           <MarketsMap
             rows={shown}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={(slug) => {
+              setSelected(slug);
+              setMapCardOpen(true);
+            }}
             className="h-[clamp(15rem,58vw,26rem)] w-full xl:h-[clamp(22rem,calc(100dvh_-_15rem),38rem)]"
           />
           {chosen ? (
-            <div className="mt-3 rounded-sm border border-border bg-card px-4 py-3">
+            <div className={cn(
+              "mt-3 rounded-sm border border-border bg-card px-4 py-3",
+              // In the stacked layout, a hover must not insert a card
+              // above the table and move the row out from under a click.
+              // Pin selection explicitly opens the card on every screen.
+              !mapCardOpen && "hidden xl:block"
+            )}>
               <p className="truncate text-sm font-medium text-foreground">
                 {chosen.name}, {chosen.stateCode}
               </p>

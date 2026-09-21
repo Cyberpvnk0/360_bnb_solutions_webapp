@@ -54,3 +54,14 @@ configuration, so signed-in behavior is verified separately in the browser.
 Validation: TypeScript, ESLint, 1,269 tests, and a production build. Added coverage
 checks immediate display of purchased stats before refreshed props, loading and
 failure states, no automatic purchase retries, and viewport boundary behavior.
+
+Production verification on the deployed build: Amarillo initially had no figures,
+showed the opening and analysis notices, then populated its revenue, occupancy,
+nightly rate and listing count. The balance decreased by exactly one credit;
+the Markets catalogue then showed the newly stored figures.
+
+The browser check also caught a pre-existing pointer/layout problem below the
+`xl` breakpoint: hovering a table row inserted the chosen-market card above the
+table, moving the click target. In that stacked layout, pin selection now opens
+the card explicitly; row hover still highlights the pin. The wide desktop layout
+continues to show the hover card alongside the table.
