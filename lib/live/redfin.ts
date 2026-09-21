@@ -17,8 +17,9 @@
  * the card links to the listing's own page instead, where the photos
  * already live under someone else's licence.
  *
- * Reached through ScraperAPI's Redfin structured endpoint, which returns
- * parsed JSON rather than HTML, so there is no extraction ladder here.
+ * Structured search first. If it fails for a furnished market, the
+ * generic endpoint fetches the SAME filtered URL and a measured parser
+ * reads its embedded rental facts. The HTML stays local and uncached.
  *
  * The field names below are PROVISIONAL — ScraperAPI's docs are not
  * reachable from the build environment, so the mapper reads a list of
@@ -33,6 +34,7 @@ import { withScraperSlot } from "@/lib/live/limit";
 import { mineFeatures } from "@/lib/live/features";
 import { geocodeAll } from "@/lib/live/geocode";
 import { cityIdFor, REDFIN_CITY_ID, REDFIN_CITY_PATH } from "@/lib/live/redfin-city";
+import { parseRedfinRentalPage } from "./redfin-rental-page";
 import type { Market, PropertyType, RentalListing } from "@/lib/mock/types";
 
 /**
@@ -97,13 +99,14 @@ const exhausted = new Set<string>();
 /**
  * Has the supplier served this domain at all, to this process?
  *
- * THE ONE THING THAT MAKES "no furnished rentals here" SAFE TO SAY.
+ * Necessary context for interpreting an ambiguous missing-page response.
  *
  * A missing page and a refused domain come back byte-identical — the
  * same 500, the same sentence — so no single response can tell them
- * apart. What can is whether the domain is working at all. A city
- * failing while others succeed is a city with no rentals page: Bailey,
- * Colorado, and "none" is the honest answer there. A city failing
+ * apart. A prior domain success used to be treated as enough evidence
+ * that a failing city had no rentals page. Boston disproved that: the
+ * structured parser can fail for one city while others succeed. Furnished
+ * search now asks the generic endpoint before interpreting an error. A city failing
  * while NOTHING has succeeded says nothing about the city, and
  * concluding "none" from it is how every market in this product told
  * members Boston — 315 rentals listed — had no furnished inventory.
@@ -762,9 +765,69 @@ function creditsFrom(res: Response): number | null {
  */
 const PAGE_TIMEOUT_MS = 45_000;
 
+/** Generic HTML is transient: the reader returns only facts or schema.
+ * No tier ladder here: a structured parser failure does not establish that
+ * the generic endpoint needs a dearer proxy. Use the configured tier once. */
+export async function readRedfinPage<T>(
+  pageUrl: string,
+  tier: RedfinScrapeTier,
+  readDocument: (doc: string) => T,
+  timeoutMs = 42_000
+): Promise<{ data: T; bytes: number; credits: number | null }> {
+  const key = process.env.SCRAPERAPI_KEY;
+  if (!key) throw new RedfinError("no-key");
+  const params = new URLSearchParams({ api_key: key, url: pageUrl });
+  for (const [name, value] of Object.entries(SCRAPE_TIER_PARAMS[tier])) params.set(name, value);
+  try {
+    return await withScraperSlot(async () => {
+      const response = await fetch(`https://api.scraperapi.com/?${params}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const doc = await response.text();
+      if (!response.ok) {
+        const reason = response.status === 401 ? "auth"
+          : response.status === 403 ? (looksSpent(doc) ? "no-credits" : "forbidden")
+          : response.status === 429 ? "quota" : "http";
+        // The response could be an HTML error page containing listing prose.
+        throw new RedfinError(reason, response.status);
+      }
+      return {
+        data: readDocument(doc),
+        bytes: new TextEncoder().encode(doc).byteLength,
+        credits: creditsFrom(response),
+      };
+    });
+  } catch (error) {
+    if (error instanceof RedfinError) throw error;
+    const name = error instanceof Error ? error.name : "";
+    throw new RedfinError(name === "TimeoutError" || name === "AbortError" ? "timeout" : "network");
+  }
+}
+
+async function fetchRedfinRentalPage(searchUrl: string): Promise<SearchWalk> {
+  const result = await readRedfinPage(searchUrl, redfinScrapeTier(),
+    (doc) => parseRedfinRentalPage(doc, searchUrl), 27_000);
+  if (!result.data) {
+    throw new RedfinError("http", 200, "No readable furnished rental search in the Redfin page.");
+  }
+  domainServed = true;
+  return {
+    raw: result.data.rows,
+    body: { listings: result.data.rows },
+    parsed: true,
+    bytes: result.bytes,
+    credits: result.credits,
+    pages: 1,
+    morePages: result.data.morePages,
+    failedPages: 0,
+  };
+}
+
 async function fetchPage(
   pageUrl: string,
-  tier: RedfinScrapeTier = redfinScrapeTier()
+  tier: RedfinScrapeTier = redfinScrapeTier(),
+  opts: { allowEscalation?: boolean; timeoutMs?: number } = {}
 ): Promise<{
   body: unknown;
   rows: Row[];
@@ -814,7 +877,7 @@ async function fetchPage(
     res = await withScraperSlot(() =>
       fetch(`${REDFIN_SEARCH_ENDPOINT}?${params}`, {
         next: { revalidate: REDFIN_REVALIDATE_SECONDS },
-        signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+        signal: AbortSignal.timeout(opts.timeoutMs ?? PAGE_TIMEOUT_MS),
       })
     );
   } catch (error) {
@@ -848,7 +911,7 @@ async function fetchPage(
     // tier that already sends the flag, the same body falls through to
     // the upstream reading below, where it can still mean a town with
     // no rentals page.
-    if (needsPremium(detail)) {
+    if (needsPremium(detail) && opts.allowEscalation !== false) {
       /**
        * CLIMB ONCE, HERE, RATHER THAN SURVEYING 409 MARKETS BY HAND.
        *
@@ -891,11 +954,16 @@ async function fetchPage(
     throw new RedfinError("http", res.status, detail);
   }
 
-  // Something came back. From here on, a city that fails while others
-  // succeed is a city with no page — see redfinDomainServed.
+  // Record domain availability, not proof that other cities have no page.
   domainServed = true;
 
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    throw new RedfinError(name === "TimeoutError" || name === "AbortError" ? "timeout" : "network");
+  }
   let body: unknown = null;
   let parsed = true;
   try {
@@ -946,8 +1014,11 @@ export async function mapRedfinRows(
   const geocodedBy: Record<string, number> = {};
   const listings: RentalListing[] = [];
 
-  const points = await geocodeAll(
-    raw.map((row) => {
+  const unplaced = raw.map((row, index) => ({ row, index })).filter(({ row }) =>
+    pickNumber(row, LAT_KEYS) === undefined || pickNumber(row, LON_KEYS) === undefined
+  );
+  const located = unplaced.length === 0 ? [] : await geocodeAll(
+    unplaced.map(({ row }) => {
       const line = pickString(row, ADDRESS_KEYS) ?? "";
       // Census wants a complete one-line address; Redfin's already
       // carries city and state, but a bare street needs help.
@@ -956,9 +1027,10 @@ export async function mapRedfinRows(
         : `${line}, ${market.name}, ${market.stateCode}`;
     })
   );
+  const points = new Map(unplaced.map(({ index }, i) => [index, located[i]]));
 
   raw.forEach((row, index) => {
-    const found = points[index];
+    const found = points.get(index);
     if (found?.source) {
       geocodedBy[found.source] = (geocodedBy[found.source] ?? 0) + 1;
     }
@@ -1020,8 +1092,12 @@ function meansNothingHere(error: unknown): boolean {
 }
 
 /**
- * The walk, with one failure reinterpreted: a city the supplier cannot
- * fetch a page for is a city with nothing to show, not an outage.
+ * Structured first, then a generic page read for furnished search.
+ *
+ * A failed generic read is an error even if other cities work. Only an
+ * explicit generic 404/410 reaches the older bare-city check below.
+ * Those checks remain for absent pages and other filtered callers;
+ * they must never swallow a failed or unrecognized generic payload.
  *
  * Bailey, Colorado has around seven hundred people and no Redfin
  * rentals page. Asking it for furnished rentals returned
@@ -1060,12 +1136,8 @@ function meansNothingHere(error: unknown): boolean {
  * rentals" — was not hypothetical; it was live, and it presented as
  * fact rather than as a failure.
  *
- * Bailey, Colorado — the case this whole function exists for — is
- * untouched: it has no rentals page at all, so the bare probe fails
- * the same way and the honest "none" still stands.
- *
- * Costs one extra request, only on a path that otherwise returns
- * nothing usable, and only after the opening page has had its retry.
+ * A valid generic payload with homes=[] and numMatchedHomes=0 is also
+ * a proven empty search. No unfiltered row is ever tagged furnished.
  */
 async function walkOrEmpty(
   market: Market,
@@ -1073,9 +1145,29 @@ async function walkOrEmpty(
   opts: { furnished?: boolean; propertyType?: string; pages?: number }
 ): Promise<SearchWalk> {
   const filtered = Boolean(opts.furnished || opts.propertyType);
+  const furnishedFallback = Boolean(opts.furnished && !opts.propertyType);
   try {
-    return await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages));
+    const walk = await fetchRedfinSearchRows(searchUrl, maxPages(opts.pages), redfinScrapeTier(), {
+      furnishedFallback,
+    });
+    if (opts.furnished && !opts.propertyType && !walk.parsed) {
+      throw new RedfinError("http", 200, "The structured rental search was not JSON.");
+    }
+    return walk;
   } catch (error) {
+    const canFallback = opts.furnished && !opts.propertyType && error instanceof RedfinError
+      && ["http", "timeout", "network"].includes(error.reason);
+    if (canFallback) {
+      try {
+        return await fetchRedfinRentalPage(searchUrl);
+      } catch (pageError) {
+        // Only an explicit missing-page response may reach the old bare-city
+        // check. An ambiguous generic 500 or unreadable page MUST stay an
+        // error even when Jacksonville has proved the domain is served.
+        if (!(pageError instanceof RedfinError) || pageError.reason !== "http"
+          || (pageError.status !== 404 && pageError.status !== 410)) throw pageError;
+      }
+    }
     if (!filtered || !meansNothingHere(error)) throw error;
 
     const bare = await redfinRentalsUrl(market, {});
@@ -1173,7 +1265,8 @@ export async function fetchRedfinSearchRows(
   /** Diagnostics only: ask on a tier other than the configured one,
    *  so a probe can measure whether a dearer one gets through without
    *  an operator having to redeploy to find out. */
-  tier: RedfinScrapeTier = redfinScrapeTier()
+  tier: RedfinScrapeTier = redfinScrapeTier(),
+  opts: { furnishedFallback?: boolean } = {}
 ): Promise<SearchWalk> {
   const raw: Row[] = [];
   let bytes = 0;
@@ -1213,7 +1306,14 @@ export async function fetchRedfinSearchRows(
   while (queue.length > 0 && pages < limit) {
     const wave = queue.slice(0, limit - pages);
     queue = queue.slice(wave.length);
-    const settled = await Promise.allSettled(wave.map((url) => fetchPage(url, tier)));
+    // A live Boston pass spent 49.5s on three structured attempts plus the
+    // successful generic read. Leave room inside the route's 50s budget:
+    // one structured opening (20s), then the generic fallback (27s).
+    // Successful structured walks and all other callers keep their ladder.
+    const openingFallback = pages === 0 && opts.furnishedFallback;
+    const settled = await Promise.allSettled(wave.map((url) => fetchPage(url, tier,
+      openingFallback ? { allowEscalation: false, timeoutMs: 20_000 } : {}
+    )));
     // The OPENING page failing is the search failing — surface why.
     // A later page lost to a throttle costs its rows, not the pass:
     // all-or-nothing here is how one 429 turned into "no houses".
@@ -1234,7 +1334,7 @@ export async function fetchRedfinSearchRows(
         why instanceof RedfinError &&
         (why.reason === "quota" ||
           (why.reason === "http" && (why.status ?? 0) >= 500));
-      if (transient && !retriedOpening) {
+      if (transient && !retriedOpening && !opts.furnishedFallback) {
         retriedOpening = true;
         await new Promise((r) => setTimeout(r, 2_500));
         queue = [...wave, ...queue];

@@ -27,6 +27,7 @@ import {
 } from "@/lib/live/redfin";
 import { cityIdFor } from "@/lib/live/redfin-city";
 import { probeCityId } from "@/lib/live/redfin-city";
+import { probeRedfinPage } from "@/lib/live/redfin-page-probe";
 import {
   amenityFields,
   arrayPaths,
@@ -124,10 +125,36 @@ export async function GET(request: Request) {
     shape ||
     searchParams.get("resolve") ||
     searchParams.get("probe") ||
-    searchParams.get("paths")
+    searchParams.get("paths") ||
+    searchParams.get("pageShape")
   ) {
     const op = await requireOperator(request);
     if (!op.ok) return op.response;
+  }
+
+  // One furnished-filtered generic fetch. Inspect the actual embedded
+  // schema before adding a mapper; never emit a sample or listing values.
+  // ?market=boston&pageShape=1 (optionally &path=rentals or &tier=ultra)
+  if (searchParams.get("pageShape")) {
+    const tierRaw = searchParams.get("tier");
+    const pathRaw = searchParams.get("path");
+    if (
+      (tierRaw !== null && !Object.hasOwn(SCRAPE_TIER_PARAMS, tierRaw)) ||
+      (pathRaw !== null && pathRaw !== "rentals" && pathRaw !== "apartments-for-rent")
+    ) {
+      return NextResponse.json({ live: false, reason: "invalid-probe-options" }, { status: 400 });
+    }
+    try {
+      const cityId = await cityIdFor(market);
+      if (cityId === null) throw new RedfinError("no-city");
+      const report = await withinBudget(probeRedfinPage(market, cityId, {
+        tier: (tierRaw as RedfinScrapeTier | null) ?? undefined,
+        path: pathRaw ?? undefined,
+      }));
+      return NextResponse.json(report, { headers: { "Cache-Control": "no-store" } });
+    } catch (error) {
+      return failure(error);
+    }
   }
 
   /**

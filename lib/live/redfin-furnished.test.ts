@@ -155,10 +155,11 @@ describe.each([404, 410])("a filtered search that fails with %i", (status) => {
 });
 
 describe("a 500, where the wording decides", () => {
-  it("says NONE when both searches fail the way a missing page does", async () => {
-    // The Bailey case exactly: no rentals page, so neither URL resolves.
+  it("reports an ambiguous failure when the generic endpoint also fails", async () => {
+    // Boston proved the structured parser can fail independently of the
+    // city. A failed generic read still cannot establish empty inventory.
     vendor(() => ({ status: 500, text: UPSTREAM_500 }));
-    await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
+    await expect(ask({ furnished: true })).rejects.toMatchObject({ reason: "http", status: 500 });
   }, 25_000);
 
   it("REPORTS it when the city is there and serving rows", async () => {
@@ -174,15 +175,13 @@ describe("a 500, where the wording decides", () => {
     });
   }, 25_000);
 
-  it("says NONE when the city answers with no rentals at all", async () => {
-    // A city with a page and nothing on it has no furnished units
-    // either. This is the branch that still concludes "none".
+  it("does not let an empty unfiltered structured response conceal a generic failure", async () => {
     vendor((t) =>
       furnishedUrl(t)
         ? { status: 500, text: UPSTREAM_500 }
         : { status: 200, body: { listings: [] } }
     );
-    await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
+    await expect(ask({ furnished: true })).rejects.toMatchObject({ reason: "http", status: 500 });
   }, 25_000);
 
   it("REPORTS the supplier's own 500 — no wording, no conclusion", async () => {
@@ -209,7 +208,7 @@ describe("a 500, where the wording decides", () => {
   }, 25_000);
 });
 
-describe("the opening page gets one retry on a 5xx", () => {
+describe("an unfiltered opening page gets one retry on a 5xx", () => {
   it("succeeds on the second attempt rather than failing the search", async () => {
     let seen = 0;
     globalThis.fetch = vi.fn(async () => {
@@ -221,7 +220,7 @@ describe("the opening page gets one retry on a 5xx", () => {
             headers: { "content-type": "application/json" },
           });
     }) as typeof fetch;
-    const out = await ask({ furnished: true });
+    const out = await ask({});
     expect(out.raw).toHaveLength(1);
     expect(seen).toBeGreaterThanOrEqual(2);
   }, 20_000);
@@ -358,10 +357,8 @@ describe("when the supplier will not fetch the domain at all", () => {
     await expect(ask({ furnished: true })).rejects.toBeInstanceOf(RedfinError);
   }, 25_000);
 
-  it("DOES read it as a missing page once the domain has proved itself", async () => {
-    // Bailey, Colorado, in a healthy deployment: other cities are
-    // coming back fine, so this one failing is a city with no rentals
-    // page. That is the case this whole path exists for.
+  it("still reports a generic failure after another city has proved the domain works", async () => {
+    // Domain success does not prove that another city's parser works.
     resetRedfinEscalation();
     let firstDone = false;
     globalThis.fetch = vi.fn(async () => {
@@ -377,8 +374,8 @@ describe("when the supplier will not fetch the domain at all", () => {
 
     // The first call proves the domain is being served…
     await ask({});
-    // …so the second, which fails everywhere, is about the city.
+    // …but the second still needs a readable furnished page.
     vendor(() => ({ status: 500, text: PROTECTED }));
-    await expect(ask({ furnished: true })).resolves.toMatchObject({ listings: [] });
+    await expect(ask({ furnished: true })).rejects.toMatchObject({ reason: "http", status: 500 });
   }, 30_000);
 });

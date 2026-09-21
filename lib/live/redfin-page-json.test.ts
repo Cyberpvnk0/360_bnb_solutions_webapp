@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arraysOfObjects, atPath, findJsonBlobs, objectAt } from "./redfin-page-json";
+import { arraysOfObjects, atPath, decodeJsonValues, findJsonBlobs, objectAt } from "./redfin-page-json";
 
 /**
  * Finding the search rows a page carries inside itself.
@@ -86,6 +86,25 @@ describe("finding the page's blobs", () => {
 });
 
 describe("locating the row array", () => {
+  it("round-trips literal dotted keys and URL keys rather than splitting their data", () => {
+    const value = { "ReactServerAgent.cache": { dataCache: {
+      '/rentals?filter=a.b&quote="x"': { homes: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+    } } };
+    const found = arraysOfObjects(value);
+    expect(atPath(value, found[0].path)).toHaveLength(3);
+    expect(found[0].path).toContain('["ReactServerAgent.cache"]');
+    expect(atPath({}, "constructor.prototype")).toBeUndefined();
+    expect(atPath(value, '["unterminated]')).toBeUndefined();
+  });
+
+  it("decodes nested JSON response strings without altering ordinary prose or numbers", () => {
+    const input = { res: { text: '{}&&{"homes":[{"beds":2}]}' }, prose: "Keep this private", price: "2000" };
+    expect(decodeJsonValues(input)).toEqual({
+      res: { text: { homes: [{ beds: 2 }] } }, prose: "Keep this private", price: "2000",
+    });
+    expect(input.res.text).toBeTypeOf("string");
+    expect(decodeJsonValues("{bad json}")).toBe("{bad json}");
+  });
   const payload = {
     config: { tz: "EST" },
     search: {

@@ -1,8 +1,8 @@
 /**
  * The JSON a Redfin search page carries inside itself.
  *
- * The supplier's structured Redfin endpoint parses FOR-SALE searches
- * and answers 500 for every rental URL — measured, not guessed:
+ * The supplier's structured Redfin endpoint fails on BOSTON rental
+ * searches, while other cities work — measured, not guessed:
  * Boston's city page returned 43 rows while all four rental URL
  * spellings failed, and the same rental URL fetched through the plain
  * endpoint returned 3.3MB of HTML carrying listing JSON. So the page
@@ -165,7 +165,12 @@ export function arraysOfObjects(
       return;
     }
     for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-      walk(v, path ? `${path}.${k}` : k, depth + 1);
+      // Cache keys can themselves contain dots, brackets, and whole URLs.
+      // Quote those keys so atPath can distinguish data from separators.
+      const next = /^[A-Za-z_$][\w$]*$/.test(k)
+        ? (path ? `${path}.${k}` : k)
+        : `${path}[${JSON.stringify(k)}]`;
+      walk(v, next, depth + 1);
     }
   };
   walk(value, "", 0);
@@ -176,17 +181,36 @@ export function arraysOfObjects(
 export function atPath(value: unknown, path: string): unknown {
   if (path === "(root)") return value;
   let node: unknown = value;
-  for (const step of path.split(".")) {
-    const m = /^([^[]*)((\[\d+\])*)$/.exec(step);
-    if (!m) return undefined;
-    if (m[1]) {
-      if (!node || typeof node !== "object") return undefined;
-      node = (node as Record<string, unknown>)[m[1]];
-    }
-    for (const idx of m[2].match(/\d+/g) ?? []) {
-      if (!Array.isArray(node)) return undefined;
-      node = node[Number(idx)];
-    }
+  const token = /(?:^|\.)([^.[\]]+)|\[(\d+|"(?:[^"\\]|\\.)*")\]/gy;
+  let offset = 0;
+  while (offset < path.length) {
+    token.lastIndex = offset;
+    const match = token.exec(path);
+    if (!match || !node || typeof node !== "object") return undefined;
+    const key: string | number = match[1] ?? JSON.parse(match[2]);
+    if (!Object.hasOwn(node, key)) return undefined;
+    node = (node as Record<string, unknown>)[key];
+    offset = token.lastIndex;
   }
   return node;
+}
+
+/** Decode nested JSON response strings locally for shape inspection.
+ * Redfin may prepend its anti-XSSI guard. Scalar strings stay strings. */
+export function decodeJsonValues(value: unknown, depth = 0): unknown {
+  if (depth > 16) return value;
+  if (typeof value === "string") {
+    const text = value.replace(/^\s*\{\}\s*&&\s*/, "");
+    if (!/^\s*[[{]/.test(text)) return value;
+    const decoded = parse(text);
+    return decoded && typeof decoded === "object"
+      ? decodeJsonValues(decoded, depth + 1) : value;
+  }
+  if (Array.isArray(value)) return value.map((item) => decodeJsonValues(item, depth + 1));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key, decodeJsonValues(item, depth + 1),
+    ]));
+  }
+  return value;
 }
