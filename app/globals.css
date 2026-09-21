@@ -861,8 +861,12 @@
   border-radius: 50%;
   background: transparent;
   cursor: pointer;
+  /* Only the visible dot takes pointer hits. Otherwise an invisible button
+     edge can select a neighboring city at the national zoom level. */
+  pointer-events: none;
 }
 .market-map-dot {
+  pointer-events: auto;
   width: 5px;
   height: 5px;
   border: 1px solid var(--spread-unmeasured);
