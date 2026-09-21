@@ -53,10 +53,14 @@ const MAPTILER_MAP_DARK =
       ? MAPTILER_MAP
       : `${MAPTILER_MAP}-dark`);
 
-const maptilerMap = (theme: Theme) => (theme === "dark" ? MAPTILER_MAP_DARK : MAPTILER_MAP);
+// National market comparisons need quiet boundaries and labels, rather than
+// the detailed street/terrain style configured for property maps.
+const maptilerMap = (theme: Theme, markets = false) => markets
+  ? (theme === "dark" ? "dataviz-dark" : "dataviz-light")
+  : (theme === "dark" ? MAPTILER_MAP_DARK : MAPTILER_MAP);
 
-const maptilerVector = (key: string, theme: Theme) =>
-  `https://api.maptiler.com/maps/${maptilerMap(theme)}/style.json?key=${encodeURIComponent(key)}`;
+const maptilerVector = (key: string, theme: Theme, markets = false) =>
+  `https://api.maptiler.com/maps/${maptilerMap(theme, markets)}/style.json?key=${encodeURIComponent(key)}`;
 
 /**
  * A raster style, built here rather than fetched.
@@ -70,14 +74,14 @@ const maptilerVector = (key: string, theme: Theme) =>
  *
  * Set MAP_RASTER=1 to use it.
  */
-function maptilerRaster(key: string, theme: Theme): string {
+function maptilerRaster(key: string, theme: Theme, markets = false): string {
   return JSON.stringify({
     version: 8,
     sources: {
       basemap: {
         type: "raster",
         tiles: [
-          `https://api.maptiler.com/maps/${maptilerMap(theme)}/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(key)}`,
+          `https://api.maptiler.com/maps/${maptilerMap(theme, markets)}/{z}/{x}/{y}@2x.png?key=${encodeURIComponent(key)}`,
         ],
         tileSize: 256,
         attribution:
@@ -90,7 +94,7 @@ function maptilerRaster(key: string, theme: Theme): string {
 
 /** Both spellings: the documented one, and the one you get when the
  *  platform won't accept NEXT_PUBLIC_ on a sensitive variable. */
-function resolve(theme: Theme): { url: string; provider: string } {
+function resolve(theme: Theme, markets = false): { url: string; provider: string } {
   // An explicit style URL is one style; a dark twin is its own variable.
   const explicit =
     theme === "dark"
@@ -98,13 +102,13 @@ function resolve(theme: Theme): { url: string; provider: string } {
         process.env.MAP_STYLE_URL ??
         process.env.NEXT_PUBLIC_MAP_STYLE_URL)
       : (process.env.MAP_STYLE_URL ?? process.env.NEXT_PUBLIC_MAP_STYLE_URL);
-  if (explicit) return { url: explicit, provider: "the configured style" };
+  if (explicit && !markets) return { url: explicit, provider: "the configured style" };
 
   const key =
     process.env.MAPTILER_KEY ??
     process.env.NEXT_MAPTILER_KEY ??
     process.env.NEXT_PUBLIC_MAPTILER_KEY;
-  if (key) return { url: maptilerVector(key, theme), provider: `MapTiler ${maptilerMap(theme)}` };
+  if (key) return { url: maptilerVector(key, theme, markets), provider: `MapTiler ${maptilerMap(theme, markets)}` };
 
   return { url: OPENFREEMAP[theme], provider: `OpenFreeMap ${theme}` };
 }
@@ -116,6 +120,7 @@ export async function GET(request: Request) {
   if (!who.ok) return who.response;
 
   const theme: Theme = new URL(request.url).searchParams.get("theme") === "dark" ? "dark" : "light";
+  const markets = new URL(request.url).searchParams.get("view") === "markets";
 
   // Raster is assembled here, so it needs no upstream fetch at all —
   // one less thing between a request and a visible map.
@@ -126,16 +131,16 @@ export async function GET(request: Request) {
         process.env.NEXT_PUBLIC_MAPTILER_KEY)
       : undefined;
   if (rasterKey) {
-    return new NextResponse(maptilerRaster(rasterKey, theme), {
+    return new NextResponse(maptilerRaster(rasterKey, theme, markets), {
       headers: {
         "content-type": "application/json",
         "cache-control": "public, max-age=3600, stale-while-revalidate=86400",
-        "x-basemap-provider": `MapTiler ${maptilerMap(theme)} (raster)`,
+        "x-basemap-provider": `MapTiler ${maptilerMap(theme, markets)} (raster)`,
       },
     });
   }
 
-  let { url, provider } = resolve(theme);
+  let { url, provider } = resolve(theme, markets);
 
   let res: Response;
   try {
@@ -151,7 +156,7 @@ export async function GET(request: Request) {
   // version, a key whose plan lacks it — falls back to the light map,
   // which is a map, rather than to a blank one.
   if (!res.ok && theme === "dark") {
-    ({ url, provider } = resolve("light"));
+    ({ url, provider } = resolve("light", markets));
     try {
       res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
     } catch {

@@ -207,7 +207,7 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     const uncollapse = autoCollapseAttribution(map);
     map.on("load", () => {
       setLive(true);
-      void loadStyle(basemapStyle(styleThemeRef.current)).then((loaded) => {
+      void loadStyle(basemapStyle(styleThemeRef.current, "markets")).then((loaded) => {
         if (alive && loaded) map.setStyle(loaded);
       });
     });
@@ -245,7 +245,7 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     let alive = true;
     // Same rule as the first load: a style that does not arrive is one
     // this map does not swap to, rather than one it breaks on.
-    void loadStyle(basemapStyle(theme)).then((loaded) => {
+    void loadStyle(basemapStyle(theme, "markets")).then((loaded) => {
       if (alive && loaded) map.setStyle(loaded);
     });
     return () => {

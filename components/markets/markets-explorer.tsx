@@ -389,7 +389,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
       <div
         className={cn(
           "mt-5 grid gap-5",
-          mapOpen && "xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]"
+          mapOpen && "xl:grid-cols-[minmax(0,1fr)_minmax(20rem,min(30vw,34rem))]"
         )}
       >
       <section className="min-w-0 overflow-hidden rounded-sm border border-border bg-card elev-card">

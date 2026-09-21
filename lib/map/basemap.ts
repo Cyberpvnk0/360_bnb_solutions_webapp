@@ -15,8 +15,11 @@ import type * as maplibregl from "maplibre-gl";
  */
 export type BasemapTheme = "light" | "dark";
 
-export function basemapStyle(theme: BasemapTheme): string {
-  return theme === "dark" ? "/api/map/style?theme=dark" : "/api/map/style";
+export function basemapStyle(theme: BasemapTheme, view?: "markets"): string {
+  const params = new URLSearchParams();
+  if (theme === "dark") params.set("theme", "dark");
+  if (view) params.set("view", view);
+  return `/api/map/style${params.size ? `?${params}` : ""}`;
 }
 
 /** The theme the page is showing right now, read off the document:

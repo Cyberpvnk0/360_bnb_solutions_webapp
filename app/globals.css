@@ -835,14 +835,15 @@
 /* Quiet geography under the market data. Filter only the basemap canvas:
    DOM markers, controls and attribution retain their original colors. */
 .market-map .maplibregl-canvas {
-  filter: grayscale(1) contrast(0.88) brightness(1.07);
-  opacity: 0.75;
+  filter: grayscale(1) contrast(0.95) brightness(1.02);
+  opacity: 0.9;
 }
 .dark .market-map .maplibregl-canvas {
   filter: grayscale(1) contrast(0.92);
   opacity: 0.85;
 }
 .market-map .maplibregl-ctrl-top-right { top: 2px; right: 2px; }
+.dark .market-map .maplibregl-ctrl-icon { filter: invert(1); }
 .market-map .maplibregl-ctrl-group {
   overflow: hidden;
   border: 1px solid var(--border);
