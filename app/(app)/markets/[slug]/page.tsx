@@ -1,15 +1,8 @@
-/**
- * /markets/[slug] — one market, in as much depth as real data allows.
- *
- * Every read here is free. The headline figures are whatever the store
- * already holds for this market, the areas are built from rentals and
- * short-let listings the product has already seen, and nothing on this
- * page buys anything: opening a market must never be a purchase, or
- * browsing the catalogue becomes a bill.
- */
+/** Server render reads cached facts only. Once opened, the client completes
+ * missing analysis sections through the priced POST; link prefetch never buys. */
 
 import { notFound } from "next/navigation";
-import { readMarketStore } from "@/lib/db/market-store";
+import { readMarketStore, isFresh, STATS_TTL_MS } from "@/lib/db/market-store";
 import { readPool } from "@/lib/live/comp-pool";
 import { readAreaStats } from "@/lib/live/area-stats";
 import { storedMarketMonths } from "@/lib/live/market-history";
@@ -77,7 +70,8 @@ export default async function MarketPage({
   const measured = await readAreaStats(slug, zips).catch(() => new Map());
 
   // The year, when a backfill bought it alongside the headline figures.
-  const inline = store?.stats?.monthly ?? [];
+  const freshStats = store?.stats && isFresh(store.statsAt, STATS_TTL_MS) ? store.stats : null;
+  const inline = freshStats?.monthly ?? [];
 
   const areas = buildAreas({ market, listings, comps: pool.comps, measured });
   const sizes = buildSizes({ comps: pool.comps, listings });
@@ -91,18 +85,18 @@ export default async function MarketPage({
     <MarketDetail
       key={market.slug}
       market={market}
-      stats={store?.stats ?? null}
-      statsAt={store?.statsAt ?? null}
+      stats={freshStats}
+      statsAt={freshStats ? (store?.statsAt ?? null) : null}
       // Read, never bought: the year is a billed call and this page
       // makes none. It lands inline on the stats row when a backfill
       // bought both together, and under its own key when somebody
       // bought the year on its own from the chart below.
-      months={inline.length > 0 ? inline : (history?.months ?? [])}
+      months={history?.months ?? inline}
       // The byline follows whichever series was chosen, not whichever
       // date happens to exist: a chart drawn from the stats row dated
       // by a later standalone buy would be telling the reader the
       // wrong thing about the numbers in front of them.
-      monthsAt={inline.length > 0 ? (store?.statsAt ?? null) : (history?.at ?? null)}
+      monthsAt={history?.at ?? (inline.length > 0 ? (store?.statsAt ?? null) : null)}
       pace={pacing?.days ?? []}
       paceAt={pacing?.at ?? null}
       amenities={amenities}

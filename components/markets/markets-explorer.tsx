@@ -20,6 +20,7 @@
  * through to the rentals listed in it.
  */
 
+import { MARKET_MEASURE_CREDITS } from "@/config/app";
 import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -271,7 +272,7 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
           Every US market this product covers, with the local rule on nightly
           letting. Performance figures are measured, and so far they exist for{" "}
           <span className="tabular text-foreground">{fmtNum(measuredCount)}</span>{" "}
-          of them. Opening one that has none measures it.
+          of them. A new market analysis costs {MARKET_MEASURE_CREDITS} credits and includes the year and booked-ahead figures. Cached sections stay free.
         </p>
       </header>
 

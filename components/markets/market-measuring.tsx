@@ -12,10 +12,10 @@ export function MarketMeasuring({ name }: { name: string }) {
       <div className="min-w-0">
         <h2 className="text-sm font-semibold text-foreground">Analyzing {name}…</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Fetching revenue, nightly rates, occupancy and active listings.
+          Fetching headline figures, Through the year and Booked ahead.
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          A first analysis can take 10–15 seconds. Your figures will appear here as soon as they arrive.
+          A first analysis usually takes 10–15 seconds; some markets take longer. Your figures will appear here as soon as they arrive.
         </p>
       </div>
     </section>

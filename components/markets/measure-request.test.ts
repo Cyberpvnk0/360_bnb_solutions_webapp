@@ -11,11 +11,11 @@ const at = "2026-09-21T16:00:00Z";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("market measurement response", () => {
-  it.each([0, 1])("delivers the returned figures directly, charged=%s", async (charged) => {
+  it.each([0, 3])("delivers the returned figures directly, charged=%s", async (charged) => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({ ok: true, stats, at, charged }));
     vi.stubGlobal("fetch", fetcher);
     expect(await requestMarketMeasurement("amarillo-tx")).toEqual({
-      status: "done", measurement: { stats, at }, charged,
+      status: "done", measurement: { stats, at, months: [], monthsAt: null, pace: [], paceAt: null, errors: [] }, charged,
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledWith("/api/markets/measure", {
@@ -47,5 +47,19 @@ describe("market measurement response", () => {
     vi.stubGlobal("fetch", fetcher);
     expect(await requestMarketMeasurement("amarillo-tx")).toMatchObject({ status: "failed" });
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("delivers both charts directly and preserves section errors", async () => {
+    const bundle = { stats, at, months: [{ month: "2026-08-01", adr: 182, occupancy: 0.65 }],
+      monthsAt: at, pace: [], paceAt: null,
+      errors: [{ section: "Booked ahead", message: "Provider unavailable" }] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true, ...bundle, charged: 2 })));
+    expect(await requestMarketMeasurement("anaheim")).toEqual({ status: "done", measurement: bundle, charged: 2 });
+  });
+
+  it("keeps a successful chart when the headline request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true, stats: null,
+      months: [{ month: "2026-08-01", adr: 182, occupancy: 0.65 }], charged: 1 })));
+    expect(await requestMarketMeasurement("anaheim")).toMatchObject({ status: "done", measurement: { stats: null }, charged: 1 });
   });
 });

@@ -1,25 +1,6 @@
-/**
- * A market's headline figures, bought on purpose.
- *
- * Nothing pre-fetches a market, so most of the catalogue carries a rule
- * and a researched lease and nothing else. Two things fill that in
- * today and neither is discoverable from the markets table: an analysis
- * run on a property there, and a Deal Finder search, which buys the
- * city's figures to project its cards. This is the third — a button on
- * the market itself, for somebody looking at a row of dashes and
- * wanting it filled.
- *
- * ONE CALL, BY NAME. Addressed with the market's own country, region
- * and locality, which costs nothing to build and measures the whole
- * city — the right area for a page about a city. Resolving the feed's
- * ZIP first is a second billed call that narrows the answer to the ZIP
- * the city's centre happens to fall in, which is not what the page
- * claims to be about.
- *
- * The twelve-month series is deliberately NOT fetched: it is a third
- * call, the page does not draw a chart without one, and the size table
- * answers the question a market is actually opened with for nothing.
- */
+/** Headline facts addressed by the catalogue's city, avoiding a paid ZIP
+ * lookup. The market analysis route combines this with the separately cached
+ * trailing year and forward pacing, fetching only missing sections. */
 
 import { fetchLiveMarket } from "@/lib/live/market-live";
 import {

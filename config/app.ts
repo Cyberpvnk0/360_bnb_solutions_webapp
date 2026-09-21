@@ -294,53 +294,14 @@ export const ASSISTANT_MESSAGE_CREDITS: number = 2;
  */
 export const AREA_MEASURE_CREDITS: number = 2;
 
-/**
- * What measuring one market spends.
- *
- * One billed call at $0.10 — the summary, addressed by the market's own
- * name, which needs no coordinate lookup — against a credit worth
- * twenty-seven cents at the very least, so one clears it comfortably on
- * every plan and every pack. Bought once and read free by everybody
- * after.
- *
- * NOTE ON THE AREA PRICE ABOVE. These two now cost within a penny of
- * each other: an area adds only the $0.01 lookup. The two-credit area
- * price was set when every call was believed to cost $0.18, which the
- * vendor's own published table says is not so. It is left alone here
- * rather than changed in a comment sweep, because what a student pays
- * is not a thing to alter as a side effect of correcting arithmetic.
- */
-export const MARKET_MEASURE_CREDITS: number = 1;
-
-/**
- * What buying a market's twelve months spends.
- *
- * Two billed calls at $0.10 — monthly occupancy and monthly rate, which
- * is everything the chart draws once RevPAR is derived from the pair.
- * The all-metrics endpoint would answer in one call at $0.50, and the
- * extra thirty cents buys a monthly revenue figure nothing displays.
- * So $0.20 against a credit worth at least twenty-seven cents.
- *
- * Deliberately NOT folded into the measure: opening a market would then
- * cost more whether or not the reader ever wanted the seasonal picture,
- * and most opens are a glance. Bought once and read free by everybody
- * after.
- */
+/** Complete market analysis: headline figures, trailing year and booked ahead.
+ * Each successful uncached section costs one credit. Existing sections stay
+ * free, including when an older market is completed by the bundle. */
+export const MARKET_STATS_CREDITS: number = 1;
 export const MARKET_HISTORY_CREDITS: number = 1;
-
-/**
- * What buying a market's forward book spends.
- *
- * One billed call at $0.20 against a credit worth at least twenty-seven
- * cents — the forward-pacing endpoint, twice the price of a trailing
- * one and the only figure here that is not a matter of record.
- * Unlike the year, this one is genuinely re-bought: a forward book
- * moves every night somebody reserves, so it is held for a week and
- * charged again per calendar month rather than once forever. That is
- * the honest trade — a stale "already booked" figure looks exactly as
- * current as a fresh one, which makes it worse than none.
- */
 export const MARKET_PACING_CREDITS: number = 1;
+export const MARKET_MEASURE_CREDITS: number =
+  MARKET_STATS_CREDITS + MARKET_HISTORY_CREDITS + MARKET_PACING_CREDITS;
 
 /** Dollars per credit, for the "you'd save" line on the pick list. */
 export function packUnitPrice(pack: CreditPack): number {

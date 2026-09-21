@@ -1,26 +1,6 @@
-/**
- * A market's twelve months, bought on its own.
- *
- * WHY THIS IS SEPARATE FROM MEASURING A MARKET. Opening a market buys
- * its headline figures in one billed call (lib/live/market-measure).
- * The year is a second call, and folding it into the first would double
- * the price of every market anyone so much as looks at — so it is its
- * own purchase, made by the reader who actually wants the seasonal
- * picture. `fetchLiveMarket` can fetch both together and the market
- * page reads whichever arrived; this path asks the metrics endpoint
- * directly off the catalogue's own address, which costs one call and
- * needs no summary it would only throw away.
- *
- * WHY IT IS WORTH BUYING AT ALL. Arbitrage signs a twelve-month lease
- * against revenue that does not arrive in twelve equal pieces. A market
- * that measures $60k a year and earns most of it in one season is a
- * different proposition from one that earns it evenly, and the annual
- * average — which is all the headline figures can ever say — cannot
- * tell the two apart. This is the call that can.
- *
- * Kept under its own key in the shared blob store, so the first account
- * to buy a market's year buys it for everybody after.
- */
+/** Trailing monthly facts, stored separately so market analysis can reuse a
+ * fresh year while refreshing other sections. The analysis bundle fetches this
+ * automatically; the standalone endpoint remains available for older clients. */
 
 import {
   fetchMarketMonths,

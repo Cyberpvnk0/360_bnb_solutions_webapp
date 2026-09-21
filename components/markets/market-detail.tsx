@@ -26,8 +26,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Binoculars,
-  CalendarCheck,
-  CalendarRange,
   Loader2,
   MapPin,
   Ruler,
@@ -63,8 +61,6 @@ import {
 } from "@/lib/format";
 import {
   AREA_MEASURE_CREDITS,
-  MARKET_HISTORY_CREDITS,
-  MARKET_PACING_CREDITS,
 } from "@/config/app";
 import { HINTS } from "@/lib/copy/hints";
 import {
@@ -116,12 +112,6 @@ import { cn } from "@/lib/utils";
 /** What a measure costs, said the way a reader says it. */
 const PRICE = `${AREA_MEASURE_CREDITS} ${AREA_MEASURE_CREDITS === 1 ? "credit" : "credits"}`;
 
-/** What a year costs, said the same way. */
-const YEAR_PRICE = `${MARKET_HISTORY_CREDITS} ${MARKET_HISTORY_CREDITS === 1 ? "credit" : "credits"}`;
-
-/** And what the forward book costs. */
-const PACE_PRICE = `${MARKET_PACING_CREDITS} ${MARKET_PACING_CREDITS === 1 ? "credit" : "credits"}`;
-
 /** A figure nobody has measured. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
 
@@ -132,7 +122,7 @@ interface Props {
   /** The twelve measured months, from wherever they were kept: inline
    *  on the stats row when both were bought together, or under their
    *  own key when the year was bought on its own. Empty until somebody
-   *  buys it — the page itself never does. */
+   *  buys it; the mounted client completes missing sections. */
   months: LiveMarketMonth[];
   /** When that year was measured, for the chart's own byline. */
   monthsAt: string | null;
@@ -241,32 +231,12 @@ export function MarketDetail({
   const [bought, setBought] = React.useState<Record<string, MeasuredArea>>({});
   const [buying, setBuying] = React.useState<string | null>(null);
 
-  /** The year bought in this session, so the chart draws without a
-   *  reload. Null until somebody buys one; the prop stands otherwise. */
-  const [boughtMonths, setBoughtMonths] = React.useState<LiveMarketMonth[] | null>(null);
-  const [buyingMonths, setBuyingMonths] = React.useState(false);
-  const year = boughtMonths ?? months;
-
-  const [boughtPace, setBoughtPace] = React.useState<LiveMarketPace[] | null>(null);
-  const [buyingPace, setBuyingPace] = React.useState(false);
-  const ahead = boughtPace ?? pace;
-
-  /**
-   * OPENING THIS MARKET IS ASKING FOR ITS FIGURES.
-   *
-   * There used to be a "Measure · 1 credit" button here, and on the
-   * table, and on the map card — asking somebody to press it on a
-   * market they had just clicked into. It runs on arrival now. Same
-   * price, same protections (see use-measure-market); the reader no
-   * longer has to say it twice.
-   *
-   * Only where there is nothing on file. A measured market is free to
-   * open, forever and for everybody.
-   */
+  // Opening a market automatically completes its three analysis sections.
+  const wanted = initialStats === null || months.length === 0 || pace.length === 0;
   const measure = useMeasureMarket({
     slug: market.slug,
     name: market.name,
-    wanted: initialStats === null,
+    wanted,
     onDone: () => router.refresh(),
   });
   const runMeasure = measure.run;
@@ -276,7 +246,19 @@ export function MarketDetail({
 
   const stats = measure.state.status === "done" ? measure.state.stats : initialStats;
   const statsAt = measure.state.status === "done" ? measure.state.at : initialStatsAt;
-  const measuring = stats === null && (measure.state.status === "idle" || measure.state.status === "measuring");
+  const measuring = wanted && (measure.state.status === "idle" || measure.state.status === "measuring");
+
+  const year = measure.state.status === "done" ? measure.state.months : months;
+  const ahead = measure.state.status === "done" ? measure.state.pace : pace;
+  const yearAt = measure.state.status === "done" ? measure.state.monthsAt : monthsAt;
+  const aheadAt = measure.state.status === "done" ? measure.state.paceAt : paceAt;
+  const analysisErrors = measure.state.status === "done" ? measure.state.errors : [];
+  const sectionStatus = (label: string) => (
+    <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      {measuring ? <Loader2 aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" /> : null}
+      {measuring ? "Measuring " + label + "…" : "Unavailable — see analysis status above."}
+    </span>
+  );
 
   const rows = React.useMemo(
     () =>
@@ -452,99 +434,6 @@ export function MarketDetail({
       };
     });
   }, [ahead, year]);
-
-  /** Buy what is already reserved in this market ahead of today. */
-  const buyPace = async () => {
-    if (buyingPace) return;
-    if (creditsRemaining + credits < MARKET_PACING_CREDITS) {
-      openUpgrade({ reason: "credits" });
-      return;
-    }
-    setBuyingPace(true);
-    try {
-      const res = await fetch("/api/markets/pacing", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ market: market.slug }),
-      });
-      const data = (await res.json().catch(() => null)) as
-        | {
-            ok?: boolean;
-            days?: LiveMarketPace[];
-            message?: string;
-            reason?: string;
-            charged?: number;
-          }
-        | null;
-      if (res.status === 402 || data?.reason === "no-credits") {
-        openUpgrade({ reason: "credits" });
-        return;
-      }
-      if (!res.ok || !data?.ok || !data.days?.length) {
-        toast.error(data?.message ?? "Those figures could not be fetched.");
-        return;
-      }
-      setBoughtPace(data.days);
-      const charged = data.charged ?? 0;
-      toast.success(`${market.name} booked ahead`);
-      if (charged > 0) void refreshUsage();
-    } catch {
-      toast.error("Those figures could not be fetched.");
-    } finally {
-      setBuyingPace(false);
-    }
-  };
-
-  /**
-   * Buy this market's twelve months.
-   *
-   * The seasonal question — does this market earn its year evenly or in
-   * one season — is the one an annual average cannot answer, and it is
-   * the one a twelve-month lease turns on. One billed call, so one
-   * credit, and the year is shared with every account after.
-   */
-  const buyYear = async () => {
-    if (buyingMonths) return;
-    if (creditsRemaining + credits < MARKET_HISTORY_CREDITS) {
-      openUpgrade({ reason: "credits" });
-      return;
-    }
-    setBuyingMonths(true);
-    try {
-      const res = await fetch("/api/markets/history", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ market: market.slug }),
-      });
-      const data = (await res.json().catch(() => null)) as
-        | {
-            ok?: boolean;
-            months?: LiveMarketMonth[];
-            message?: string;
-            reason?: string;
-            charged?: number;
-          }
-        | null;
-      if (res.status === 402 || data?.reason === "no-credits") {
-        openUpgrade({ reason: "credits" });
-        return;
-      }
-      if (!res.ok || !data?.ok || !data.months?.length) {
-        toast.error(data?.message ?? "Those figures could not be fetched.");
-        return;
-      }
-      setBoughtMonths(data.months);
-      const charged = data.charged ?? 0;
-      toast.success(`${market.name} through the year`);
-      // The meter in the header spent something; settle it from the
-      // server rather than guessing at the new number here.
-      if (charged > 0) void refreshUsage();
-    } catch {
-      toast.error("Those figures could not be fetched.");
-    } finally {
-      setBuyingMonths(false);
-    }
-  };
 
   const amenityColumns = React.useMemo<DataTableColumn<AmenityRow>[]>(
     () => [
@@ -888,6 +777,19 @@ export function MarketDetail({
       </header>
 
       {measuring ? <MarketMeasuring name={market.name} /> : null}
+      {measure.state.status === "failed" || measure.state.status === "no-credits" || analysisErrors.length > 0 ? (
+        <section role="alert" className="mt-5 rounded-sm border border-border bg-card px-5 py-4 text-sm elev-card">
+          {measure.state.status === "no-credits" ? (
+            <p>Not enough credits to complete this analysis. A new market costs {MEASURE_PRICE}; cached sections stay free.</p>
+          ) : measure.state.status === "failed" ? (
+            <p>{measure.state.message}</p>
+          ) : analysisErrors.map((error) => <p key={error.section}>{error.message}</p>)}
+          <Button size="sm" className="mt-3" onClick={() => measure.state.status === "no-credits"
+            ? openUpgrade({ reason: "credits" }) : window.location.reload()}>
+            {measure.state.status === "no-credits" ? "Plans & packs" : "Retry missing figures"}
+          </Button>
+        </section>
+      ) : null}
 
       {/* The headline four, as a single band rather than four cards:
           they are one reading of one market, and four boxes read as
@@ -981,8 +883,7 @@ export function MarketDetail({
             ) : measure.state.status === "no-credits" ? (
               <>
                 <span>
-                  No measured figures yet, and no credits left to buy them
-                  with.
+                  Not enough credits to complete the market analysis.
                 </span>
                 <button
                   type="button"
@@ -1134,16 +1035,7 @@ export function MarketDetail({
         </aside>
       </div>
 
-      {/* Seasonality, ONLY where the stats row already carries twelve
-          months — a market measured at the full setting. The series is
-          a separate billed call and this page does not make it, so a
-          market without one shows no chart rather than an empty box
-          asking to be paid for.
-
-          ONE SERIES, ONE AXIS. A rate and an occupancy on the same
-          picture needs two y-scales, and two y-scales let a reader see
-          a crossing that is an artefact of where the axes were put.
-          The chips switch the measure instead. */}
+      {/* One metric per axis; the chips switch the measure. */}
       <section className="mt-5 overflow-hidden rounded-sm border border-border bg-card elev-card">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-3.5">
           <div className="min-w-0">
@@ -1160,7 +1052,7 @@ export function MarketDetail({
             </h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {monthly.length > 0
-                ? `Twelve measured months in ${market.name}${monthsAt ? ` · ${fmtWhen(monthsAt)}` : ""}.`
+                ? `Twelve measured months in ${market.name}${yearAt ? ` · ${fmtWhen(yearAt)}` : ""}.`
                 : "Rate, occupancy and revenue month by month — what the average is made of."}
             </p>
           </div>
@@ -1185,22 +1077,7 @@ export function MarketDetail({
               ))}
             </div>
           ) : (
-            /* The year is a billed call, so it is a purchase and says
-               so. Opening a market must never spend on its own. */
-            <Button
-              type="button"
-              size="sm"
-              disabled={buyingMonths}
-              onClick={() => void buyYear()}
-              className="h-8 shrink-0 gap-1.5 px-3 text-xs grad-brand"
-            >
-              {buyingMonths ? (
-                <Loader2 aria-hidden className="size-3.5 animate-spin" />
-              ) : (
-                <CalendarRange aria-hidden className="size-3.5" />
-              )}
-              Measure the year · {YEAR_PRICE}
-            </Button>
+            sectionStatus("the year")
           )}
         </div>
         {monthly.length > 0 ? (
@@ -1265,25 +1142,12 @@ export function MarketDetail({
             </h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {paceRows.length > 0
-                ? `Already reserved in ${market.name}${paceAt ? ` · ${fmtWhen(paceAt)}` : ""}.`
+                ? `Already reserved in ${market.name}${aheadAt ? ` · ${fmtWhen(aheadAt)}` : ""}.`
                 : "How much of each coming month is already reserved here."}
             </p>
           </div>
           {paceRows.length > 0 ? null : (
-            <Button
-              type="button"
-              size="sm"
-              disabled={buyingPace}
-              onClick={() => void buyPace()}
-              className="h-8 shrink-0 gap-1.5 px-3 text-xs grad-brand"
-            >
-              {buyingPace ? (
-                <Loader2 aria-hidden className="size-3.5 animate-spin" />
-              ) : (
-                <CalendarCheck aria-hidden className="size-3.5" />
-              )}
-              Measure what&apos;s booked · {PACE_PRICE}
-            </Button>
+            sectionStatus("booked ahead")
           )}
         </div>
         {paceRows.length > 0 ? (
