@@ -59,6 +59,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { BAND_COLOR, spreadBand } from "@/lib/markets/spread-scale";
 
 /** A figure the vendor did not measure. Never a zero. */
 const NONE = <span className="text-muted-foreground/60">—</span>;
@@ -68,7 +69,7 @@ const MarketsMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div aria-hidden className="relative h-[clamp(15rem,58vw,26rem)] w-full overflow-hidden rounded-sm border border-border bg-secondary/40 xl:h-[clamp(22rem,calc(100dvh_-_15rem),38rem)]" />
+      <div aria-hidden className="relative h-[clamp(23rem,65vw,30rem)] w-full overflow-hidden rounded-sm border border-border bg-secondary/40 xl:h-[clamp(27rem,calc(100dvh_-_17rem),34rem)]" />
     ),
   }
 );
@@ -472,22 +473,40 @@ export function MarketsExplorer({ rows }: { rows: MarketRow[] }) {
               setSelected(slug);
               setMapCardOpen(true);
             }}
-            className="h-[clamp(15rem,58vw,26rem)] w-full xl:h-[clamp(22rem,calc(100dvh_-_15rem),38rem)]"
+            className="h-[clamp(23rem,65vw,30rem)] w-full xl:h-[clamp(27rem,calc(100dvh_-_17rem),34rem)]"
           />
           {chosen ? (
             <div className={cn(
-              "mt-3 rounded-sm border border-border bg-card px-4 py-3",
+              "mt-3 rounded-xl border border-border bg-card p-4 shadow-sm",
               // In the stacked layout, a hover must not insert a card
               // above the table and move the row out from under a click.
               // Pin selection explicitly opens the card on every screen.
               !mapCardOpen && "hidden xl:block"
             )}>
-              <p className="truncate text-sm font-medium text-foreground">
-                {chosen.name}, {chosen.stateCode}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {RULE_LABEL[chosen.regulation.status]} · {chosen.regulation.note}
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold tracking-tight text-foreground">{chosen.name}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{chosen.stateCode} · {TERRAIN_LABEL[chosen.terrain]}</p>
+                </div>
+                <StatusChip tone={RULE_TONE[chosen.regulation.status]}>{RULE_LABEL[chosen.regulation.status]}</StatusChip>
+              </div>
+              <div className="my-4 grid grid-cols-3 divide-x divide-border">
+                <div className="pr-2">
+                  <p className="text-[10px] text-muted-foreground">Annual spread</p>
+                  <p className="mt-1 text-lg font-semibold tracking-tight tabular" style={{ color: spreadBand(chosen.spread) ? BAND_COLOR[spreadBand(chosen.spread)!] : undefined }}>
+                    {chosen.spread === null ? "—" : (chosen.spread >= 0 ? "+" : "−") + fmtMoneyShort(Math.abs(chosen.spread))}
+                  </p>
+                </div>
+                <div className="px-3">
+                  <p className="text-[10px] text-muted-foreground">Revenue / year</p>
+                  <p className="mt-1 text-lg font-semibold tracking-tight tabular text-foreground">{chosen.measured?.revenue != null ? fmtMoneyShort(chosen.measured.revenue) : "—"}</p>
+                </div>
+                <div className="pl-3">
+                  <p className="text-[10px] text-muted-foreground">Occupancy</p>
+                  <p className="mt-1 text-lg font-semibold tracking-tight tabular text-foreground">{chosen.measured?.occupancy != null ? fmtPct(chosen.measured.occupancy) : "—"}</p>
+                </div>
+              </div>
+              <p className="border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">{chosen.regulation.note}</p>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <Button asChild variant="brand" size="sm" className="gap-1.5">
                   <Link href={`/markets/${chosen.slug}`}>

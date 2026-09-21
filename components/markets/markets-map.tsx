@@ -1,27 +1,13 @@
 "use client";
 
-/**
- * Four hundred markets on one map of the country.
- *
- * The table answers "which market", this answers "where" — and for a
- * strategy whose first constraint is the local rule, where matters in
- * a way a sorted list cannot show: the bans cluster, the permissive
- * states are obvious at a glance, and a student picking somewhere to
- * work can see the shape of it before reading a row.
- *
- * Colour is the rule and nothing else — gold where nightly letting is
- * permitted, red where it is banned, plain in between. Size is whether
- * the market has measured figures, so the filled dots are the ones
- * with something to read and the hollow ones are honestly empty.
- *
- * The view follows the filters: narrowing to one state flies to that
- * state rather than leaving somebody to find it.
- */
+/** Geographic view of measured annual revenue less estimated annual rent.
+ * DOM markers remain independent of the basemap and its worker availability. */
 
 import * as React from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useTheme } from "next-themes";
+import { LocateFixed } from "lucide-react";
 import {
   basemapStyle,
   documentTheme,
@@ -124,19 +110,15 @@ function dotFor(row: MarketRow): HTMLElement {
   el.setAttribute("aria-label", `${row.name}, ${row.stateCode}`);
   const color = colorOf(row);
   const placed = bandOf(row) !== null;
-  const size = placed ? 11 : 8;
-  el.style.cssText = [
-    `width:${size}px`,
-    `height:${size}px`,
-    "display:block",
-    "border-radius:9999px",
-    "cursor:pointer",
-    "padding:0",
-    `background:${placed ? color : "transparent"}`,
-    `border:1.5px solid ${color}`,
-    `opacity:${placed ? "0.95" : "0.55"}`,
-    "transition:transform 150ms ease, box-shadow 150ms ease",
-  ].join(";");
+  el.className = "market-map-point";
+  el.dataset.measured = String(placed);
+  el.style.setProperty("--point-color", color);
+  el.setAttribute("title", row.name + ", " + row.stateCode + " · " + (placed ? BAND_LABEL[bandOf(row)!] : "Not measured"));
+  const dot = document.createElement("span");
+  dot.className = "market-map-dot";
+  dot.setAttribute("aria-hidden", "true");
+  el.appendChild(dot);
+  wrap.style.zIndex = placed ? "1" : "0";
   wrap.appendChild(el);
   return wrap;
 }
@@ -281,6 +263,8 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
       const wrap = dotFor(row);
       wrap.addEventListener("mouseenter", () => setHovered(row));
       wrap.addEventListener("mouseleave", () => setHovered(null));
+      wrap.addEventListener("focusin", () => setHovered(row));
+      wrap.addEventListener("focusout", () => setHovered(null));
       wrap.addEventListener("click", (e) => {
         e.stopPropagation();
         onSelectRef.current(row.slug === selectedRef.current ? null : row.slug);
@@ -289,9 +273,9 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     });
     if (rows.length === 0) return;
     map.fitBounds(framing(rows), {
-      padding: 48,
+      padding: { top: 30, bottom: 30, left: 28, right: 28 },
       maxZoom: rows.length === 1 ? 9 : 11,
-      duration: 600,
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 600,
     });
   }, [rows, live]);
 
@@ -316,15 +300,9 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     ) => {
       const el = dotOf(marker);
       if (!el) return;
-      const color = colorOf(row);
-      el.style.transform = on ? "scale(1.7)" : "scale(1)";
-      // color-mix rather than an alpha suffix: these are design tokens
-      // now, and "var(--x)38" is not a colour.
-      el.style.boxShadow = on
-        ? `0 0 0 5px color-mix(in srgb, ${color} 22%, transparent)`
-        : "";
-      el.style.opacity = on ? "1" : bandOf(row) !== null ? "0.95" : "0.55";
-      marker.getElement().style.zIndex = on ? "2" : "";
+      el.dataset.selected = String(on);
+      el.setAttribute("aria-pressed", String(on));
+      marker.getElement().style.zIndex = on ? "3" : bandOf(row) !== null ? "1" : "0";
     };
 
     const i = selected ? rows.findIndex((r) => r.slug === selected) : -1;
@@ -340,77 +318,68 @@ export function MarketsMap({ rows, selected, onSelect, className }: Props) {
     litRef.current = next;
   }, [selected, rows, live]);
 
-  const card =
-    hovered ?? (selected ? (rows.find((r) => r.slug === selected) ?? null) : null);
+
+  const measuredCount = rows.filter((row) => row.spread !== null).length;
+  const resetView = () => {
+    if (!rows.length) return;
+    mapRef.current?.fitBounds(framing(rows), {
+      padding: 30, maxZoom: rows.length === 1 ? 9 : 11,
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500,
+    });
+  };
 
   return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-sm border border-border bg-secondary/40",
-        className
-      )}
-    >
-      {/* Sized directly, not positioned. MapLibre's own stylesheet sets
-          `position: relative` on whatever it mounts into, which beats an
-          `absolute inset-0` and collapses the element to nothing. */}
-      <div ref={containerRef} className="size-full" />
-      {/* What the colours mean, where somebody looking at them is. */}
-      <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border border-border bg-card/95 px-2.5 py-1.5 text-[10px] text-muted-foreground shadow-sm">
-        {SPREAD_BANDS.map((b) => (
-          <span key={b} className="inline-flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="size-2 rounded-full"
-              style={{ backgroundColor: BAND_COLOR[b] }}
-            />
-            {BAND_LABEL[b]}
-          </span>
-        ))}
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="size-2 rounded-full border border-muted-foreground/60" />
-          No figures yet
+    <div className={cn("market-map flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm", className)}>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3.5">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">Market landscape</h2>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Find where revenue goes further</p>
+        </div>
+        <span className="shrink-0 rounded-full border border-border bg-secondary/50 px-2.5 py-1 text-[10px] tabular text-muted-foreground">
+          <span className="font-semibold text-foreground">{measuredCount}</span> / {rows.length} measured
         </span>
       </div>
-
-      {card ? (
-        <div className="pointer-events-none absolute right-3 top-3 z-10 w-48 rounded-sm border border-border bg-card/95 px-3 py-2 shadow-md">
-          <p className="truncate text-sm font-medium text-foreground">{card.name}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {card.stateCode} · {RULE_LABEL[card.regulation.status]}
-          </p>
-          <p className="mt-1 text-[11px] text-muted-foreground tabular">
-            {card.measured?.revenue != null
-              ? `${fmtMoneyShort(card.measured.revenue)}/yr${
-                  card.measured.occupancy != null
-                    ? ` · ${fmtPct(card.measured.occupancy)} booked`
-                    : ""
-                }`
-              : "No measured figures yet"}
-          </p>
-          {/* What the dot's colour actually said, spelled out — and what
-              it does not say. The figure is revenue less rent, which is
-              the shortlisting number, not the take-home one, and the
-              card is where somebody is looking when they need to know
-              the difference. */}
-          {card.spread !== null ? (
-            <>
-              <p className="mt-0.5 text-[11px] tabular">
-                <span style={{ color: colorOf(card) }}>
-                  {card.spread >= 0 ? "+" : "−"}
-                  {fmtMoneyShort(Math.abs(card.spread))}
-                </span>
-                <span className="text-muted-foreground">
-                  {" "}
-                  {card.spread >= 0 ? "over" : "under"} a year&apos;s rent
-                </span>
-              </p>
-              <p className="mt-0.5 text-[10px] text-muted-foreground/80">
-                Before cleaning, fees and furnishing
-              </p>
-            </>
-          ) : null}
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-secondary">
+        <div ref={containerRef} className="size-full" />
+        <button type="button" onClick={resetView} title="Fit all visible markets" aria-label="Fit all visible markets"
+          className="absolute left-3 top-3 z-10 flex size-8 items-center justify-center rounded-lg border border-border bg-card/95 text-muted-foreground shadow-sm transition-colors hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold">
+          <LocateFixed aria-hidden className="size-4" />
+        </button>
+        {rows.length === 0 ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <p className="rounded-lg border border-border bg-card/95 px-4 py-3 text-xs text-muted-foreground">No markets match these filters</p>
+          </div>
+        ) : null}
+        {hovered ? (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10 w-52 rounded-lg border border-border bg-card/95 p-3 shadow-lg backdrop-blur-sm">
+            <p className="truncate text-xs font-semibold text-foreground">{hovered.name}, {hovered.stateCode}</p>
+            {hovered.spread !== null ? (
+              <>
+                <p className="mt-1 text-xl font-semibold tracking-tight tabular" style={{ color: colorOf(hovered) }}>
+                  {hovered.spread >= 0 ? "+" : "−"}{fmtMoneyShort(Math.abs(hovered.spread))}
+                  <span className="ml-1 text-[10px] font-normal tracking-normal text-muted-foreground">/ year vs. rent</span>
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {hovered.measured?.revenue != null ? fmtMoneyShort(hovered.measured.revenue) + " revenue" : ""}
+                  {hovered.measured?.occupancy != null ? " · " + fmtPct(hovered.measured.occupancy) + " booked" : ""}
+                </p>
+              </>
+            ) : <p className="mt-1 text-xs text-muted-foreground">Not measured yet</p>}
+            <p className="mt-2 border-t border-border pt-2 text-[10px] text-muted-foreground">{RULE_LABEL[hovered.regulation.status]} · Click to select</p>
+          </div>
+        ) : null}
+      </div>
+      <div className="shrink-0 border-t border-border px-4 pb-3 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-2 text-[10px]">
+          <span className="font-medium text-foreground">Annual revenue − rent</span>
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="size-1.5 rounded-full border border-muted-foreground/60" /> Not measured</span>
         </div>
-      ) : null}
+        <div className="flex h-1.5 overflow-hidden rounded-full" role="img" aria-label="Market spread: well under rent, under rent, about level, over rent, well over rent">
+          {SPREAD_BANDS.map((band) => <span key={band} className="flex-1" style={{ backgroundColor: BAND_COLOR[band] }} title={BAND_LABEL[band]} />)}
+        </div>
+        <div className="mt-1.5 flex justify-between text-[10px] tabular text-muted-foreground"><span>−$20K or less</span><span>Near $0</span><span>+$20K or more</span></div>
+        <p className="mt-2 text-[9px] leading-relaxed text-muted-foreground/80">Before cleaning, fees, utilities and furnishing.</p>
+      </div>
     </div>
   );
 }

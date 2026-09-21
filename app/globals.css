@@ -831,3 +831,61 @@
 .grad-gold:hover {
   background-image: var(--grad-gold-hover);
 }
+
+/* Quiet geography under the market data. Filter only the basemap canvas:
+   DOM markers, controls and attribution retain their original colors. */
+.market-map .maplibregl-canvas {
+  filter: grayscale(1) contrast(0.88) brightness(1.07);
+  opacity: 0.75;
+}
+.dark .market-map .maplibregl-canvas {
+  filter: grayscale(1) contrast(0.92);
+  opacity: 0.85;
+}
+.market-map .maplibregl-ctrl-top-right { top: 2px; right: 2px; }
+.market-map .maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  box-shadow: 0 2px 6px #0000000a;
+}
+.market-map-point {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.market-map-dot {
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--spread-unmeasured);
+  border-radius: 50%;
+  background: var(--card);
+  opacity: 0.55;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+.market-map-point[data-measured="true"] .market-map-dot {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--card);
+  background: var(--point-color);
+  box-shadow: 0 1px 3px #00000024, 0 0 0 2px color-mix(in srgb, var(--point-color) 12%, transparent);
+  opacity: 1;
+}
+.market-map-point:hover .market-map-dot,
+.market-map-point:focus-visible .market-map-dot,
+.market-map-point[data-selected="true"] .market-map-dot {
+  transform: scale(1.3);
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--point-color);
+}
+.market-map-point:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  .market-map-dot { transition: none; }
+}
