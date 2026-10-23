@@ -15,6 +15,7 @@ import { readCriteria } from "@/lib/alerts/criteria";
 import { emailConfigured, sendEmail } from "@/lib/alerts/email";
 import { pushConfigured, sendPush, type PushSubscriptionRow } from "@/lib/alerts/push";
 import { runAlerts, type AlertRow } from "@/lib/alerts/run";
+import { recordJob } from "@/lib/admin/telemetry";
 import { requireOperator } from "@/lib/auth/gate";
 import { serviceConfig, serviceRest } from "@/lib/db/service";
 import { fetchLiveRentals, fetchLiveRentalsByZip } from "@/lib/live/rentcast";
@@ -53,14 +54,21 @@ function subscriptionOf(r: SubscriptionRecord): (PushSubscriptionRow & { id: str
 export async function GET(request: Request) {
   const op = await requireOperator(request);
   if (!op.ok) return op.response;
+  // From here on every outcome is a run, and the admin panel shows the
+  // last one — a schedule that fails quietly every morning is the
+  // failure nobody notices until a member asks where their alerts went.
   if (!serviceConfig()) {
+    await recordJob("alerts", false, "no store configured");
     return NextResponse.json({ ok: false, reason: "no-store", hint: "set SUPABASE_URL and the secret key" }, { status: 503 });
   }
 
   const rows = await serviceRest<AlertRecord[]>(
     "listing_alerts?select=id,user_id,email,market_slug,zip,label,criteria,wants_email,wants_push,seen_ids,last_run_at&order=created_at.asc"
   );
-  if (!rows.ok) return NextResponse.json({ ok: false, reason: "store", detail: rows.detail }, { status: 502 });
+  if (!rows.ok) {
+    await recordJob("alerts", false, `alerts could not be read: ${rows.detail}`);
+    return NextResponse.json({ ok: false, reason: "store", detail: rows.detail }, { status: 502 });
+  }
 
   const alerts: AlertRow[] = (rows.data ?? []).map((r) => ({
     id: r.id,
@@ -119,5 +127,11 @@ export async function GET(request: Request) {
     now: new Date(),
   });
 
+  await recordJob(
+    "alerts",
+    report.failures.length === 0,
+    `${report.alerts} alerts, ${report.notified} notified (${report.emails} emails, ${report.pushes} pushes)` +
+      (report.failures.length ? `; ${report.failures.length} failed: ${report.failures.slice(0, 3).join("; ")}` : "")
+  );
   return NextResponse.json({ ok: true, mail: emailConfigured(), push: pushConfigured(), ...report });
 }

@@ -1,7 +1,7 @@
-import { TriangleAlert } from "lucide-react";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ChipTone = "gold" | "neutral" | "neg" | "outline";
+type ChipTone = "gold" | "neutral" | "neg" | "warn" | "outline";
 
 interface StatusChipProps extends React.ComponentProps<"span"> {
   tone?: ChipTone;
@@ -10,8 +10,10 @@ interface StatusChipProps extends React.ComponentProps<"span"> {
 /**
  * Rounded status chip — the one place pills are allowed.
  * Gold = positive signal. Muted red always ships with a warning icon so
- * the signal never rides on color alone. Full-saturation brand red is
- * never used here.
+ * the signal never rides on color alone. Warn (the orange token) is the
+ * in-between — working, with something to look at — and ships with a
+ * DIFFERENT icon shape from red, so the two are told apart without
+ * colour too. Full-saturation brand red is never used here.
  *
  * OPAQUE, ALWAYS. The tints are mixed into the card colour rather than
  * laid over it at low alpha: a chip sits on a card's top edge ("Most
@@ -34,6 +36,8 @@ export function StatusChip({
           "border-border bg-secondary text-muted-foreground",
         tone === "neg" &&
           "border-neg/40 bg-[color-mix(in_oklab,var(--color-neg)_12%,var(--color-card))] text-neg",
+        tone === "warn" &&
+          "border-warn/40 bg-[color-mix(in_oklab,var(--color-warn)_12%,var(--color-card))] text-warn",
         tone === "outline" && "border-border bg-card text-foreground",
         className
       )}
@@ -41,6 +45,8 @@ export function StatusChip({
     >
       {tone === "neg" ? (
         <TriangleAlert aria-hidden className="size-2.5" strokeWidth={2.5} />
+      ) : tone === "warn" ? (
+        <CircleAlert aria-hidden className="size-2.5" strokeWidth={2.5} />
       ) : null}
       {children}
     </span>

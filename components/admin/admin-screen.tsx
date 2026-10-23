@@ -20,10 +20,12 @@ import { PageHeader } from "@/components/primitives/page-header";
 import { StatCard, StatHeader } from "@/components/primitives/stat-card";
 import { StatusChip } from "@/components/primitives/status-chip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { PullVolumeChart, TierDonut } from "./admin-charts";
 import { AccountDrawer } from "./account-drawer";
 import { AdminUsersTable } from "./admin-users-table";
+import { HealthPanel } from "./health-panel";
 
 function ChartCard({
   title,
@@ -76,7 +78,13 @@ function LedgerRow({
   );
 }
 
-export function AdminScreen() {
+export function AdminScreen({
+  healthAccess = false,
+}: {
+  /** A named admin with a confirmed address — decided on the server.
+   *  Shows the System health tab; the route checks again for itself. */
+  healthAccess?: boolean;
+}) {
   const [metrics, setMetrics] = React.useState<AdminPayload | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
   /** Bumped after an account write, to re-read the figures it moved.
@@ -121,6 +129,235 @@ export function AdminScreen() {
     [];
   const periodLabel = metrics ? fmtMonth(`${metrics.period}-01`) : "";
 
+  const overview = (
+    <>
+
+        {failed || metrics?.error ? (
+          <div className="mt-6 flex items-start gap-3 rounded-sm border border-border bg-secondary/40 px-4 py-3">
+            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-neg" />
+            <div className="text-sm text-foreground">
+              {failed ?? "The store answered with an error."}
+              {metrics?.error ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">{metrics.error}</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {metrics?.truncated ? (
+          <p className="mt-4 text-xs text-muted-foreground">
+            One of the reads hit the store&apos;s row ceiling, so the totals
+            below undercount. The accounts list is the newest thousand.
+          </p>
+        ) : null}
+
+        <StatHeader className="mt-8">
+          <StatCard
+            label="Accounts"
+            serif
+            value={metrics ? fmtNum(metrics.accounts) : sk("w-16")}
+          />
+          <StatCard
+            label="On a paid tier"
+            value={metrics ? fmtNum(metrics.paying) : sk("w-16")}
+            sub={
+              <span className="text-[11px] text-muted-foreground">
+                by plan; nothing is billed yet
+              </span>
+            }
+          />
+          <StatCard
+            label="Plans at list price"
+            value={metrics ? fmtMoney(metrics.listMrr) : sk("w-24")}
+            sub={
+              <span className="text-[11px] text-muted-foreground">
+                per month, if every paid plan were billed monthly
+              </span>
+            }
+          />
+          <StatCard
+            label={`Analyses in ${periodLabel || "this month"}`}
+            value={metrics ? fmtNum(metrics.analysesThisPeriod) : sk("w-16")}
+            sub={
+              <span className="text-[11px] text-muted-foreground">
+                distinct properties, every account
+              </span>
+            }
+          />
+          <StatCard
+            label={`Markets opened in ${periodLabel || "this month"}`}
+            value={metrics ? fmtNum(metrics.marketsThisPeriod) : sk("w-16")}
+          />
+          <StatCard
+            label="Pack credits outstanding"
+            value={metrics ? fmtNum(metrics.creditsOutstanding) : sk("w-16")}
+            sub={
+              <span className="text-[11px] text-muted-foreground">
+                analyses bought and not yet used
+              </span>
+            }
+          />
+        </StatHeader>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <ChartCard title="Plan mix" sub="Every account, by plan.">
+            {metrics ? (
+              <TierDonut tierCounts={metrics.tierCounts} />
+            ) : (
+              <div className="flex h-[290px] items-center justify-center">
+                <Skeleton className="size-40 rounded-full" />
+              </div>
+            )}
+          </ChartCard>
+          <ChartCard
+            title="Analyses bought"
+            sub="Distinct properties analysed per month, trailing 12 months."
+          >
+            {metrics ? (
+              <PullVolumeChart pullVolume={pullVolume} />
+            ) : (
+              <div className="flex h-[268px] items-end gap-2 px-2 pb-2">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <Skeleton
+                    key={i}
+                    className="w-full"
+                    style={{ height: `${30 + ((i * 17) % 60)}%` }}
+                  />
+                ))}
+              </div>
+            )}
+          </ChartCard>
+        </div>
+
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <div className="rounded-sm border border-border bg-card">
+            <div className="border-b border-border px-6 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Plans</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Accounts on each, and what those plans list for.
+              </p>
+            </div>
+            {metrics ? (
+              <div className="divide-y divide-border">
+                {metrics.tierCounts.map(({ tier, count }) => (
+                  <LedgerRow
+                    key={tier}
+                    label={`${TIERS[tier].name} · ${fmtNum(count)}`}
+                    value={
+                      TIERS[tier].priceMonthly > 0
+                        ? fmtMoney(count * TIERS[tier].priceMonthly)
+                        : "—"
+                    }
+                  />
+                ))}
+                <LedgerRow label="At list, per month" value={fmtMoney(metrics.listMrr)} strong />
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between px-6 py-3.5">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-sm border border-border bg-card">
+            <div className="border-b border-border px-6 py-4">
+              <h2 className="text-sm font-semibold text-foreground">
+                Packs granted in {periodLabel || "this month"}
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Top-ups fulfilled this month, by pack.
+              </p>
+            </div>
+            {metrics ? (
+              metrics.packsThisPeriod.length === 0 ? (
+                <p className="px-6 py-6 text-sm text-muted-foreground">
+                  No packs granted this month.
+                </p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {metrics.packsThisPeriod.map(({ pack, count }) => (
+                    <LedgerRow
+                      key={pack}
+                      label={`${CREDIT_PACKS[pack].label} · ${fmtNum(count)}`}
+                      value={fmtMoney(count * CREDIT_PACKS[pack].price)}
+                    />
+                  ))}
+                  <LedgerRow
+                    label="Pack revenue at list"
+                    value={fmtMoney(
+                      metrics.packsThisPeriod.reduce(
+                        (s, p) => s + p.count * CREDIT_PACKS[p.pack].price,
+                        0
+                      )
+                    )}
+                    strong
+                  />
+                </div>
+              )
+            ) : (
+              <div className="divide-y divide-border">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between px-6 py-3.5">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-10 overflow-hidden rounded-sm border border-border bg-card">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Newest first. Usage is this month&apos;s, against each plan&apos;s cap.
+              {metrics?.accountAdmin
+                ? " Open an account to reset it, move its plan, or grant credits."
+                : null}
+            </p>
+            {/* Said here rather than discovered by pressing a button that
+                refuses. Reading these figures is open to everyone signed
+                in while ADMIN_EMAILS is unset; acting on an account is
+                open to nobody. Offering the controls anyway would be five
+                buttons that always fail. */}
+            {metrics && !metrics.accountAdmin ? (
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Account controls are off until this deployment names its admins.
+                Set <span className="font-medium text-foreground tabular">ADMIN_EMAILS</span>{" "}
+                to a comma-separated list of confirmed addresses and they turn on for
+                those accounts only.
+              </p>
+            ) : null}
+          </div>
+          <AdminUsersTable
+            users={metrics?.accountsList ?? []}
+            loading={loading}
+            onOpen={metrics?.accountAdmin ? setEditing : undefined}
+          />
+        </div>
+
+        <AccountDrawer
+          /* The row AS IT NOW READS, not the snapshot that was clicked.
+             A grant lands, the table re-reads, and the drawer's own
+             "holds 120" would otherwise still say 120 — the one figure
+             the admin looks at to confirm the grant worked. */
+          account={
+            (editing && metrics?.accountsList.find((a) => a.id === editing.id)) || editing
+          }
+          onOpenChange={(open) => {
+            if (!open) setEditing(null);
+          }}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+    </>
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-10">
       <PageHeader
@@ -132,229 +369,21 @@ export function AdminScreen() {
         }
       />
 
-      {failed || metrics?.error ? (
-        <div className="mt-6 flex items-start gap-3 rounded-sm border border-border bg-secondary/40 px-4 py-3">
-          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-neg" />
-          <div className="text-sm text-foreground">
-            {failed ?? "The store answered with an error."}
-            {metrics?.error ? (
-              <p className="mt-0.5 text-xs text-muted-foreground">{metrics.error}</p>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {metrics?.truncated ? (
-        <p className="mt-4 text-xs text-muted-foreground">
-          One of the reads hit the store&apos;s row ceiling, so the totals
-          below undercount. The accounts list is the newest thousand.
-        </p>
-      ) : null}
-
-      <StatHeader className="mt-8">
-        <StatCard
-          label="Accounts"
-          serif
-          value={metrics ? fmtNum(metrics.accounts) : sk("w-16")}
-        />
-        <StatCard
-          label="On a paid tier"
-          value={metrics ? fmtNum(metrics.paying) : sk("w-16")}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              by plan; nothing is billed yet
-            </span>
-          }
-        />
-        <StatCard
-          label="Plans at list price"
-          value={metrics ? fmtMoney(metrics.listMrr) : sk("w-24")}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              per month, if every paid plan were billed monthly
-            </span>
-          }
-        />
-        <StatCard
-          label={`Analyses in ${periodLabel || "this month"}`}
-          value={metrics ? fmtNum(metrics.analysesThisPeriod) : sk("w-16")}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              distinct properties, every account
-            </span>
-          }
-        />
-        <StatCard
-          label={`Markets opened in ${periodLabel || "this month"}`}
-          value={metrics ? fmtNum(metrics.marketsThisPeriod) : sk("w-16")}
-        />
-        <StatCard
-          label="Pack credits outstanding"
-          value={metrics ? fmtNum(metrics.creditsOutstanding) : sk("w-16")}
-          sub={
-            <span className="text-[11px] text-muted-foreground">
-              analyses bought and not yet used
-            </span>
-          }
-        />
-      </StatHeader>
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <ChartCard title="Plan mix" sub="Every account, by plan.">
-          {metrics ? (
-            <TierDonut tierCounts={metrics.tierCounts} />
-          ) : (
-            <div className="flex h-[290px] items-center justify-center">
-              <Skeleton className="size-40 rounded-full" />
-            </div>
-          )}
-        </ChartCard>
-        <ChartCard
-          title="Analyses bought"
-          sub="Distinct properties analysed per month, trailing 12 months."
-        >
-          {metrics ? (
-            <PullVolumeChart pullVolume={pullVolume} />
-          ) : (
-            <div className="flex h-[268px] items-end gap-2 px-2 pb-2">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <Skeleton
-                  key={i}
-                  className="w-full"
-                  style={{ height: `${30 + ((i * 17) % 60)}%` }}
-                />
-              ))}
-            </div>
-          )}
-        </ChartCard>
-      </div>
-
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-sm border border-border bg-card">
-          <div className="border-b border-border px-6 py-4">
-            <h2 className="text-sm font-semibold text-foreground">Plans</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Accounts on each, and what those plans list for.
-            </p>
-          </div>
-          {metrics ? (
-            <div className="divide-y divide-border">
-              {metrics.tierCounts.map(({ tier, count }) => (
-                <LedgerRow
-                  key={tier}
-                  label={`${TIERS[tier].name} · ${fmtNum(count)}`}
-                  value={
-                    TIERS[tier].priceMonthly > 0
-                      ? fmtMoney(count * TIERS[tier].priceMonthly)
-                      : "—"
-                  }
-                />
-              ))}
-              <LedgerRow label="At list, per month" value={fmtMoney(metrics.listMrr)} strong />
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between px-6 py-3.5">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-4 w-16" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-sm border border-border bg-card">
-          <div className="border-b border-border px-6 py-4">
-            <h2 className="text-sm font-semibold text-foreground">
-              Packs granted in {periodLabel || "this month"}
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Top-ups fulfilled this month, by pack.
-            </p>
-          </div>
-          {metrics ? (
-            metrics.packsThisPeriod.length === 0 ? (
-              <p className="px-6 py-6 text-sm text-muted-foreground">
-                No packs granted this month.
-              </p>
-            ) : (
-              <div className="divide-y divide-border">
-                {metrics.packsThisPeriod.map(({ pack, count }) => (
-                  <LedgerRow
-                    key={pack}
-                    label={`${CREDIT_PACKS[pack].label} · ${fmtNum(count)}`}
-                    value={fmtMoney(count * CREDIT_PACKS[pack].price)}
-                  />
-                ))}
-                <LedgerRow
-                  label="Pack revenue at list"
-                  value={fmtMoney(
-                    metrics.packsThisPeriod.reduce(
-                      (s, p) => s + p.count * CREDIT_PACKS[p.pack].price,
-                      0
-                    )
-                  )}
-                  strong
-                />
-              </div>
-            )
-          ) : (
-            <div className="divide-y divide-border">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between px-6 py-3.5">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-4 w-16" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-10 overflow-hidden rounded-sm border border-border bg-card">
-        <div className="border-b border-border px-6 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Newest first. Usage is this month&apos;s, against each plan&apos;s cap.
-            {metrics?.accountAdmin
-              ? " Open an account to reset it, move its plan, or grant credits."
-              : null}
-          </p>
-          {/* Said here rather than discovered by pressing a button that
-              refuses. Reading these figures is open to everyone signed
-              in while ADMIN_EMAILS is unset; acting on an account is
-              open to nobody. Offering the controls anyway would be five
-              buttons that always fail. */}
-          {metrics && !metrics.accountAdmin ? (
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Account controls are off until this deployment names its admins.
-              Set <span className="font-medium text-foreground tabular">ADMIN_EMAILS</span>{" "}
-              to a comma-separated list of confirmed addresses and they turn on for
-              those accounts only.
-            </p>
-          ) : null}
-        </div>
-        <AdminUsersTable
-          users={metrics?.accountsList ?? []}
-          loading={loading}
-          onOpen={metrics?.accountAdmin ? setEditing : undefined}
-        />
-      </div>
-
-      <AccountDrawer
-        /* The row AS IT NOW READS, not the snapshot that was clicked.
-           A grant lands, the table re-reads, and the drawer's own
-           "holds 120" would otherwise still say 120 — the one figure
-           the admin looks at to confirm the grant worked. */
-        account={
-          (editing && metrics?.accountsList.find((a) => a.id === editing.id)) || editing
-        }
-        onOpenChange={(open) => {
-          if (!open) setEditing(null);
-        }}
-        onChanged={() => setReload((n) => n + 1)}
-      />
+      {healthAccess ? (
+        <Tabs defaultValue="overview" className="mt-6">
+          <TabsList>
+            <TabsTrigger value="overview">Accounts &amp; revenue</TabsTrigger>
+            <TabsTrigger value="health">System health</TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview">{overview}</TabsContent>
+          {/* Mounted only while open: it runs every check on open. */}
+          <TabsContent value="health">
+            <HealthPanel />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        overview
+      )}
     </div>
   );
 }
