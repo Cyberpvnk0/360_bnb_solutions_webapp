@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { isStaff, isSupportStaff } from "@/lib/auth/gate";
+import { isStaffUser, isSupportStaff } from "@/lib/auth/gate";
 import { currentUser } from "@/lib/supabase/server";
 import { AdminScreen } from "@/components/admin/admin-screen";
 
@@ -12,7 +12,7 @@ export const metadata = { title: "Admin" };
  */
 export default async function AdminPage() {
   const user = await currentUser();
-  if (!isStaff(user?.email)) notFound();
+  if (!isStaffUser(user)) notFound();
   // System health names this deployment's keys and vendors, so it is
   // for NAMED admins only — the fail-closed rule, not the staff one.
   return <AdminScreen healthAccess={isSupportStaff(user)} />;

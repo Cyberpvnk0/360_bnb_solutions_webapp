@@ -22,7 +22,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /** Everything a signed-out visitor may see. */
-const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/"];
+const PUBLIC_PATHS = ["/login", "/signup", "/access", "/auth", "/"];
 
 /**
  * Paths that answer for themselves. The API routes each carry their

@@ -488,6 +488,16 @@ export function HealthPanel() {
                     : "ADMIN_EMAILS is empty, so account controls are off for everyone."
                 }
               />
+              <BackendRow
+                label="Access-code sign-in"
+                ok={null}
+                value={report.backend.access.accessCode ? "On" : "Off"}
+                detail={
+                  report.backend.access.accessCode
+                    ? "The /access page signs a code holder into the full-admin account. ACCESS_CODE_LOGIN=off turns it off and removes that account's admin at once."
+                    : "Turned off with ACCESS_CODE_LOGIN. The code opens nothing and its account has no admin rights."
+                }
+              />
             </div>
           </Panel>
 

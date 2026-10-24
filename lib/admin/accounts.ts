@@ -221,7 +221,10 @@ export const MAX_GRANT = 10_000;
 export async function grantCredits(
   userId: string,
   amount: number,
-  by: string
+  by: string,
+  /** A fixed reference makes the grant once-ever rather than
+   *  once-a-minute — the access-code account's welcome grant. */
+  opts: { reason?: string; ref?: string } = {}
 ): Promise<{ ok: boolean; balance: number; granted: boolean; detail: string | null }> {
   if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_GRANT) {
     return { ok: false, balance: 0, granted: false, detail: `1–${MAX_GRANT} credits` };
@@ -240,8 +243,8 @@ export async function grantCredits(
       body: JSON.stringify({
         p_user: userId,
         p_amount: amount,
-        p_reason: `admin grant by ${by}`,
-        p_ref: `admin:${by}:${userId}:${amount}:${minute}`,
+        p_reason: opts.reason ?? `admin grant by ${by}`,
+        p_ref: opts.ref ?? `admin:${by}:${userId}:${amount}:${minute}`,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",

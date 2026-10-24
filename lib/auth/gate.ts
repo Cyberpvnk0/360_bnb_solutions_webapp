@@ -32,6 +32,7 @@ import { NextResponse } from "next/server";
 import { TIERS, type TierId } from "@/config/app";
 import { currentUser } from "@/lib/supabase/server";
 import { consumeUsage, resolveTier } from "@/lib/db/usage";
+import { ACCESS_ROLE, ACCESS_ROLE_KEY, accessCodeEnabled } from "./access-code";
 
 type SessionUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 
@@ -45,6 +46,33 @@ export function adminEmails(env = process.env.ADMIN_EMAILS): Set<string> {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean)
   );
+}
+
+type MaybeAdmin =
+  | {
+      email?: string | null;
+      email_confirmed_at?: string | null;
+      app_metadata?: Record<string, unknown> | null;
+    }
+  | null
+  | undefined;
+
+/**
+ * The account an access code opens (lib/auth/access-account).
+ *
+ * An admin by a flag in app_metadata, which only the secret key can
+ * write — no member can set it on themselves — and only while code
+ * sign-in is switched on. ACCESS_CODE_LOGIN=off therefore takes admin
+ * away from a session the code already opened, on its next request,
+ * rather than leaving it for as long as the cookie lives.
+ */
+export function isCodeAdmin(user: MaybeAdmin, env: NodeJS.ProcessEnv = process.env): boolean {
+  return accessCodeEnabled(env) && user?.app_metadata?.[ACCESS_ROLE_KEY] === ACCESS_ROLE;
+}
+
+/** isStaff for a whole user: the access-code admin, or a staff email. */
+export function isStaffUser(user: MaybeAdmin): boolean {
+  return isCodeAdmin(user) || isStaff(user?.email);
 }
 
 /**
@@ -79,10 +107,8 @@ export function isStaff(email: string | null | undefined, env?: string): boolean
  * project with confirmations off hands out sessions for any address
  * somebody types.
  */
-export function isSupportStaff(
-  user: { email?: string | null; email_confirmed_at?: string | null } | null | undefined,
-  env?: string
-): boolean {
+export function isSupportStaff(user: MaybeAdmin, env?: string): boolean {
+  if (isCodeAdmin(user)) return true;
   const list = adminEmails(env);
   if (list.size === 0) return false;
   if (!user?.email || !user.email_confirmed_at) return false;
@@ -140,6 +166,7 @@ export async function requireMarketAnalyzer(): Promise<
 export async function requireStaff(): Promise<Gate<{ user: SessionUser }>> {
   const user = await currentUser();
   if (!user) return { ok: false, response: refuse(401, "signed-out") };
+  if (isCodeAdmin(user)) return { ok: true, user };
   // A named list is only as good as the email being theirs: a project
   // with confirmations off hands out sessions for any address typed.
   if (adminEmails().size > 0 && !user.email_confirmed_at) {
@@ -214,6 +241,10 @@ export async function requireOperator(
     if (offered === secret) return { ok: true, user: null };
   }
   const list = adminEmails();
+  const user = await currentUser();
+  // The access-code admin is a named admin by another route, and stays
+  // one when no list is set.
+  if (isCodeAdmin(user)) return { ok: true, user };
   if (list.size === 0 && !secret) {
     return {
       ok: false,
@@ -222,7 +253,6 @@ export async function requireOperator(
       }),
     };
   }
-  const user = await currentUser();
   if (!user) return { ok: false, response: refuse(401, "signed-out") };
   // The list is only as good as the email being theirs. A project with
   // confirmations off hands out sessions for any address typed at it.

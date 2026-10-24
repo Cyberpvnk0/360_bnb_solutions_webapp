@@ -8,7 +8,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { adminEmails, requireStaff } from "@/lib/auth/gate";
+import { isSupportStaff, requireStaff } from "@/lib/auth/gate";
 import { readAdminMetrics, type AdminPayload } from "@/lib/admin/metrics";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,8 @@ export async function GET() {
   const staff = await requireStaff();
   if (!staff.ok) return staff.response;
   const metrics = await readAdminMetrics();
-  // Whether anybody may act on an account here — see AdminPayload. Not
-  // WHO: the list itself is configuration and stays on the server.
-  const payload: AdminPayload = { ...metrics, accountAdmin: adminEmails().size > 0 };
+  // Whether THIS viewer may act on an account — the same fail-closed
+  // rule the account route applies. The list itself stays on the server.
+  const payload: AdminPayload = { ...metrics, accountAdmin: isSupportStaff(staff.user) };
   return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
 }

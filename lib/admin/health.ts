@@ -28,6 +28,7 @@ import vercelConfig from "@/vercel.json";
 import { emailConfigured } from "@/lib/alerts/email";
 import { pushConfigured } from "@/lib/alerts/push";
 import { anthropicClient, assistantConfigured } from "@/lib/assistant/client";
+import { accessCodeEnabled } from "@/lib/auth/access-code";
 import { adminEmails } from "@/lib/auth/gate";
 import { storeConfigured, storeCounts, storeStatus } from "@/lib/db/market-store";
 import { serviceConfig } from "@/lib/db/service";
@@ -116,7 +117,7 @@ export interface HealthReport {
     cache: { markets: number; keyed: number; detail: string | null };
     routeErrors: { last24h: number; recent: RouteErrorRecord[] };
     alertsJob: { schedule: string | null; lastRun: JobRun | null; canAuthenticate: boolean };
-    access: { adminsNamed: number; cronSecret: boolean };
+    access: { adminsNamed: number; cronSecret: boolean; accessCode: boolean };
   };
   deployment: {
     environment: string;
@@ -632,7 +633,7 @@ export async function buildHealthReport(now: Date = new Date()): Promise<HealthR
         // operator gate turns the run away once ADMIN_EMAILS is set.
         canAuthenticate: cronSecret || adminEmails().size === 0,
       },
-      access: { adminsNamed: adminEmails().size, cronSecret },
+      access: { adminsNamed: adminEmails().size, cronSecret, accessCode: accessCodeEnabled() },
     },
     deployment: {
       environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",
